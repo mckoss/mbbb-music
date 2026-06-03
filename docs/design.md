@@ -26,6 +26,10 @@ The first project goal is to design a catalog and sync system, not write code ye
   availability.
 - Let a musician download a ready-to-use package for their instrument.
 - Let an admin add files through Drive or a future web interface.
+- Let a band leader or member create a gig with date, address, schedule details,
+  ordered set list, and attendance tracking.
+- Let players view or print music in gig set-list order for their own instrument.
+- Use Google accounts for member/admin sign-in and site access.
 - Support generated outputs from MuseScore where the source files are good enough.
 - Run the deployed app and background workers on Railway.
 
@@ -41,8 +45,10 @@ The first project goal is to design a catalog and sync system, not write code ye
 
 - Band librarian / admin: imports files, fixes metadata, resolves duplicates,
   approves generated outputs, and builds set packets.
+- Band leader / gig organizer: creates gigs, enters logistics, builds ordered set
+  lists, and checks attendance by player and instrument.
 - Player: selects instrument and gets the current music packet with relevant parts
-  and practice audio.
+  and practice audio; confirms availability for gigs.
 - Section lead: checks that parts exist for their section and may download a
   section packet.
 
@@ -108,6 +114,56 @@ An output recipe defines what the system can build.
 - Full-band packet
 - Set-list packet
 - MP3 practice bundle
+
+### Member
+
+A member is a band participant who can sign in and optionally appear on gig
+attendance lists.
+
+- Display name
+- Email / Google account identity
+- Instrument or instruments
+- Default part preferences, such as Trumpet 1 or Trumpet 2
+- Role: member, librarian, admin
+- Active / inactive status
+
+### Gig
+
+A gig is a scheduled performance or rehearsal event with logistics, attendance, and
+an ordered set list.
+
+- Name
+- Date
+- Venue name
+- Address
+- Call / arrival time
+- Performance start time
+- Performance end time or estimated duration
+- Public/private notes
+- Parking, dress, contact, or setup notes
+- Created by
+- Status: draft, published, completed, canceled
+
+### Set List Item
+
+A set list item links a gig to an arrangement in performance order.
+
+- Gig reference
+- Position
+- Tune / arrangement reference
+- Optional notes, such as cuts, repeats, solo order, or segue instructions
+- Visibility: everyone, admin-only, section-specific
+
+### Attendance
+
+Attendance records each member's availability for a gig.
+
+- Gig reference
+- Member reference
+- Response: yes, no, maybe, unknown
+- Instrument / part for this gig
+- Optional comment
+- Updated time
 
 ## Source Strategy
 
@@ -190,7 +246,8 @@ or failed.
 
 ### Services
 
-- Web app: catalog UI, download endpoints, admin review screens.
+- Web app: catalog UI, gig/set-list UI, attendance UI, download endpoints, admin
+  review screens.
 - Worker: Drive sync, import classification, duplicate detection, output builds.
 - Database: Railway Postgres for catalog metadata and job state.
 - Private file storage: Google Drive and/or object storage for source assets and
@@ -201,6 +258,7 @@ or failed.
 - TypeScript web app, likely SvelteKit or a small Node/Express app.
 - Postgres with a migration tool.
 - Google Drive API for sync.
+- Google OAuth for sign-in.
 - DB-backed job queue initially, with a separate Railway worker process.
 - Object storage for generated zips/PDFs if Drive is not a good cache target.
 - Dockerfile if MuseScore CLI becomes part of the production build path.
@@ -212,21 +270,24 @@ Railway project:
 - `web`: serves the UI and download requests.
 - `worker`: scheduled or always-on import/build worker.
 - `postgres`: metadata.
-- environment variables for Google credentials, storage credentials, session secret,
-  and admin/member access configuration.
+- environment variables for Google OAuth, Drive credentials, storage credentials,
+  session secret, and admin/member access configuration.
 
 ## Access And Privacy
 
 The GitHub repository can be public, but the music library should be private. The
-site should require at least a shared band login, magic links, Google login, or
-per-member accounts before exposing copyrighted sheet music or practice audio.
+site should use Google OAuth for member and admin login before exposing copyrighted
+sheet music, practice audio, gig packets, or attendance lists.
 
 Recommended initial access model:
 
 - Admin-only import/review screens.
-- Member access for downloads.
+- Member access for downloads, gig music, and attendance responses.
 - No public file listing.
 - Signed or time-limited download URLs if object storage is used.
+- Admins can assign member roles and default instruments after first Google login.
+- Access can initially be limited to an allowlist of member email addresses or a
+  configured Google Workspace/domain rule if the band has one.
 
 ## Web UI Concepts
 
@@ -237,8 +298,20 @@ Recommended initial access model:
 - Search by title.
 - Download all current music for that instrument.
 - Download a set-list packet.
+- Open a gig and view the ordered set list.
+- Download or print a gig packet for the player's instrument in set-list order.
+- Confirm attendance for a gig.
 - Play MP3 practice tracks.
 - Open PDFs in browser/tablet view.
+
+### Gig View
+
+- Shows gig date, venue, address, arrival time, performance time, and notes.
+- Shows ordered set list.
+- Filters music to the signed-in member's instrument and part by default.
+- Offers print/download actions for the full gig packet or the member's packet.
+- Shows the member's attendance response and lets them update it.
+- For leaders/admins, shows attendance by player name and instrument.
 
 ### Admin View
 
@@ -249,6 +322,10 @@ Recommended initial access model:
 - Mark a file as source, generated, archive, or ignored.
 - Trigger build recipes.
 - Review build failures.
+- Create and edit gigs.
+- Build ordered set lists from the catalog of practiced works.
+- See attendance summary by name, instrument, and response.
+- Manage members, roles, and default instruments.
 
 ### Future Performance View
 
@@ -267,7 +344,8 @@ problems.
 | MuseScore dependency | Required from day one | Optional build worker | Optional until source quality is known |
 | UI scope | Downloads first | Full performance viewer | Downloads first, PWA later |
 | Upload path | Drive only | Drive plus web upload | Drive first, web upload later through same import queue |
-| Auth | Public links | Member/admin access | Member/admin access |
+| Gig workflow | Music catalog only | Gigs, set lists, and attendance | Include in backlog now; build after catalog basics |
+| Auth | Public links | Google account member/admin access | Google OAuth with allowlist/roles |
 
 ## Milestones
 
@@ -281,6 +359,8 @@ problems.
 
 ### Phase 1: Catalog MVP
 
+- Google OAuth login with an admin/member role model.
+- Member profiles with name, email, instrument, and default part.
 - Sync Drive metadata.
 - Detect duplicates.
 - Manually classify tunes, arrangements, parts, and audio.
@@ -294,14 +374,24 @@ problems.
 - Add set-list packet support.
 - Cache artifacts with checksums.
 
-### Phase 3: MuseScore Builds
+### Phase 3: Gig Backlog
+
+- Create/edit gigs with date, venue, address, arrival time, performance time, and
+  notes.
+- Build ordered set lists from cataloged works.
+- Let players confirm attendance.
+- Show leaders/admins attendance by player name and instrument.
+- Generate gig-specific instrument packets in set-list order.
+- Let players view gig music from the site.
+
+### Phase 4: MuseScore Builds
 
 - Prototype MuseScore CLI in a worker container.
 - Generate PDFs from `.mscz` files.
 - Generate or attach MP3/MIDI outputs.
 - Evaluate 7x5 lyre formatting quality.
 
-### Phase 4: Practice / Performance UI
+### Phase 5: Practice / Performance UI
 
 - Tablet-friendly PDF viewer.
 - Audio player.
@@ -311,9 +401,15 @@ problems.
 ## Open Questions
 
 - What are the two current Google Drive folder ids?
-- Are band members expected to authenticate individually?
+- Which Google accounts/email domains should be allowed at launch?
+- Who should have admin rights to create gigs, manage set lists, and view
+  attendance?
 - Which instruments/parts should be supported first?
 - Does the band already have a canonical set list or active/inactive distinction?
+- What fields are required for gigs beyond date, address, arrival time, performance
+  time, and notes?
+- Should attendance responses be visible to all members or only leaders/admins?
+- Should set lists support multiple sets, breaks, encores, or repeated tunes?
 - How much of the library has MuseScore source versus only PDFs?
 - Are the MuseScore files full scores with excerpts/parts, or individual part files?
 - Are MP3s generated from scores, recorded by humans, or collected from elsewhere?
@@ -326,6 +422,7 @@ problems.
 - Add Drive folder ids and an example inventory.
 - Draft the database schema.
 - Draft the import matching rules.
+- Draft gig, set-list, member, and attendance schemas.
+- Decide the Google OAuth allowlist and admin bootstrap process.
 - Pick the first web framework.
 - Decide whether MuseScore gets a separate prototype before app implementation.
-
