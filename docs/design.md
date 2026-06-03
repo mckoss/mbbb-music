@@ -1,0 +1,331 @@
+# MBBB Music Design
+
+## Problem
+
+Mutiny Bay Brass Band has a useful but unwieldy music library spread across two
+Google Drive folders. The folders contain overlapping sheet music, MuseScore files,
+MP3 practice tracks, and possibly MIDI files. Band members need different slices of
+the same library:
+
+- iPad/tablet users want an offline folder or web/PWA experience.
+- Paper users want printable PDFs.
+- Some players want standard 8.5x11 pages for a book.
+- Some players want smaller 7x5 pages for lyre-mounted music.
+- Each player needs only the parts that apply to their instrument, including
+  sub-parts such as Trumpet 1 and Trumpet 2.
+- Practice should include audio when available.
+
+The first project goal is to design a catalog and sync system, not write code yet.
+
+## Goals
+
+- Build a public GitHub project for the software and design.
+- Keep the actual music files private unless the band explicitly decides otherwise.
+- Scan the existing Google Drive folders and produce a deduplicated catalog.
+- Track title, arrangement, source file, instrument, part, output format, and audio
+  availability.
+- Let a musician download a ready-to-use package for their instrument.
+- Let an admin add files through Drive or a future web interface.
+- Support generated outputs from MuseScore where the source files are good enough.
+- Run the deployed app and background workers on Railway.
+
+## Non-Goals For The First Pass
+
+- Do not rewrite or reorganize the Drive folders by hand.
+- Do not assume every tune has a clean MuseScore master.
+- Do not publish copyrighted PDFs, MP3s, or score files in this public repository.
+- Do not build a full performance viewer until the catalog and packet workflow are
+  proven.
+
+## Users
+
+- Band librarian / admin: imports files, fixes metadata, resolves duplicates,
+  approves generated outputs, and builds set packets.
+- Player: selects instrument and gets the current music packet with relevant parts
+  and practice audio.
+- Section lead: checks that parts exist for their section and may download a
+  section packet.
+
+## Core Data Model
+
+### Tune
+
+A tune is the musical work as the band knows it.
+
+- Title
+- Alternate titles
+- Composer / arranger, if known
+- Style or set tags
+- Status: active, archive, draft, needs cleanup
+- Notes
+
+### Arrangement
+
+Some tunes may have multiple arrangements or revisions.
+
+- Tune reference
+- Version label
+- Source authority: MuseScore master, PDF set, scanned image, manual upload
+- Revision date
+- Source folder/file references
+- Build status
+
+### Part
+
+A part is a playable score for a specific instrument or role.
+
+- Arrangement reference
+- Instrument family
+- Instrument
+- Part label, such as Trumpet 1, Trumpet 2, Trombone, Tuba, Drum, Conductor
+- Transposition/key, if useful
+- Source file reference
+- Generated output references
+- Print recipes available
+
+### Asset
+
+An asset is a physical file.
+
+- Type: MuseScore, PDF, MP3, MIDI, image, other
+- Storage location: Google Drive, private object store, generated cache
+- Drive file id, if applicable
+- Checksum
+- Size
+- Modified time
+- Import time
+- Linked tune / arrangement / part, if known
+
+### Output Recipe
+
+An output recipe defines what the system can build.
+
+- Letter PDF, 8.5x11
+- Lyre PDF, 7x5
+- Tablet PDF
+- Per-instrument zip
+- Section zip
+- Full-band packet
+- Set-list packet
+- MP3 practice bundle
+
+## Source Strategy
+
+### Google Drive As Intake Source
+
+The initial source of truth is the existing Drive folder pair. A sync worker should
+poll the Drive API on a schedule, record file ids and revisions, and create import
+queue entries when files appear or change.
+
+The importer should avoid destructive behavior:
+
+- Never delete source Drive files.
+- Never rename source Drive files in the first pass.
+- Identify duplicates by checksum, Drive id, normalized title, and file metadata.
+- Let an admin resolve ambiguous matches in the web UI later.
+
+### App Catalog As Metadata Source
+
+Drive is good at storing files but weak at domain metadata. The app should own the
+catalog metadata in a database:
+
+- Tune grouping
+- Instrument and part mapping
+- Output recipe availability
+- Human decisions about duplicates
+- Current / archived state
+
+This means Drive remains the music-file inbox, while the app becomes the library
+index.
+
+### Out-of-Band Uploads
+
+The web UI can later upload files directly into an import queue. Those uploads
+should use the same asset model as Drive imports. The app can optionally mirror
+accepted uploads back into a canonical Drive folder, but that should be a phase-two
+decision.
+
+## MuseScore Automation
+
+MuseScore is promising as a build engine. The official MuseScore handbook documents
+command-line export via `--export-to`, score/part export options, JSON job files,
+and score media/parts output. It can export score data, parts, PDFs, MIDI, and media
+formats, which makes it plausible to generate most derived artifacts from clean
+`.mscz` masters.
+
+Relevant docs:
+
+- https://musescore.org/en/handbook/4/command-line-usage
+- https://handbook.musescore.org/appendix
+
+### Best Case
+
+For tunes with a clean MuseScore master:
+
+- Import `.mscz`.
+- Generate individual part PDFs.
+- Generate letter and lyre layouts from recipes.
+- Export MP3 or MIDI practice tracks.
+- Cache outputs with build metadata.
+- Rebuild only when the source score or recipe changes.
+
+### Risks
+
+- Headless MuseScore on Railway may require system packages, fonts, audio libraries,
+  or a container image rather than a simple Node buildpack.
+- MuseScore CLI behavior can vary by version.
+- Existing MuseScore files may not have well-defined excerpts/parts.
+- A 7x5 lyre layout may require score-specific engraving adjustments, not just page
+  scaling.
+- MP3 export may be slower and less reliable than PDF generation.
+
+### Practical Position
+
+Treat MuseScore as an optional build engine at first. The catalog should work with
+plain PDFs and MP3s. Once the catalog is stable, add a worker that attempts
+MuseScore builds and records whether each output is generated, manually supplied,
+or failed.
+
+## Railway Architecture
+
+### Services
+
+- Web app: catalog UI, download endpoints, admin review screens.
+- Worker: Drive sync, import classification, duplicate detection, output builds.
+- Database: Railway Postgres for catalog metadata and job state.
+- Private file storage: Google Drive and/or object storage for source assets and
+  generated artifacts.
+
+### Suggested Stack
+
+- TypeScript web app, likely SvelteKit or a small Node/Express app.
+- Postgres with a migration tool.
+- Google Drive API for sync.
+- DB-backed job queue initially, with a separate Railway worker process.
+- Object storage for generated zips/PDFs if Drive is not a good cache target.
+- Dockerfile if MuseScore CLI becomes part of the production build path.
+
+### Deployment Shape
+
+Railway project:
+
+- `web`: serves the UI and download requests.
+- `worker`: scheduled or always-on import/build worker.
+- `postgres`: metadata.
+- environment variables for Google credentials, storage credentials, session secret,
+  and admin/member access configuration.
+
+## Access And Privacy
+
+The GitHub repository can be public, but the music library should be private. The
+site should require at least a shared band login, magic links, Google login, or
+per-member accounts before exposing copyrighted sheet music or practice audio.
+
+Recommended initial access model:
+
+- Admin-only import/review screens.
+- Member access for downloads.
+- No public file listing.
+- Signed or time-limited download URLs if object storage is used.
+
+## Web UI Concepts
+
+### Player View
+
+- Select instrument and optional part.
+- Browse active tunes.
+- Search by title.
+- Download all current music for that instrument.
+- Download a set-list packet.
+- Play MP3 practice tracks.
+- Open PDFs in browser/tablet view.
+
+### Admin View
+
+- See new Drive imports.
+- Match files to existing tunes.
+- Create a tune/arrangement/part from imported files.
+- Resolve duplicates.
+- Mark a file as source, generated, archive, or ignored.
+- Trigger build recipes.
+- Review build failures.
+
+### Future Performance View
+
+A PWA could cache the current packet offline, show PDFs full-screen, and place audio
+controls next to practice materials. This should come after the download workflow,
+because offline web performance and page-turn ergonomics are separate product
+problems.
+
+## Tradeoffs
+
+| Decision | Option A | Option B | Recommendation |
+|---|---|---|---|
+| Source of truth | Drive folders | App database | Drive for files, app database for metadata |
+| Music assets in repo | Store files in GitHub | Keep files private | Keep public repo code/docs only |
+| Generated outputs | Pre-generate and cache | Generate on demand | Cache outputs; rebuild on source/recipe changes |
+| MuseScore dependency | Required from day one | Optional build worker | Optional until source quality is known |
+| UI scope | Downloads first | Full performance viewer | Downloads first, PWA later |
+| Upload path | Drive only | Drive plus web upload | Drive first, web upload later through same import queue |
+| Auth | Public links | Member/admin access | Member/admin access |
+
+## Milestones
+
+### Phase 0: Inventory And Design
+
+- Identify the two Drive folder ids.
+- Export a read-only inventory of files.
+- Define canonical instrument and part names.
+- Define initial metadata schema.
+- Decide first target output: likely per-instrument zip.
+
+### Phase 1: Catalog MVP
+
+- Sync Drive metadata.
+- Detect duplicates.
+- Manually classify tunes, arrangements, parts, and audio.
+- Browse/search catalog.
+- Download source files by instrument.
+
+### Phase 2: Packet Builder
+
+- Generate per-instrument zip files.
+- Include PDFs and MP3 practice tracks.
+- Add set-list packet support.
+- Cache artifacts with checksums.
+
+### Phase 3: MuseScore Builds
+
+- Prototype MuseScore CLI in a worker container.
+- Generate PDFs from `.mscz` files.
+- Generate or attach MP3/MIDI outputs.
+- Evaluate 7x5 lyre formatting quality.
+
+### Phase 4: Practice / Performance UI
+
+- Tablet-friendly PDF viewer.
+- Audio player.
+- Offline/PWA cache.
+- Page-turn and set-list flow.
+
+## Open Questions
+
+- What are the two current Google Drive folder ids?
+- Are band members expected to authenticate individually?
+- Which instruments/parts should be supported first?
+- Does the band already have a canonical set list or active/inactive distinction?
+- How much of the library has MuseScore source versus only PDFs?
+- Are the MuseScore files full scores with excerpts/parts, or individual part files?
+- Are MP3s generated from scores, recorded by humans, or collected from elsewhere?
+- Should the app ever write back into Drive, or only read from Drive and store
+  generated outputs elsewhere?
+- What is the copyright/licensing position for member-only distribution?
+
+## Near-Term Design Tasks
+
+- Add Drive folder ids and an example inventory.
+- Draft the database schema.
+- Draft the import matching rules.
+- Pick the first web framework.
+- Decide whether MuseScore gets a separate prototype before app implementation.
+
