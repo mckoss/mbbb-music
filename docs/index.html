@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MBBB Music Portfolio Prototype</title>
+    <link rel="stylesheet" href="styles.css?v=20260603-4">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-lockup">
+        <img src="assets/mbbb-logo.png" alt="Mutiny Bay Brass Band" width="512" height="512">
+        <div>
+          <p class="eyebrow">Static prototype</p>
+          <h1>Music Portfolio</h1>
+          <p class="header-copy">A working sketch for browsing the complete library, choosing an instrument, and assembling gig packets in set-list order.</p>
+        </div>
+      </div>
+      <div class="global-controls" aria-label="Music preferences">
+        <label>
+          <span>Instrument</span>
+          <select id="instrumentSelect">
+            <option>Trumpet</option>
+            <option>Euphonium</option>
+            <option>Tuba</option>
+            <option>Baritone sax</option>
+            <option>Saxophone</option>
+            <option>Trombone</option>
+            <option>Drums</option>
+          </select>
+        </label>
+        <label>
+          <span>Format</span>
+          <select id="formatSelect">
+            <option value="tablet">iPad / tablet</option>
+            <option value="letter">8.5 x 11</option>
+            <option value="lyre">7 x 5</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <nav class="tabs" aria-label="Prototype sections">
+        <button class="tab active" type="button" data-view="libraryView">Collection</button>
+        <button class="tab" type="button" data-view="gigView">Gig Packets</button>
+      </nav>
+
+      <section id="libraryView" class="view active" aria-labelledby="libraryTitle">
+        <div class="split-layout">
+          <section class="library-pane" aria-labelledby="libraryTitle">
+            <div class="pane-header">
+              <div>
+                <h2 id="libraryTitle">Complete Collection</h2>
+                <p id="songCount"></p>
+              </div>
+              <label class="search-field">
+                <span>Search by title</span>
+                <input id="songSearch" type="search" autocomplete="off" placeholder="Search songs">
+              </label>
+            </div>
+            <div id="songList" class="song-list" aria-label="Songs"></div>
+          </section>
+
+          <section class="viewer-pane" aria-live="polite">
+            <div class="viewer-toolbar">
+              <div>
+                <p class="viewer-kicker">Selected part</p>
+                <h2 id="selectedTitle"></h2>
+                <p id="selectedMeta"></p>
+              </div>
+              <div class="viewer-actions">
+                <button id="previewAudioButton" class="secondary-action" type="button">Audio</button>
+                <button id="tabletViewButton" class="secondary-action" type="button">Tablet View</button>
+                <button id="downloadPartButton" class="primary-action" type="button">Download Part</button>
+              </div>
+            </div>
+            <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
+            <div class="sheet-frame">
+              <div class="mock-sheet" aria-label="Mock sheet music preview">
+                <div class="sheet-title" id="sheetTitle"></div>
+                <div class="staff-group">
+                  <div class="staff"></div>
+                  <div class="notes notes-a"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-b"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-c"></div>
+                </div>
+                <div class="sheet-footer" id="sheetFooter"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="gigView" class="view" aria-labelledby="gigTitle">
+        <div class="gig-layout">
+          <section class="gig-picker" aria-labelledby="gigTitle">
+            <div class="pane-header">
+              <div>
+                <h2 id="gigTitle">Gig Calendar</h2>
+                <p id="calendarLabel">Highlighted dates have packets ready.</p>
+              </div>
+              <label>
+                <span>Select gig</span>
+                <select id="gigSelect"></select>
+              </label>
+            </div>
+            <div id="calendarGrid" class="calendar-grid" aria-label="June 2026 gig calendar"></div>
+          </section>
+
+          <section class="gig-detail" aria-live="polite">
+            <div class="gig-summary">
+              <div>
+                <p class="viewer-kicker">Gig packet</p>
+                <h2 id="gigName"></h2>
+                <p id="gigWhen"></p>
+              </div>
+              <button id="downloadGigButton" class="primary-action" type="button">Download Packet</button>
+            </div>
+            <dl class="gig-facts">
+              <div>
+                <dt>Location</dt>
+                <dd id="gigLocation"></dd>
+              </div>
+              <div>
+                <dt>Arrival</dt>
+                <dd id="gigArrival"></dd>
+              </div>
+              <div>
+                <dt>Notes</dt>
+                <dd id="gigNotes"></dd>
+              </div>
+            </dl>
+            <ol id="setList" class="set-list"></ol>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js?v=20260603-4"></script>
+  </body>
+</html>

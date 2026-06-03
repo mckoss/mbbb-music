@@ -12,9 +12,10 @@ PDFs, MP3s, and any copyrighted source material should live in private storage.
 
 ## Current Status
 
-- Design only.
-- No application code yet.
+- Design and static prototyping only.
+- No deployable application code yet.
 - Main design document: [docs/design.md](docs/design.md)
+- Static user-interface prototype: [docs/index.html](docs/index.html)
 
 ## Initial Questions
 
@@ -25,4 +26,3 @@ PDFs, MP3s, and any copyrighted source material should live in private storage.
 - How complete and clean are the MuseScore source files compared with the PDF and
   MP3 collection?
 - What access model should the live site use for band members?
-

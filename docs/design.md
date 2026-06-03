@@ -25,6 +25,8 @@ The first project goal is to design a catalog and sync system, not write code ye
 - Track title, arrangement, source file, instrument, part, output format, and audio
   availability.
 - Let a musician download a ready-to-use package for their instrument.
+- Treat iPad/tablet field use as a primary target: large touch controls,
+  outdoor-readable performance views, and offline-ready packets.
 - Let an admin add files through Drive or a future web interface.
 - Let a band leader or member create a gig with date, address, schedule details,
   ordered set list, and attendance tracking.
@@ -40,6 +42,8 @@ The first project goal is to design a catalog and sync system, not write code ye
 - Do not publish copyrighted PDFs, MP3s, or score files in this public repository.
 - Do not build a full performance viewer until the catalog and packet workflow are
   proven.
+- Do not build automatic transposition until source quality, instrument mappings,
+  and generated-output workflows are proven.
 
 ## Users
 
@@ -109,6 +113,7 @@ An output recipe defines what the system can build.
 - Letter PDF, 8.5x11
 - Lyre PDF, 7x5
 - Tablet PDF
+- iPad/tablet performance view
 - Per-instrument zip
 - Section zip
 - Full-band packet
@@ -164,6 +169,32 @@ Attendance records each member's availability for a gig.
 - Instrument / part for this gig
 - Optional comment
 - Updated time
+
+## iPad / Tablet Target
+
+iPads are a first-class performance device for this project, not just a smaller
+desktop screen. Many performers will use tablets in the field, where sunlight,
+wind, gloves, stands, and unreliable connectivity matter.
+
+### Tablet Requirements
+
+- Provide a tablet-optimized gig packet for each player and instrument.
+- Keep controls large enough for quick stage use.
+- Favor set-list order over catalog browsing during a gig.
+- Show the current tune, part, page position, and next tune clearly.
+- Support offline caching or a downloadable packet before leaving home.
+- Avoid dependence on constant network access at the gig site.
+- Make page advance gestures simple: tap or swipe, with no tiny controls.
+- Preserve printable PDF fallback for players who prefer paper.
+
+### Tablet Open Questions
+
+- Should the first tablet implementation be a PDF packet viewer, a PWA with
+  cached PDFs, or a purpose-built page-by-page performance UI?
+- Do performers need annotation support, or is read-only music enough for the
+  first pass?
+- Which iPad orientations should be optimized first: portrait, landscape, or both?
+- Should tablet packets include audio links, or keep performance mode music-only?
 
 ## Source Strategy
 
@@ -321,6 +352,7 @@ Recommended initial access model:
 - Resolve duplicates.
 - Mark a file as source, generated, archive, or ignored.
 - Trigger build recipes.
+- Request instrument-aware transposition for supported source scores.
 - Review build failures.
 - Create and edit gigs.
 - Build ordered set lists from the catalog of practiced works.
@@ -334,6 +366,31 @@ controls next to practice materials. This should come after the download workflo
 because offline web performance and page-turn ergonomics are separate product
 problems.
 
+### Future Instrument Transposition
+
+A later feature could take a part written for one instrument and generate a part
+for another instrument, including key transposition and range-aware adjustment. For
+example, a player on E-flat alto horn might want to read a B-flat euphonium part,
+or a C concert part might need conversion for a B-flat instrument.
+
+This should be treated as an advanced build feature, not an initial catalog task.
+It depends on reliable source material, instrument metadata, and a review workflow
+so the generated part can be checked before use.
+
+Requirements to explore:
+
+- Track concert pitch, written pitch, transposition interval, clef, and playable
+  range for each supported instrument.
+- Convert between C, B-flat, E-flat, and other transposing instruments.
+- Preserve musical intent while choosing octaves that fit the target instrument's
+  practical range.
+- Flag notes that fall outside the target range instead of silently producing a
+  bad part.
+- Prefer MuseScore/source-score conversion where possible; scanned PDFs may need
+  manual re-entry or OCR before transposition is feasible.
+- Store generated transposed parts separately from original parts, with clear
+  labels and review status.
+
 ## Tradeoffs
 
 | Decision | Option A | Option B | Recommendation |
@@ -345,6 +402,7 @@ problems.
 | UI scope | Downloads first | Full performance viewer | Downloads first, PWA later |
 | Upload path | Drive only | Drive plus web upload | Drive first, web upload later through same import queue |
 | Gig workflow | Music catalog only | Gigs, set lists, and attendance | Include in backlog now; build after catalog basics |
+| Transposition | Manual arranging | Automatic instrument-aware generation | Future feature after source quality and review workflow are proven |
 | Auth | Public links | Google account member/admin access | Google OAuth with allowlist/roles |
 
 ## Milestones
@@ -398,6 +456,14 @@ problems.
 - Offline/PWA cache.
 - Page-turn and set-list flow.
 
+### Phase 6: Transposition Backlog
+
+- Define instrument transposition and playable-range metadata.
+- Prototype MuseScore-based part transposition from clean source scores.
+- Generate alternate-instrument parts with clear labels and review status.
+- Add warnings for out-of-range notes and ambiguous octave choices.
+- Keep original parts intact; never overwrite source music.
+
 ## Open Questions
 
 - What are the two current Google Drive folder ids?
@@ -413,6 +479,9 @@ problems.
 - How much of the library has MuseScore source versus only PDFs?
 - Are the MuseScore files full scores with excerpts/parts, or individual part files?
 - Are MP3s generated from scores, recorded by humans, or collected from elsewhere?
+- Which transposition pairs matter most, such as C to B-flat, B-flat euphonium to
+  E-flat alto horn, or other common substitutions?
+- Who should review and approve generated transposed parts before players use them?
 - Should the app ever write back into Drive, or only read from Drive and store
   generated outputs elsewhere?
 - What is the copyright/licensing position for member-only distribution?
