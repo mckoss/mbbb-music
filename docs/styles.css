@@ -28,6 +28,10 @@ body {
 
 button, input, select { font: inherit; }
 button { cursor: pointer; }
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
 
 .app-header {
   display: flex;
@@ -438,6 +442,61 @@ select:focus, input:focus, button:focus-visible {
   gap: clamp(22px, 3.5vw, 42px);
 }
 
+.practice-player {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 0.45fr);
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(36, 106, 115, 0.24);
+  border-radius: 8px;
+  background: #f7f5ef;
+  padding: 13px;
+}
+
+.practice-player h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.practice-player p:last-child {
+  margin-bottom: 0;
+}
+
+.media-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.audio-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.audio-progress-bar {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ded9cb;
+}
+
+.audio-progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+#audioTime {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: right;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(36px, 1fr));
@@ -685,6 +744,10 @@ dd { margin: 3px 0 0; }
   .viewer-actions { justify-content: stretch; }
   .viewer-actions button { flex: 1; }
   .score-toolbar label { width: 100%; }
+  .practice-player { grid-template-columns: 1fr; }
+  .media-controls { justify-content: stretch; }
+  .media-controls button { flex: 1; }
+  #audioTime { text-align: left; }
 }
 
 @media (min-width: 740px) and (max-width: 1180px) {

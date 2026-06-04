@@ -383,6 +383,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Uses 8.5x11 as the standard iPad/letter PDF or image format.
 - Offers 7x5 lyre as a separate print/output format.
 - Provides a print button and print-format selector on the score view itself.
+- Includes practice MP3 controls on the score view: play, pause, rewind, and
+  visible progress.
 - Keeps set-list and catalog context available without making players guess which
   controls are active.
 
@@ -404,10 +406,10 @@ detail/result area rather than leaving users to guess which controls are active.
 
 ### Future Performance View
 
-A PWA could cache the current packet offline, show PDFs full-screen, and place audio
-controls next to practice materials. This should come after the download workflow,
-because offline web performance and page-turn ergonomics are separate product
-problems.
+A PWA could cache the current packet offline, show PDFs full-screen, and keep
+practice audio controls next to the score. This should come after the download
+workflow, because offline web performance and page-turn ergonomics are separate
+product problems.
 
 ### Future Instrument Transposition
 
@@ -497,7 +499,7 @@ Requirements to explore:
 - Full score/performance view.
 - Print controls for 8.5x11 and 7x5 lyre output.
 - Tablet-friendly PDF/image viewer using 8.5x11 content for iPad.
-- Audio player.
+- Audio player with play, pause, rewind, and visible progress.
 - Offline/PWA cache.
 - Page-turn and set-list flow.
 

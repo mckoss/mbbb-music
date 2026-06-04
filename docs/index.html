@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-10">
+    <link rel="stylesheet" href="styles.css?v=20260603-11">
   </head>
   <body>
     <header class="app-header">
@@ -192,6 +192,24 @@
               <h3 id="scoreResultTitle">Ready for performance</h3>
               <p id="scoreResultDetail">Choose a print format, then print or continue playing from this view.</p>
             </section>
+            <section class="practice-player" aria-labelledby="practiceTitle">
+              <div>
+                <p class="viewer-kicker">Practice audio</p>
+                <h3 id="practiceTitle">Practice MP3</h3>
+                <p id="practiceTrack"></p>
+              </div>
+              <div class="media-controls" aria-label="Practice audio controls">
+                <button id="audioRewindButton" class="secondary-action" type="button">Rewind</button>
+                <button id="audioPlayButton" class="primary-action" type="button">Play</button>
+                <button id="audioPauseButton" class="secondary-action" type="button">Pause</button>
+              </div>
+              <div class="audio-progress" aria-label="Audio progress">
+                <div class="audio-progress-bar">
+                  <span id="audioProgressBar"></span>
+                </div>
+                <span id="audioTime"></span>
+              </div>
+            </section>
             <div class="performance-frame">
               <div id="scorePage" class="performance-page letter-format" aria-label="Full score view">
                 <div class="sheet-title" id="scoreSheetTitle"></div>
@@ -216,6 +234,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-10"></script>
+    <script src="app.js?v=20260603-11"></script>
   </body>
 </html>

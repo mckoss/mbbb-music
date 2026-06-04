@@ -172,6 +172,11 @@ const state = {
   selectedGigId: "south-whidbey-pride",
   selectedPart: partOptions.Trumpet[0],
   printFormat: "letter",
+  audio: {
+    status: "paused",
+    position: 0,
+    duration: 156
+  },
   search: ""
 };
 
@@ -199,6 +204,12 @@ const elements = {
   scorePage: document.querySelector("#scorePage"),
   scoreSheetTitle: document.querySelector("#scoreSheetTitle"),
   scoreSheetFooter: document.querySelector("#scoreSheetFooter"),
+  practiceTrack: document.querySelector("#practiceTrack"),
+  audioRewindButton: document.querySelector("#audioRewindButton"),
+  audioPlayButton: document.querySelector("#audioPlayButton"),
+  audioPauseButton: document.querySelector("#audioPauseButton"),
+  audioProgressBar: document.querySelector("#audioProgressBar"),
+  audioTime: document.querySelector("#audioTime"),
   gigSelect: document.querySelector("#gigSelect"),
   calendarLabel: document.querySelector("#calendarLabel"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -221,6 +232,8 @@ const elements = {
   printScoreButton: document.querySelector("#printScoreButton"),
   backToCollectionButton: document.querySelector("#backToCollectionButton")
 };
+
+let audioTimer = null;
 
 function currentGig() {
   return gigs.find((gig) => gig.id === state.selectedGigId) || gigs[0];
@@ -250,6 +263,12 @@ function formatUseNote() {
     return "7 x 5 lyre card";
   }
   return "8.5 x 11 PDF or image for paper and iPad use";
+}
+
+function formatTime(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 function partsForInstrument() {
@@ -314,7 +333,7 @@ function openMusicAction(label, workTitle) {
     },
     Audio: {
       title: `Audio opened: ${state.selectedSong}`,
-      detail: `Practice audio is queued for ${state.selectedSong}. The music preview stays on ${part}.`
+      detail: `Practice MP3 is ready for ${state.selectedSong}. Use the player in Score View to play, pause, or rewind.`
     },
     Part: {
       title: `Part opened: ${state.selectedSong}`,
@@ -326,7 +345,7 @@ function openMusicAction(label, workTitle) {
     }
   };
   const action = actions[label] || actions.Part;
-  if (label === "Performance" || label === "Score") {
+  if (label === "Performance" || label === "Score" || label === "Audio") {
     showView("scoreView");
     setScoreResult(action.title, action.detail);
   }
@@ -396,10 +415,12 @@ function renderScoreView() {
   elements.scoreMeta.textContent = `${state.selectedPart} - ${formatUseNote()} - modified ${work.modified}`;
   elements.scoreSheetTitle.textContent = state.selectedSong;
   elements.scoreSheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
+  elements.practiceTrack.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
   elements.scorePage.classList.toggle("letter-format", state.printFormat === "letter");
   elements.scorePage.classList.toggle("lyre-format", state.printFormat === "lyre");
   elements.scoreFormat.value = state.printFormat;
   elements.format.value = state.printFormat;
+  renderAudioPlayer();
 }
 
 function renderGigOptions() {
@@ -520,6 +541,60 @@ function showView(viewId) {
   if (viewId === "scoreView") {
     renderScoreView();
   }
+}
+
+function renderAudioPlayer() {
+  const percent = Math.min(100, Math.max(0, (state.audio.position / state.audio.duration) * 100));
+  elements.audioProgressBar.style.width = `${percent}%`;
+  elements.audioTime.textContent = `${formatTime(state.audio.position)} / ${formatTime(state.audio.duration)}`;
+  elements.audioPlayButton.disabled = state.audio.status === "playing";
+  elements.audioPauseButton.disabled = state.audio.status !== "playing";
+  elements.practiceTrack.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
+}
+
+function stopAudioTimer() {
+  if (audioTimer) {
+    window.clearInterval(audioTimer);
+    audioTimer = null;
+  }
+}
+
+function playAudio() {
+  state.audio.status = "playing";
+  stopAudioTimer();
+  audioTimer = window.setInterval(() => {
+    state.audio.position = Math.min(state.audio.duration, state.audio.position + 1);
+    if (state.audio.position >= state.audio.duration) {
+      state.audio.status = "paused";
+      stopAudioTimer();
+    }
+    renderAudioPlayer();
+  }, 1000);
+  renderAudioPlayer();
+  setScoreResult(
+    `Playing audio: ${state.selectedSong}`,
+    `Practice MP3 is playing alongside ${state.selectedPart}.`
+  );
+  showToast(`Playing audio: ${state.selectedSong}`);
+}
+
+function pauseAudio() {
+  state.audio.status = "paused";
+  stopAudioTimer();
+  renderAudioPlayer();
+  setScoreResult(
+    `Audio paused: ${state.selectedSong}`,
+    `Playback is paused at ${formatTime(state.audio.position)}.`
+  );
+}
+
+function rewindAudio() {
+  state.audio.position = Math.max(0, state.audio.position - 15);
+  renderAudioPlayer();
+  setScoreResult(
+    `Audio rewound: ${state.selectedSong}`,
+    `Playback moved back to ${formatTime(state.audio.position)}.`
+  );
 }
 
 function renderAttendance(gig) {
@@ -661,6 +736,10 @@ elements.printScoreButton.addEventListener("click", () => {
 elements.backToCollectionButton.addEventListener("click", () => {
   showView("libraryView");
 });
+
+elements.audioPlayButton.addEventListener("click", playAudio);
+elements.audioPauseButton.addEventListener("click", pauseAudio);
+elements.audioRewindButton.addEventListener("click", rewindAudio);
 
 renderSongs();
 renderSelectedSong();
