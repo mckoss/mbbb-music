@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-26">
+    <link rel="stylesheet" href="styles.css?v=20260603-27">
   </head>
   <body>
     <header class="app-header">
@@ -74,7 +74,7 @@
                 <p class="viewer-kicker">Selected music</p>
                 <h2 id="selectedTitle"></h2>
                 <p id="selectedMeta"></p>
-                <div class="embedded-player" aria-label="Practice audio player">
+                <div class="embedded-player" aria-label="Performance audio player">
                   <button class="player-toggle" type="button" data-audio-toggle>Play</button>
                   <div class="embedded-player-main">
                     <p data-audio-track></p>
@@ -85,6 +85,11 @@
                   <button class="player-beginning" type="button" data-audio-restart>0:00</button>
                   <span data-audio-time></span>
                 </div>
+                <section id="referenceSection" class="reference-section" aria-labelledby="referenceHeading" hidden>
+                  <p class="viewer-kicker">Reference performances</p>
+                  <h3 id="referenceHeading">Listen or watch</h3>
+                  <div id="referenceList" class="reference-list"></div>
+                </section>
               </div>
               <label class="part-field">
                 <span>Part</span>
@@ -100,7 +105,7 @@
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, use the player, Open Score, Download PDF, or Download MuseScore to preview the next step.</p>
+              <p id="assetResultDetail">Choose Score, use the player, Open Score, Download PDF, Download MuseScore, or a reference performance to preview the next step.</p>
             </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
@@ -251,6 +256,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-26"></script>
+    <script src="app.js?v=20260603-27"></script>
   </body>
 </html>

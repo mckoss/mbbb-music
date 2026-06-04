@@ -414,6 +414,13 @@ detail/result area rather than leaving users to guess which controls are active.
   the collection/detail panel. Clicking Audio on a tune tile selects that tune,
   highlights it, and starts the player in place instead of opening the full
   score view.
+- Treat the primary embedded audio as the tune's canonical generated performance
+  MP3, typically exported from MuseScore/MIDI or another mechanical score
+  playback process.
+- When a tune has reference performances, show them underneath the embedded
+  player as optional links/actions. References can include YouTube videos,
+  external videos, or uploaded MP3 performances, and each should have a concise
+  description plus either a play action or a new-window video link.
 - Download files with standardized app-generated filenames instead of original
   Drive filenames.
 - Download all current music for that instrument.
@@ -574,6 +581,8 @@ Requirements to explore:
 - Print controls for 8.5x11 and 7x5 lyre output.
 - Tablet-friendly PDF/image viewer using 8.5x11 content for iPad.
 - Audio player with play, pause, beginning, and visible progress.
+- Reference-performance list under the player for YouTube videos, alternate
+  videos, and non-canonical MP3 recordings attached to a tune.
 - Offline/PWA cache.
 - Page-turn and set-list flow.
 

@@ -9,13 +9,43 @@ const works = [
   { title: "For What It's Worth", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Free Bird in Thirty Seconds", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Freedom", modified: "2025-11-16", assets: ["PDF parts"] },
-  { title: "Get Lucky", modified: "2025-11-16", assets: ["PDF parts"] },
+  {
+    title: "Get Lucky",
+    modified: "2025-11-16",
+    assets: ["PDF parts"],
+    references: [
+      {
+        type: "youtube",
+        title: "Daft Punk reference video",
+        description: "Original recording for groove and feel",
+        url: "https://www.youtube.com/results?search_query=Daft+Punk+Get+Lucky"
+      },
+      {
+        type: "mp3",
+        title: "Band reference performance",
+        description: "Uploaded MP3 reference performance",
+        url: "#get-lucky-band-reference"
+      }
+    ]
+  },
   { title: "Gnosienne #1", modified: "2026-01-22", assets: ["PDF parts"] },
   { title: "Hava Negila", modified: "2025-11-14", assets: ["Parts", "Score"] },
   { title: "Hell", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Hot to Go", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Iko Iko", modified: "2025-11-16", assets: ["PDF parts"] },
-  { title: "Iron Man", modified: "2025-11-14", assets: ["Parts", "Score"] },
+  {
+    title: "Iron Man",
+    modified: "2025-11-14",
+    assets: ["Parts", "Score"],
+    references: [
+      {
+        type: "youtube",
+        title: "YouTube reference",
+        description: "Original performance reference",
+        url: "https://www.youtube.com/results?search_query=Black+Sabbath+Iron+Man"
+      }
+    ]
+  },
   { title: "It's Raining Men", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "It's Your Thing", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Jingle Bell Rock", modified: "2025-11-14", assets: ["Parts", "Score"] },
@@ -39,7 +69,19 @@ const works = [
   { title: "Stay Human", modified: "2025-11-16", assets: ["Parts", "Score"] },
   { title: "Sweet Dreams", modified: "2025-11-16", assets: ["PDF parts"] },
   { title: "Thriller", modified: "2025-11-16", assets: ["PDF parts"] },
-  { title: "Track Suit By Bruce", modified: "2025-11-16", assets: ["PDF parts"] },
+  {
+    title: "Track Suit By Bruce",
+    modified: "2025-11-16",
+    assets: ["PDF parts"],
+    references: [
+      {
+        type: "mp3",
+        title: "Bruce reference performance",
+        description: "Band-provided MP3 reference",
+        url: "#track-suit-bruce-reference"
+      }
+    ]
+  },
   { title: "Unholy Score", modified: "2026-05-31", assets: ["Full score", "PDF parts"] },
   { title: "Uptown Funk", modified: "2025-11-16", assets: ["PDF parts"] }
 ].sort((a, b) => a.title.localeCompare(b.title));
@@ -206,6 +248,8 @@ const elements = {
   songCount: document.querySelector("#songCount"),
   selectedTitle: document.querySelector("#selectedTitle"),
   selectedMeta: document.querySelector("#selectedMeta"),
+  referenceSection: document.querySelector("#referenceSection"),
+  referenceList: document.querySelector("#referenceList"),
   assetTags: document.querySelector("#assetTags"),
   assetResult: document.querySelector("#assetResult"),
   assetResultTitle: document.querySelector("#assetResultTitle"),
@@ -360,6 +404,10 @@ function displayAssets(work) {
   return ["PDF", "MuseScore", "Audio"];
 }
 
+function referencePerformances(work) {
+  return work.references || [];
+}
+
 function setActionResult(title, detail) {
   elements.assetResultTitle.textContent = title;
   elements.assetResultDetail.textContent = detail;
@@ -401,7 +449,7 @@ function openMusicAction(label, workTitle) {
     },
     Audio: {
       title: `Playing audio: ${state.selectedSong}`,
-      detail: `Practice MP3 is playing in the embedded player for ${state.selectedSong}.`
+      detail: `Canonical performance MP3 is playing in the embedded player for ${state.selectedSong}.`
     },
     Part: {
       title: `PDF ready: ${state.selectedSong}`,
@@ -475,6 +523,55 @@ function renderMusicTile(workTitle, options = {}) {
   return item;
 }
 
+function playReferencePerformance(reference) {
+  setActionResult(
+    `Reference playing: ${reference.title}`,
+    `${reference.description} for ${state.selectedSong}.`
+  );
+  showToast(`Reference playing: ${state.selectedSong}`);
+}
+
+function renderReferencePerformances(work) {
+  const references = referencePerformances(work);
+  elements.referenceList.innerHTML = "";
+  elements.referenceSection.hidden = references.length === 0;
+
+  references.forEach((reference) => {
+    const card = document.createElement("article");
+    card.className = "reference-card";
+
+    const thumb = document.createElement("div");
+    thumb.className = "reference-thumb";
+    thumb.textContent = reference.type === "youtube" ? "YT" : "MP3";
+
+    const copy = document.createElement("div");
+    copy.className = "reference-copy";
+    const title = document.createElement("h4");
+    title.textContent = reference.title;
+    const detail = document.createElement("p");
+    detail.textContent = reference.description;
+    copy.append(title, detail);
+
+    let action;
+    if (reference.type === "youtube" || reference.type === "video") {
+      action = document.createElement("a");
+      action.href = reference.url;
+      action.target = "_blank";
+      action.rel = "noreferrer";
+      action.textContent = "Watch";
+    } else {
+      action = document.createElement("button");
+      action.type = "button";
+      action.textContent = "Play";
+      action.addEventListener("click", () => playReferencePerformance(reference));
+    }
+    action.className = "reference-action";
+
+    card.append(thumb, copy, action);
+    elements.referenceList.append(card);
+  });
+}
+
 function renderSongs() {
   const query = state.search.trim().toLowerCase();
   const filtered = works.filter((work) => work.title.toLowerCase().includes(query));
@@ -496,6 +593,7 @@ function renderSelectedSong() {
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
   elements.downloadPartButton.textContent = "Download PDF";
   elements.downloadMuseScoreButton.textContent = "Download MuseScore";
+  renderReferencePerformances(work);
   elements.assetTags.innerHTML = "";
   [...displayAssets(work), "Performance score view"].forEach((asset) => {
     const tag = document.createElement("span");
@@ -511,7 +609,7 @@ function renderScoreView() {
   elements.scoreMeta.textContent = `${state.selectedPart} - ${formatUseNote()} - modified ${work.modified}`;
   elements.scoreSheetTitle.textContent = state.selectedSong;
   elements.scoreSheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
-  elements.practiceTrack.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
+  elements.practiceTrack.textContent = `${state.selectedSong} - canonical performance MP3 - ${state.audio.status}`;
   elements.scorePage.classList.toggle("letter-format", state.printFormat === "letter");
   elements.scorePage.classList.toggle("lyre-format", state.printFormat === "lyre");
   elements.scoreFormat.value = state.printFormat;
@@ -664,7 +762,7 @@ function renderAudioPlayer() {
   elements.audioToggleButtons.forEach((button) => {
     const isPlaying = state.audio.status === "playing";
     button.textContent = isPlaying ? "Pause" : "Play";
-    button.setAttribute("aria-label", isPlaying ? "Pause practice audio" : "Play practice audio");
+    button.setAttribute("aria-label", isPlaying ? "Pause performance audio" : "Play performance audio");
   });
   elements.audioPlayButtons.forEach((button) => {
     button.disabled = state.audio.status === "playing";
@@ -673,7 +771,7 @@ function renderAudioPlayer() {
     button.disabled = state.audio.status !== "playing";
   });
   elements.audioTracks.forEach((track) => {
-    track.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
+    track.textContent = `${state.selectedSong} - canonical performance MP3 - ${state.audio.status}`;
   });
 }
 
@@ -698,11 +796,11 @@ function playAudio() {
   renderAudioPlayer();
   setActionResult(
     `Playing audio: ${state.selectedSong}`,
-    `Practice MP3 is playing in the embedded player for ${state.selectedPart}.`
+    `Canonical performance MP3 is playing in the embedded player for ${state.selectedPart}.`
   );
   setScoreResult(
     `Playing audio: ${state.selectedSong}`,
-    `Practice MP3 is playing alongside ${state.selectedPart}.`
+    `Canonical performance MP3 is playing alongside ${state.selectedPart}.`
   );
   showToast(`Playing audio: ${state.selectedSong}`);
 }
