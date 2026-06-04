@@ -280,12 +280,12 @@ const elements = {
   scoreSheetTitle: document.querySelector("#scoreSheetTitle"),
   scoreSheetFooter: document.querySelector("#scoreSheetFooter"),
   practiceTrack: document.querySelector("#practiceTrack"),
-  audioTracks: document.querySelectorAll("[data-audio-track], #practiceTrack"),
   audioToggleButtons: document.querySelectorAll("[data-audio-toggle]"),
   audioPlayButtons: document.querySelectorAll("[data-audio-play]"),
   audioPauseButtons: document.querySelectorAll("[data-audio-pause]"),
   audioRestartButtons: document.querySelectorAll("[data-audio-restart]"),
   audioProgressBars: document.querySelectorAll("[data-audio-progress]"),
+  audioScrubbers: document.querySelectorAll("[data-audio-scrubber]"),
   audioTimes: document.querySelectorAll("[data-audio-time]"),
   gigSelect: document.querySelector("#gigSelect"),
   calendarLabel: document.querySelector("#calendarLabel"),
@@ -749,6 +749,11 @@ function renderAudioPlayer() {
   elements.audioProgressBars.forEach((bar) => {
     bar.style.width = `${percent}%`;
   });
+  elements.audioScrubbers.forEach((scrubber) => {
+    scrubber.max = state.audio.duration;
+    scrubber.value = state.audio.position;
+    scrubber.style.setProperty("--audio-progress", `${percent}%`);
+  });
   elements.audioTimes.forEach((time) => {
     time.textContent = `${formatTime(state.audio.position)} / ${formatTime(state.audio.duration)}`;
   });
@@ -763,9 +768,7 @@ function renderAudioPlayer() {
   elements.audioPauseButtons.forEach((button) => {
     button.disabled = state.audio.status !== "playing";
   });
-  elements.audioTracks.forEach((track) => {
-    track.textContent = `${state.selectedSong} - canonical performance MP3 - ${state.audio.status}`;
-  });
+  elements.practiceTrack.textContent = `${state.selectedSong} - canonical performance MP3 - ${state.audio.status}`;
 }
 
 function stopAudioTimer() {
@@ -818,6 +821,15 @@ function restartAudio() {
   setScoreResult(
     `Audio reset: ${state.selectedSong}`,
     `Playback is back at the beginning of the song.`
+  );
+}
+
+function scrubAudio(event) {
+  state.audio.position = Number(event.target.value);
+  renderAudioPlayer();
+  setScoreResult(
+    `Audio cue: ${state.selectedSong}`,
+    `Playback is at ${formatTime(state.audio.position)}.`
   );
 }
 
@@ -984,6 +996,9 @@ elements.audioToggleButtons.forEach((button) => {
 });
 elements.audioRestartButtons.forEach((button) => {
   button.addEventListener("click", restartAudio);
+});
+elements.audioScrubbers.forEach((scrubber) => {
+  scrubber.addEventListener("input", scrubAudio);
 });
 
 renderSongs();

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-30">
+    <link rel="stylesheet" href="styles.css?v=20260603-31">
   </head>
   <body>
     <header class="app-header">
@@ -77,12 +77,9 @@
                 <div class="embedded-player" aria-label="Performance audio player">
                   <button class="player-toggle" type="button" data-audio-toggle>Play</button>
                   <div class="embedded-player-main">
-                    <p data-audio-track></p>
-                    <div class="audio-progress-bar">
-                      <span data-audio-progress></span>
-                    </div>
+                    <input class="audio-scrubber" type="range" min="0" max="156" value="0" step="1" aria-label="Performance playback position" data-audio-scrubber>
                   </div>
-                  <button class="player-beginning" type="button" data-audio-restart>0:00</button>
+                  <button class="player-beginning" type="button" data-audio-restart>Beginning</button>
                   <span data-audio-time></span>
                 </div>
                 <section id="referenceSection" class="reference-section" aria-labelledby="referenceHeading" hidden>
@@ -224,6 +221,7 @@
                 <div class="audio-progress-bar">
                   <span data-audio-progress></span>
                 </div>
+                <input class="audio-scrubber" type="range" min="0" max="156" value="0" step="1" aria-label="Practice playback position" data-audio-scrubber>
                 <span data-audio-time></span>
               </div>
             </section>
@@ -251,6 +249,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-30"></script>
+    <script src="app.js?v=20260603-31"></script>
   </body>
 </html>

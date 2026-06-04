@@ -419,6 +419,9 @@ detail/result area rather than leaving users to guess which controls are active.
   the collection/detail panel. Clicking Audio on a tune tile selects that tune,
   highlights it, and starts the player in place instead of opening the full
   score view.
+- Keep the compact player focused on transport controls: play/pause toggle,
+  beginning reset, current time, and a draggable playback scrubber. Do not repeat
+  the tune title or canonical-audio label inside the compact player.
 - Treat the primary embedded audio as the tune's canonical generated performance
   MP3, typically exported from MuseScore/MIDI or another mechanical score
   playback process.
