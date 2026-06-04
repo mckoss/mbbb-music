@@ -366,8 +366,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Confirm attendance for a gig.
 - Play MP3 practice tracks.
 - Open PDFs in browser/tablet view.
-- Open a full-page score/performance view with print controls and a print-format
-  selector.
+- Open a selected tune into a full-page score/performance view with print
+  controls and a print-format selector.
 
 ### Gig View
 
@@ -385,6 +385,8 @@ detail/result area rather than leaving users to guess which controls are active.
 ### Score / Performance View
 
 - Shows one selected score or part as the primary page surface.
+- Is opened from a tune's Score or Audio action, not as a separate top-level
+  navigation tab.
 - Uses 8.5x11 as the standard iPad/letter PDF or image format.
 - Offers 7x5 lyre as a separate print/output format.
 - Provides a print button and print-format selector on the score view itself.

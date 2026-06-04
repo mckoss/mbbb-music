@@ -348,7 +348,7 @@ function openMusicAction(label, workTitle) {
     },
     Audio: {
       title: `Audio opened: ${state.selectedSong}`,
-      detail: `Practice MP3 is ready for ${state.selectedSong}. Use the player in Score View to play, pause, or rewind.`
+      detail: `Practice MP3 is ready for ${state.selectedSong}. Use the score player to play, pause, or rewind.`
     },
     Part: {
       title: `Part opened: ${state.selectedSong}`,
@@ -576,6 +576,9 @@ function showView(viewId) {
     view.classList.toggle("active", view.id === viewId);
   });
   document.body.classList.toggle("performance-mode", viewId === "scoreView");
+  if (viewId === "scoreView") {
+    document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
+  }
   if (viewId === "scoreView") {
     renderScoreView();
   }

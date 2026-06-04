@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-13">
+    <link rel="stylesheet" href="styles.css?v=20260603-14">
   </head>
   <body>
     <header class="app-header">
@@ -43,7 +43,6 @@
       <nav class="tabs" aria-label="Music portfolio sections">
         <button class="tab active" type="button" data-view="libraryView">Collection</button>
         <button class="tab" type="button" data-view="gigView">Gig Packets</button>
-        <button class="tab" type="button" data-view="scoreView">Score View</button>
       </nav>
 
       <section id="libraryView" class="view active" aria-labelledby="libraryTitle">
@@ -75,7 +74,7 @@
               </label>
               <div class="viewer-actions">
                 <button id="previewAudioButton" class="secondary-action" type="button">Audio</button>
-                <button id="performanceViewButton" class="secondary-action" type="button">Score View</button>
+                <button id="performanceViewButton" class="secondary-action" type="button">Open Score</button>
                 <button id="downloadPartButton" class="primary-action" type="button">Download Part</button>
               </div>
             </div>
@@ -83,7 +82,7 @@
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, Audio, Score View, or Download Part to preview the next step.</p>
+              <p id="assetResultDetail">Choose Score, Audio, Open Score, or Download Part to preview the next step.</p>
             </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
@@ -234,6 +233,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-13"></script>
+    <script src="app.js?v=20260603-14"></script>
   </body>
 </html>
