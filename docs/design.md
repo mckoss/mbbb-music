@@ -30,11 +30,16 @@ The first project goal is to design a catalog and sync system, not write code ye
   outdoor-readable performance views, and offline-ready packets.
 - Let an admin add files through Drive, local upload, bulk filesystem import, or a
   future web interface.
+- Make the admin/back-office upload flow simple enough for non-technical band
+  leaders to use without understanding GitHub, code, or the storage model.
 - Let a band leader or member create a gig with date, address, schedule details,
   ordered set list, and attendance tracking.
 - Let players view or print music in gig set-list order for their own instrument.
-- Use Google accounts for member/admin sign-in and site access.
+- Use Google accounts for member/admin sign-in and site access, with an optional
+  invitation or shared secret-code step if needed for simple member onboarding.
 - Support generated outputs from MuseScore where the source files are good enough.
+- Make the complete inventory visible even when some works are incomplete or
+  messy, then evolve the library toward more uniform source and output coverage.
 - Run the deployed app and background workers on Railway.
 
 ## Non-Goals For The First Pass
@@ -42,6 +47,8 @@ The first project goal is to design a catalog and sync system, not write code ye
 - Do not treat the current Drive organization as a user-facing information
   architecture.
 - Do not assume every tune has a clean MuseScore master.
+- Do not require a MuseScore master, practice audio file, or pre-split
+  per-instrument PDF before a tune can appear in the catalog.
 - Do not publish copyrighted PDFs, MP3s, or score files in this public repository.
 - Do not build the production performance viewer until the catalog and packet
   workflow are proven.
@@ -275,6 +282,27 @@ The importer should avoid destructive behavior against any external source:
 - Copy accepted files into app-managed local storage or private object storage.
 - Let an admin resolve ambiguous matches in the web UI later.
 
+### Source Quality Realities
+
+The existing library is useful but not uniform. The catalog and import workflow
+should expect these cases from day one:
+
+- A tune may have no MuseScore file, which means lyre PDFs, alternate page sizes,
+  and generated practice audio may not be available yet.
+- A tune may have no MP3 or exact-score performance recording for at-home
+  practice.
+- A tune may have one combined PDF that contains many instrument parts, requiring
+  page-range extraction or manual review before player-specific downloads work.
+- A tune may have cleanly split per-instrument PDFs, which should be easy to
+  accept and map directly.
+- Different tunes may have different combinations of source score, full score,
+  part PDFs, practice audio, and reference performances.
+
+The first importer should prioritize visibility and classification over perfect
+normalization. It is acceptable for a tune to be visible with missing-output
+badges such as "needs MuseScore source", "needs MP3", or "combined PDF needs
+splitting". Admin screens should make these gaps easy to find and fix over time.
+
 ### App Catalog And Storage As Source Of Truth
 
 The app should own the catalog metadata and canonical asset locations:
@@ -378,6 +406,12 @@ The GitHub repository can be public, but the music library should be private. Th
 site should use Google OAuth for member and admin login before exposing copyrighted
 sheet music, practice audio, gig packets, or attendance lists.
 
+David's requested access model is a password-protected or members-only area on
+`mutinybaybrassband.com`. The implementation can still run as an app on Railway,
+but the user-facing entry point should be able to live behind a band-site
+members-only link, subdomain, or reverse proxy. The product should feel like a
+band resource rather than a public GitHub demo.
+
 Recommended initial access model:
 
 - Admin-only import/review screens.
@@ -387,6 +421,9 @@ Recommended initial access model:
 - Admins can assign member roles and default instruments after first Google login.
 - Access can initially be limited to an allowlist of member email addresses or a
   configured Google Workspace/domain rule if the band has one.
+- If allowlisting proves too fussy for launch, support an invite flow or shared
+  access code that lets a signed-in Google user request or activate member access
+  without creating another password.
 
 ## Web UI Concepts
 
@@ -474,10 +511,16 @@ detail/result area rather than leaving users to guess which controls are active.
 
 ### Admin View
 
+- Provide a simple web backend for band leaders to upload content and manage the
+  library without touching GitHub, command lines, or raw storage folders.
 - See new import jobs from Drive, filesystem, or upload sources.
+- Upload one or more files directly from the browser into the same import queue
+  used by Drive and filesystem imports.
 - Match files to existing tunes.
 - Create a tune/arrangement/part from imported files.
 - Resolve duplicates.
+- Flag incomplete works, such as missing MuseScore source, missing MP3, or
+  combined PDFs that need splitting.
 - Mark a file as source, generated, archive, or ignored.
 - Trigger build recipes.
 - Request instrument-aware transposition for supported source scores.
@@ -534,7 +577,8 @@ Requirements to explore:
 | Upload path | Drive only | Drive, filesystem, and web upload | Common import queue for all sources |
 | Gig workflow | Music catalog only | Gigs, set lists, and attendance | Include in backlog now; build after catalog basics |
 | Transposition | Manual arranging | Automatic instrument-aware generation | Future feature after source quality and review workflow are proven |
-| Auth | Public links | Google account member/admin access | Google OAuth with allowlist/roles |
+| Auth | Public links | Google account member/admin access | Google OAuth with allowlist/roles, plus invite or access-code fallback if needed |
+| Source uniformity | Require complete clean sources | Accept incomplete/mixed sources | Import and show inventory first; flag gaps for cleanup |
 
 ## Milestones
 
@@ -545,6 +589,8 @@ Requirements to explore:
 - Define canonical instrument and part names.
 - Define initial metadata schema.
 - Decide first target output: likely per-instrument zip.
+- Decide how the app will appear from `mutinybaybrassband.com`: members-only
+  page, subdomain, link to Railway-hosted app, or reverse proxy.
 
 ### Phase 1: Catalog MVP
 
@@ -553,6 +599,7 @@ Requirements to explore:
 - Import files into app-managed storage.
 - Detect duplicates.
 - Manually classify tunes, arrangements, parts, and audio.
+- Track missing or incomplete assets without blocking catalog visibility.
 - Browse/search catalog.
 - Download app-stored music assets by instrument and part.
 
@@ -606,6 +653,10 @@ Requirements to explore:
 
 - What are the current import sources, including any Google Drive folders?
 - Which Google accounts/email domains should be allowed at launch?
+- Should first access use a strict allowlist, an invite flow, a shared access
+  code after Google login, or some combination?
+- How should the app integrate with `mutinybaybrassband.com`: embedded
+  members-only area, subdomain, link out to Railway, or proxy?
 - Who should have admin rights to create gigs, manage set lists, and view
   attendance?
 - Which instruments/parts should be supported first?
@@ -617,6 +668,10 @@ Requirements to explore:
 - How much of the library has MuseScore source versus only PDFs?
 - Are the MuseScore files full scores with excerpts/parts, or individual part files?
 - Are MP3s generated from scores, recorded by humans, or collected from elsewhere?
+- How common are combined all-parts PDFs, and do they have consistent page order
+  or bookmarks that can drive splitting?
+- What minimum admin upload workflow would David consider comfortable for the
+  first real site?
 - Which transposition pairs matter most, such as C to B-flat, B-flat euphonium to
   E-flat alto horn, or other common substitutions?
 - Who should review and approve generated transposed parts before players use them?
