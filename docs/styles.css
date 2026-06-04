@@ -459,6 +459,53 @@ select:focus, input:focus, button:focus-visible {
   margin: 0 auto;
 }
 
+.performance-mode {
+  background: #202124;
+}
+
+.performance-mode .app-header,
+.performance-mode .tabs,
+.performance-mode .score-toolbar,
+.performance-mode .score-workspace > .action-result,
+.performance-mode .practice-player {
+  display: none;
+}
+
+.performance-mode .app-shell {
+  min-height: 100vh;
+  padding: 0;
+}
+
+.performance-mode .score-layout {
+  max-width: none;
+  margin: 0;
+}
+
+.performance-mode .score-workspace {
+  min-height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #202124;
+  box-shadow: none;
+  padding: 0;
+}
+
+.performance-mode .performance-frame {
+  min-height: 100vh;
+  border-radius: 0;
+  padding: 12px;
+}
+
+.performance-mode .performance-page {
+  width: min(calc((100vh - 24px) * 0.7727), calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  box-shadow: none;
+}
+
+.performance-mode .performance-page.lyre-format {
+  width: min(calc((100vh - 24px) * 1.4), calc(100vw - 24px));
+}
+
 .score-toolbar {
   align-items: end;
 }

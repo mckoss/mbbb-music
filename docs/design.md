@@ -443,13 +443,12 @@ detail/result area rather than leaving users to guess which controls are active.
 ### Score / Performance View
 
 - Shows one selected score or part as the primary page surface.
-- Is opened from a tune's Score or Open Score action, not as a separate top-level
-  navigation tab.
+- Opens from a tune's Score or Open Score action as a full-screen performance
+  surface, not as a separate top-level navigation tab.
+- Hides app chrome, toolbars, and practice controls while the score is open;
+  Escape returns to the Collection or Gig Packets view that opened it.
 - Uses 8.5x11 as the standard iPad/letter PDF or image format.
 - Offers 7x5 lyre as a separate print/output format.
-- Provides a print button and print-format selector on the score view itself.
-- Includes practice MP3 controls on the score view: play, pause, beginning, and
-  visible progress.
 - Keeps set-list and catalog context available without making players guess which
   controls are active.
 

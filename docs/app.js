@@ -192,7 +192,8 @@ const state = {
     position: 0,
     duration: 156
   },
-  search: ""
+  search: "",
+  returnViewId: "libraryView"
 };
 
 const elements = {
@@ -373,6 +374,7 @@ function setPacketResult(title, detail) {
 
 function openMusicAction(label, workTitle) {
   const previousSong = state.selectedSong;
+  const sourceViewId = activeViewId();
   selectSong(workTitle);
   if (label === "Audio" && previousSong !== state.selectedSong) {
     state.audio.position = 0;
@@ -406,7 +408,7 @@ function openMusicAction(label, workTitle) {
   };
   const action = actions[label] || actions.Part;
   if (label === "Performance" || label === "Score") {
-    showView("scoreView");
+    showScoreView(sourceViewId);
     setScoreResult(action.title, action.detail);
   }
   if (label === "Audio") {
@@ -489,7 +491,6 @@ function renderSelectedSong() {
   elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
-  document.body.classList.toggle("performance-mode", document.querySelector("#scoreView").classList.contains("active"));
   elements.downloadPartButton.textContent = "Download Part";
   elements.assetTags.innerHTML = "";
   [...displayAssets(work), "Performance score view"].forEach((asset) => {
@@ -630,6 +631,23 @@ function showView(viewId) {
   if (viewId === "scoreView") {
     renderScoreView();
   }
+}
+
+function activeViewId() {
+  const activeView = document.querySelector(".view.active");
+  return activeView?.id === "gigView" ? "gigView" : "libraryView";
+}
+
+function showScoreView(sourceViewId = activeViewId()) {
+  state.returnViewId = sourceViewId === "gigView" ? "gigView" : "libraryView";
+  showView("scoreView");
+}
+
+function exitScoreView() {
+  if (!document.querySelector("#scoreView").classList.contains("active")) {
+    return;
+  }
+  showView(state.returnViewId);
 }
 
 function renderAudioPlayer() {
@@ -854,7 +872,13 @@ elements.printScoreButton.addEventListener("click", () => {
 });
 
 elements.backToCollectionButton.addEventListener("click", () => {
-  showView("libraryView");
+  exitScoreView();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    exitScoreView();
+  }
 });
 
 elements.audioPlayButtons.forEach((button) => {
