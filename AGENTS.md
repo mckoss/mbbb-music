@@ -11,8 +11,10 @@ The product goal is to turn the band's sheet-music collection into an
 app-owned, searchable, instrument-aware catalog that can produce useful packets
 for practice and performance: PDFs, audio, set lists, and per-player downloads.
 
-This repo currently contains documentation and a static product-design surface,
-not a production app.
+The project is moving from design into implementation. The repo currently
+contains the product design, a working interactive prototype, and these working
+rules; the first production slices (app scaffold, catalog schema, importer) are
+next.
 
 ## Hard Rules
 
