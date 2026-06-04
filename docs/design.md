@@ -407,7 +407,11 @@ detail/result area rather than leaving users to guess which controls are active.
 - Treat gig music as the same collection interface filtered and ordered by the
   selected gig set list.
 - Keep `Open Score` as the single primary action in the selected-music panel;
-  it opens the score in the full-screen performance view.
+  place it beside the part selector at the top right of the selected-music
+  header, parallel with the tune title. It opens the score in the full-screen
+  performance view.
+- Opening a score should push a browser history entry so the browser Back button
+  returns to the Collection or Gig Packets view that opened it.
 - Put tune downloads in a dedicated `Downloads` row under the selected title and
   player: PDF for the selected instrument/part/format, MuseScore for the
   full-score source file, and Audio for the canonical generated MP3.

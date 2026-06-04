@@ -290,6 +290,17 @@ select:focus, input:focus, button:focus-visible {
   gap: 8px;
 }
 
+.selected-music-controls {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.selected-music-controls .part-field {
+  min-width: 220px;
+}
+
 .download-section {
   width: min(100%, 620px);
   margin-top: 12px;
@@ -911,6 +922,11 @@ dd { margin: 3px 0 0; }
   .global-controls { justify-content: stretch; }
   .brand-lockup img { width: 116px; }
   .global-controls label, .search-field, .part-field { width: 100%; }
+  .selected-music-controls {
+    align-items: stretch;
+    flex-direction: column;
+    margin-left: 0;
+  }
   .split-layout, .gig-layout { grid-template-columns: 1fr; }
   .song-list { max-height: none; }
   .gig-facts { grid-template-columns: 1fr; }

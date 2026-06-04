@@ -309,6 +309,7 @@ const elements = {
 };
 
 let audioTimer = null;
+let scoreHistoryActive = false;
 
 function currentGig() {
   return gigs.find((gig) => gig.id === state.selectedGigId) || gigs[0];
@@ -457,7 +458,7 @@ function openMusicAction(label, workTitle) {
   };
   const action = actions[label] || actions.Part;
   if (label === "Performance" || label === "Score") {
-    showScoreView(sourceViewId);
+    showScoreViewWithHistory(sourceViewId);
     setScoreResult(action.title, action.detail);
   }
   if (label === "Audio") {
@@ -715,10 +716,31 @@ function showScoreView(sourceViewId = activeViewId()) {
   showView("scoreView");
 }
 
-function exitScoreView() {
+function showScoreViewWithHistory(sourceViewId = activeViewId()) {
+  const returnViewId = sourceViewId === "gigView" ? "gigView" : "libraryView";
+  if (!scoreHistoryActive) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("score", fileSafeLabel(state.selectedSong));
+    params.set("from", returnViewId === "gigView" ? "gig" : "collection");
+    window.history.pushState(
+      { scoreView: true, returnViewId },
+      "",
+      `${window.location.pathname}?${params.toString()}${window.location.hash}`
+    );
+    scoreHistoryActive = true;
+  }
+  showScoreView(returnViewId);
+}
+
+function exitScoreView(options = {}) {
   if (!document.querySelector("#scoreView").classList.contains("active")) {
     return;
   }
+  if (scoreHistoryActive && options.useHistory !== false) {
+    window.history.back();
+    return;
+  }
+  scoreHistoryActive = false;
   showView(state.returnViewId);
 }
 
@@ -942,6 +964,12 @@ elements.backToCollectionButton.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     exitScoreView();
+  }
+});
+
+window.addEventListener("popstate", (event) => {
+  if (document.querySelector("#scoreView").classList.contains("active") && !event.state?.scoreView) {
+    exitScoreView({ useHistory: false });
   }
 });
 
