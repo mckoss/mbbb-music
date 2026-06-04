@@ -168,6 +168,7 @@ select:focus, input:focus, button:focus-visible {
 
 .pane-header p, .viewer-toolbar p, .gig-summary p { margin-bottom: 0; }
 .search-field { min-width: 210px; }
+.part-field { min-width: 190px; }
 
 .song-list {
   display: grid;
@@ -177,7 +178,7 @@ select:focus, input:focus, button:focus-visible {
   padding-right: 4px;
 }
 
-.song-button {
+.song-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -187,13 +188,44 @@ select:focus, input:focus, button:focus-visible {
   border-radius: 6px;
   background: #f7f7f3;
   color: var(--ink);
-  padding: 10px 12px;
+  padding: 7px;
+}
+
+.song-item:hover, .song-item.active {
+  border-color: rgba(36, 106, 115, 0.38);
+  background: #edf4f3;
+}
+
+.song-main {
+  flex: 1;
+  min-height: 36px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 6px;
   text-align: left;
 }
 
-.song-button:hover, .song-button.active {
-  border-color: rgba(36, 106, 115, 0.38);
-  background: #edf4f3;
+.song-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.song-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(36, 106, 115, 0.22);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--accent-strong);
+  padding: 0 9px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.song-actions button:hover {
+  border-color: rgba(36, 106, 115, 0.48);
 }
 
 .song-index {
@@ -444,7 +476,7 @@ dd { margin: 3px 0 0; }
 
   .global-controls { justify-content: stretch; }
   .brand-lockup img { width: 116px; }
-  .global-controls label, .search-field { width: 100%; }
+  .global-controls label, .search-field, .part-field { width: 100%; }
   .split-layout, .gig-layout { grid-template-columns: 1fr; }
   .song-list { max-height: none; }
   .gig-facts { grid-template-columns: 1fr; }

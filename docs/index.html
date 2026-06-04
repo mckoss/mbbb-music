@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-4">
+    <link rel="stylesheet" href="styles.css?v=20260603-5">
   </head>
   <body>
     <header class="app-header">
@@ -69,6 +69,10 @@
                 <h2 id="selectedTitle"></h2>
                 <p id="selectedMeta"></p>
               </div>
+              <label class="part-field">
+                <span>Part</span>
+                <select id="partSelect"></select>
+              </label>
               <div class="viewer-actions">
                 <button id="previewAudioButton" class="secondary-action" type="button">Audio</button>
                 <button id="tabletViewButton" class="secondary-action" type="button">Tablet View</button>
@@ -140,6 +144,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-4"></script>
+    <script src="app.js?v=20260603-5"></script>
   </body>
 </html>

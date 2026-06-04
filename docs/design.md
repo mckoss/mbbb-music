@@ -92,6 +92,8 @@ A part is a playable score for a specific instrument or role.
 - Source file reference
 - Generated output references
 - Print recipes available
+- Availability status for each user-facing asset: score, part PDF, tablet view,
+  and practice audio
 
 ### Asset
 
@@ -325,8 +327,12 @@ Recommended initial access model:
 ### Player View
 
 - Select instrument and optional part.
+- Select alternate parts within an instrument, such as Trumpet 1, Trumpet 2, or
+  treble-clef versus bass-clef euphonium.
 - Browse active tunes.
 - Search by title.
+- See music actions such as score, part, and audio instead of Drive file/folder
+  implementation details.
 - Download all current music for that instrument.
 - Download a set-list packet.
 - Open a gig and view the ordered set list.

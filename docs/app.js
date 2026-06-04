@@ -46,6 +46,16 @@ const works = [
 
 const songs = works.map((work) => work.title);
 
+const partOptions = {
+  Trumpet: ["Trumpet 1", "Trumpet 2", "Trumpet 3"],
+  Euphonium: ["Euphonium treble clef", "Euphonium bass clef", "Baritone"],
+  Tuba: ["Tuba", "Sousaphone"],
+  "Baritone sax": ["Baritone sax"],
+  Saxophone: ["Alto sax 1", "Alto sax 2", "Tenor sax"],
+  Trombone: ["Trombone 1", "Trombone 2", "Bass trombone"],
+  Drums: ["Drum set", "Snare", "Bass drum"]
+};
+
 const gigs = [
   {
     id: "pride-picnic",
@@ -100,11 +110,13 @@ const gigs = [
 const state = {
   selectedSong: songs[0],
   selectedGigId: gigs[0].id,
+  selectedPart: partOptions.Trumpet[0],
   search: ""
 };
 
 const elements = {
   instrument: document.querySelector("#instrumentSelect"),
+  part: document.querySelector("#partSelect"),
   format: document.querySelector("#formatSelect"),
   songSearch: document.querySelector("#songSearch"),
   songList: document.querySelector("#songList"),
@@ -143,23 +155,72 @@ function formatLabel() {
   return labels[elements.format.value] || labels.tablet;
 }
 
+function partsForInstrument() {
+  return partOptions[elements.instrument.value] || [elements.instrument.value];
+}
+
+function ensureSelectedPart() {
+  const choices = partsForInstrument();
+  if (!choices.includes(state.selectedPart)) {
+    state.selectedPart = choices[0];
+  }
+}
+
+function renderPartOptions() {
+  ensureSelectedPart();
+  elements.part.innerHTML = "";
+  partsForInstrument().forEach((part) => {
+    const option = document.createElement("option");
+    option.value = part;
+    option.textContent = part;
+    elements.part.append(option);
+  });
+  elements.part.value = state.selectedPart;
+}
+
+function displayAssets(work) {
+  const assets = ["Score PDF", "Part PDF", "Audio"];
+  if (work.assets.includes("Full score")) assets.unshift("Full score");
+  return [...new Set(assets)];
+}
+
 function renderSongs() {
   const query = state.search.trim().toLowerCase();
   const filtered = works.filter((work) => work.title.toLowerCase().includes(query));
-  elements.songCount.textContent = `${filtered.length} of ${works.length} titles from the shared Drive folder`;
+  elements.songCount.textContent = `${filtered.length} of ${works.length} titles with music links`;
   elements.songList.innerHTML = "";
 
   filtered.forEach((work) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `song-button${work.title === state.selectedSong ? " active" : ""}`;
-    button.innerHTML = `<span>${work.title}</span><span class="song-index">${work.source}</span>`;
-    button.addEventListener("click", () => {
+    const item = document.createElement("div");
+    item.className = `song-item${work.title === state.selectedSong ? " active" : ""}`;
+
+    const titleButton = document.createElement("button");
+    titleButton.type = "button";
+    titleButton.className = "song-main";
+    titleButton.textContent = work.title;
+    titleButton.addEventListener("click", () => {
       state.selectedSong = work.title;
       renderSongs();
       renderSelectedSong();
     });
-    elements.songList.append(button);
+
+    const actions = document.createElement("div");
+    actions.className = "song-actions";
+    ["Score", "Audio"].forEach((label) => {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.textContent = label;
+      action.addEventListener("click", () => {
+        state.selectedSong = work.title;
+        renderSongs();
+        renderSelectedSong();
+        showToast(`Mock ${label.toLowerCase()} link: ${work.title}`);
+      });
+      actions.append(action);
+    });
+
+    item.append(titleButton, actions);
+    elements.songList.append(item);
   });
 }
 
@@ -167,15 +228,17 @@ function renderSelectedSong() {
   const instrument = elements.instrument.value;
   const work = works.find((item) => item.title === state.selectedSong) || works[0];
   const isTablet = elements.format.value === "tablet";
+  ensureSelectedPart();
+  renderPartOptions();
   elements.selectedTitle.textContent = state.selectedSong;
-  elements.selectedMeta.textContent = `${instrument} part - ${formatLabel()} format - source ${work.source}, modified ${work.modified}`;
+  elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
-  elements.sheetFooter.textContent = `Mock preview for ${instrument} - ${formatLabel()}`;
+  elements.sheetFooter.textContent = `Mock preview for ${state.selectedPart} - ${formatLabel()}`;
   document.body.classList.toggle("tablet-format", isTablet);
   elements.downloadPartButton.textContent = isTablet ? "Open Part" : "Download Part";
   elements.tabletViewButton.hidden = !isTablet;
   elements.assetTags.innerHTML = "";
-  [...work.assets, "Practice audio TBD", ...(isTablet ? ["Offline-ready tablet view"] : [])].forEach((asset) => {
+  [...displayAssets(work), ...(isTablet ? ["Offline-ready tablet view"] : [])].forEach((asset) => {
     const tag = document.createElement("span");
     tag.textContent = asset;
     elements.assetTags.append(tag);
@@ -245,7 +308,7 @@ function renderCalendar() {
 
 function renderGig() {
   const gig = currentGig();
-  const instrument = elements.instrument.value;
+  ensureSelectedPart();
   elements.gigName.textContent = gig.name;
   elements.gigWhen.textContent = `${gig.displayDate} - ${gig.performance}`;
   elements.gigLocation.textContent = `${gig.location} - ${gig.address}`;
@@ -264,7 +327,7 @@ function renderGig() {
       renderSongs();
       renderSelectedSong();
     });
-    item.append(button, ` - ${instrument} part`);
+    item.append(button, ` - ${state.selectedPart}`);
     elements.setList.append(item);
   });
 
@@ -292,6 +355,13 @@ elements.songSearch.addEventListener("input", (event) => {
 });
 
 elements.instrument.addEventListener("change", () => {
+  ensureSelectedPart();
+  renderSelectedSong();
+  renderGig();
+});
+
+elements.part.addEventListener("change", (event) => {
+  state.selectedPart = event.target.value;
   renderSelectedSong();
   renderGig();
 });
@@ -304,11 +374,11 @@ elements.gigSelect.addEventListener("change", (event) => {
 });
 
 elements.downloadPartButton.addEventListener("click", () => {
-  showToast(`Mock download: ${state.selectedSong} for ${elements.instrument.value}, ${formatLabel()}`);
+  showToast(`Mock part link: ${state.selectedSong} for ${state.selectedPart}, ${formatLabel()}`);
 });
 
 elements.downloadGigButton.addEventListener("click", () => {
-  showToast(`Mock packet: ${currentGig().name} for ${elements.instrument.value}, ${formatLabel()}`);
+  showToast(`Mock packet: ${currentGig().name} for ${state.selectedPart}, ${formatLabel()}`);
 });
 
 elements.previewAudioButton.addEventListener("click", () => {
