@@ -1,5 +1,23 @@
 # MBBB Music Design
 
+## Contents
+
+- [Problem](#problem)
+- [Goals](#goals)
+- [Non-Goals For The First Pass](#non-goals-for-the-first-pass)
+- [Users](#users)
+- [Core Data Model](#core-data-model)
+- [iPad / Tablet Target](#ipad--tablet-target)
+- [Source Strategy](#source-strategy)
+- [MuseScore Automation](#musescore-automation)
+- [Railway Architecture](#railway-architecture)
+- [Access And Privacy](#access-and-privacy)
+- [Web UI Concepts](#web-ui-concepts)
+- [Tradeoffs](#tradeoffs)
+- [Milestones](#milestones)
+- [Open Questions](#open-questions)
+- [Near-Term Design Tasks](#near-term-design-tasks)
+
 ## Problem
 
 Mutiny Bay Brass Band has a useful but unwieldy music library currently sitting in
@@ -258,29 +276,17 @@ wind, gloves, stands, and unreliable connectivity matter.
 
 ### Import Sources
 
-Google Drive is only the current place where the files happen to live. The product
-should treat Drive, local filesystem folders, manual uploads, and future bulk import
-jobs as equivalent intake sources.
+Drive, local filesystem folders, manual uploads, and future bulk import jobs are
+all equivalent intake sources; Drive is just the current one. Original paths,
+folder structure, filenames, and file ids are kept only as provenance for
+debugging and re-imports — they never define library identity or appear in player
+workflows. The importer parses messy source filenames to infer tune, instrument,
+and part, but accepted assets get canonical app filenames.
 
-After import, the durable source of truth should be the app catalog plus
-app-managed storage. Original Drive paths, folder structure, and file ids can be
-kept as provenance for debugging or re-imports, but they should not define the
-library identity and should not appear in performer workflows.
-
-Original source filenames should also stay hidden from players. During
-synchronization, the importer can parse messy Drive filenames to infer tune,
-instrument, part, and source provenance, but accepted assets should receive
-canonical app filenames or object keys. Downloaded parts and packets should be
-named by normalized app metadata, not by the original Drive filename.
-
-The importer should avoid destructive behavior against any external source:
-
-- Never delete original source files during import.
-- Never rename original source files during import.
-- Identify duplicates by checksum, normalized title, embedded metadata, import
-  batch, and optional source-specific ids such as Drive file ids.
-- Copy accepted files into app-managed local storage or private object storage.
-- Let an admin resolve ambiguous matches in the web UI later.
+The importer is non-destructive: it never deletes or renames originals. It
+identifies duplicates by checksum, normalized title, embedded metadata, import
+batch, and source ids such as Drive file ids, copies accepted files into
+app-managed storage, and leaves ambiguous matches for an admin to resolve.
 
 ### Source Quality Realities
 
@@ -303,65 +309,39 @@ normalization. It is acceptable for a tune to be visible with missing-output
 badges such as "needs MuseScore source", "needs MP3", or "combined PDF needs
 splitting". Admin screens should make these gaps easy to find and fix over time.
 
-### App Catalog And Storage As Source Of Truth
-
-The app should own the catalog metadata and canonical asset locations:
-
-- Tune grouping
-- Instrument and part mapping
-- Output recipe availability
-- Human decisions about duplicates
-- Current / archived state
-- Canonical storage path or object key for each accepted asset
-- Canonical download filename pattern for each generated part, score, audio, or
-  packet artifact
-
-This means Drive is just one possible music-file inbox. The app becomes the
-library, and runtime links should point to app-managed music or audio assets rather
-than original Drive locations or original Drive filenames.
-
-### Out-of-Band Uploads
-
-The web UI can later upload files directly into an import queue. Bulk filesystem
-imports should use the same asset model as Drive imports. The app can optionally
-record external provenance or mirror accepted uploads elsewhere, but that should be
-a separate archival decision rather than the core storage model.
-
 ### Storage Layers And Repositories
 
-Not all "data" is the same kind of data, and conflating it leads to bad storage
-choices. Separate three layers:
+Separate three kinds of "data":
 
-- **Upstream raw source.** Google Drive directories where originals live
-  (`.mscz`, original PDFs, original MP3s). Content originates here, but its
-  structure does not define the library.
-- **Source of truth.** The generator code, output recipes, catalog metadata, and
-  the sync manifest. These are small, text, diffable, and inspectable, and they
-  belong in a private git repository.
+- **Upstream raw source.** Google Drive directories holding originals (`.mscz`,
+  PDFs, MP3s). Content originates here, but its structure does not define the
+  library.
+- **Source of truth.** Generator code, output recipes, catalog metadata, and the
+  sync manifest — small, text, diffable, kept in a private git repo. The catalog
+  owns tune grouping, instrument/part mapping, output-recipe availability,
+  duplicate decisions, active/archived state, and each asset's canonical storage
+  location and download filename.
 - **Rebuildable cache.** Generated part PDFs, lyre layouts, transcoded MP3s, and
-  packets. These are derived artifacts keyed by content, stored on a persistent
-  volume or private object storage, and can always be regenerated from the
-  upstream source plus the recipes.
+  packets — derived artifacts on a persistent volume or private object storage,
+  always regenerable from the upstream source plus the recipes.
 
-Repository topology keeps copyrighted material off the public web:
+Two repos keep copyrighted material off the public web:
 
-- **Public code repo** (this repository): code, docs, schemas, synthetic
-  fixtures, public-safe assets, and the GitHub Pages prototype.
-- **Private data/generator repo:** the importer, the output recipes, catalog
-  metadata, and the text manifest. Real binary assets do not live in git history;
-  they are the rebuildable cache above.
+- **Public code repo** (this one): code, docs, schemas, synthetic fixtures,
+  public-safe assets, and the GitHub Pages prototype.
+- **Private data/generator repo:** importer, recipes, catalog metadata, and the
+  text manifest. Binary assets stay out of git history; they are the rebuildable
+  cache.
 
-A git repository can safely sync between a local machine and a server only with a
-single writer per branch. Treat authored catalog content and recipes as one-way
-(edited locally or by a single server-side job, then pulled), and keep mutable,
-concurrent, user-generated data (attendance, gig RSVPs, member profiles, job
-state) in Postgres rather than round-tripping it through git.
+Git syncs safely between local and server only with a single writer per branch, so
+treat authored catalog content and recipes as one-way (edited in one place, then
+pulled). Keep mutable, concurrent, user-generated data — attendance, gig RSVPs,
+member profiles, job state — in Postgres rather than round-tripping it through git.
 
 ### Incremental Drive Sync
 
-A refresh runs on a server cron schedule or an admin UI trigger; both invoke the
-same idempotent import job. The job is delta-based and cache-retaining rather than
-a full re-download and rebuild:
+A refresh runs on a cron schedule or an admin UI trigger; both invoke the same
+delta-based, cache-retaining import job:
 
 1. **List (delta).** Use the Google Drive Changes API with a persisted
    `startPageToken`, so each run only sees files changed since the last sync.
@@ -377,56 +357,43 @@ a full re-download and rebuild:
 5. **Publish.** Update the manifest with the new outputs, checksums, and Drive
    provenance.
 
-Because every phase is checksum- and delta-gated, the job is safe to run
-repeatedly. Guard against overlapping runs (cron firing while a UI trigger is
-already running) with a single-flight lock, such as a Postgres advisory lock.
+Every phase is checksum- and delta-gated, so reruns are cheap and idempotent.
+Guard against overlapping runs with a single-flight lock, such as a Postgres
+advisory lock.
 
 ### Recipes, Filenames, And The Manifest
 
-An **output recipe** defines how one derived artifact is produced from a source
-file — the settings, not the file. Examples mirror the Output Recipe list: letter
-PDF, 7x5 lyre PDF, MP3 export at a given bitrate. Recipes live as versioned config
-in the private repo alongside the generator code.
+An **output recipe** is the versioned config for producing one derived artifact —
+the settings, not the file (letter PDF, 7x5 lyre PDF, MP3 at a given bitrate). It
+lives in the private repo with the generator code.
 
-Stored files use readable canonical slug filenames, never opaque hashes, so the
-directory tree and any git diff of the manifest stay human-inspectable. Examples:
-`mbbb_bad-guy_trumpet-1_lyre.pdf`, `mbbb_bad-guy_full_mp3.mp3`. This follows the
-existing canonical-filename pattern rather than naming files by checksum.
+Stored files use readable canonical slug filenames, never hashes, so the directory
+tree and manifest diffs stay inspectable: `mbbb_bad-guy_trumpet-1_lyre.pdf`,
+`mbbb_bad-guy_full_mp3.mp3`. The rebuild decision lives in the manifest instead:
+each row records the slug filename plus `inputChecksum`, `recipeVersion`, and
+`toolVersion`, and the job rebuilds (overwriting in place) when the freshly
+computed values differ. Bumping a `recipeVersion` — say, new lyre margins —
+rebuilds only the matching outputs even though the sources are unchanged. Cache
+freshness uses ETag/Last-Modified or a `?v=<short-hash>` suffix, so on-disk names
+stay stable.
 
-The rebuild decision lives in the manifest, not in the filename. Each manifest row
-records the slug filename plus its `inputChecksum`, `recipeVersion`, and
-`toolVersion`. The job rebuilds when the freshly computed values differ from the
-stored ones, then overwrites the file in place under the same slug name. Bumping a
-`recipeVersion` (for example, changing lyre margins) invalidates and rebuilds only
-the matching outputs across the library, even though the source files are
-unchanged. Browser and CDN freshness is handled with ETag/Last-Modified or a
-`?v=<short-hash>` URL suffix, so files keep stable slug names on disk.
-
-The manifest belongs in Postgres, which the sync job writes on every run and which
-is queryable for admin review. For git-level inspectability, the job can export a
-read-only text snapshot of the manifest into the private repo as a one-way commit,
-avoiding any multi-writer git conflict.
+The manifest lives in Postgres (written every run, queryable for admin review).
+For git-level inspectability the job can export a read-only text snapshot into the
+private repo as a one-way commit.
 
 ### Deployment Notes For Storage
 
-Railway container filesystems are ephemeral and are wiped on each deploy, restart,
-or crash. Persistent storage requires a mounted volume:
-
-- Clone or pull the private data/generator repo and hold the raw-input cache and
-  generated outputs on a mounted volume so they survive restarts.
-- Keep to a single replica while the cache lives on a volume, since a Railway
-  volume attaches to one instance and a git working copy with concurrent writers
-  can corrupt.
-- If the audio library outgrows the volume, back the cache with private object
-  storage and treat the volume as a warm cache.
+Railway filesystems are ephemeral, so the private repo checkout, raw-input cache,
+and generated outputs live on a mounted volume. A volume attaches to one instance,
+so keep the cache to a single replica (a git working copy with concurrent writers
+can corrupt). If the audio library outgrows the volume, back the cache with private
+object storage and treat the volume as a warm cache.
 
 ## MuseScore Automation
 
-MuseScore is promising as a build engine. The official MuseScore handbook documents
-command-line export via `--export-to`, score/part export options, JSON job files,
-and score media/parts output. It can export score data, parts, PDFs, MIDI, and media
-formats, which makes it plausible to generate most derived artifacts from clean
-`.mscz` masters.
+MuseScore is promising as a build engine. Its CLI supports `--export-to`,
+score/part export, JSON job files, and media output (PDF, MIDI, MP3), making it
+plausible to generate most derived artifacts from clean `.mscz` masters.
 
 Relevant docs:
 
