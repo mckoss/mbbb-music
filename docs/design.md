@@ -327,6 +327,99 @@ imports should use the same asset model as Drive imports. The app can optionally
 record external provenance or mirror accepted uploads elsewhere, but that should be
 a separate archival decision rather than the core storage model.
 
+### Storage Layers And Repositories
+
+Not all "data" is the same kind of data, and conflating it leads to bad storage
+choices. Separate three layers:
+
+- **Upstream raw source.** Google Drive directories where originals live
+  (`.mscz`, original PDFs, original MP3s). Content originates here, but its
+  structure does not define the library.
+- **Source of truth.** The generator code, output recipes, catalog metadata, and
+  the sync manifest. These are small, text, diffable, and inspectable, and they
+  belong in a private git repository.
+- **Rebuildable cache.** Generated part PDFs, lyre layouts, transcoded MP3s, and
+  packets. These are derived artifacts keyed by content, stored on a persistent
+  volume or private object storage, and can always be regenerated from the
+  upstream source plus the recipes.
+
+Repository topology keeps copyrighted material off the public web:
+
+- **Public code repo** (this repository): code, docs, schemas, synthetic
+  fixtures, public-safe assets, and the GitHub Pages prototype.
+- **Private data/generator repo:** the importer, the output recipes, catalog
+  metadata, and the text manifest. Real binary assets do not live in git history;
+  they are the rebuildable cache above.
+
+A git repository can safely sync between a local machine and a server only with a
+single writer per branch. Treat authored catalog content and recipes as one-way
+(edited locally or by a single server-side job, then pulled), and keep mutable,
+concurrent, user-generated data (attendance, gig RSVPs, member profiles, job
+state) in Postgres rather than round-tripping it through git.
+
+### Incremental Drive Sync
+
+A refresh runs on a server cron schedule or an admin UI trigger; both invoke the
+same idempotent import job. The job is delta-based and cache-retaining rather than
+a full re-download and rebuild:
+
+1. **List (delta).** Use the Google Drive Changes API with a persisted
+   `startPageToken`, so each run only sees files changed since the last sync.
+   Drive provides `id`, `modifiedTime`, `md5Checksum`, and `version`.
+2. **Diff.** Compare each Drive file against the manifest and classify it as new,
+   changed, unchanged, or deleted. Unchanged files are skipped. Deleted files are
+   marked archived; local content is never deleted.
+3. **Fetch.** Download only new or changed files into a raw-input cache keyed by
+   `driveFileId + md5Checksum`. A file whose checksum is already present is not
+   re-fetched.
+4. **Build.** Generate outputs (see MuseScore Automation). Skip any output whose
+   inputs and recipe are unchanged; rebuild only what is affected.
+5. **Publish.** Update the manifest with the new outputs, checksums, and Drive
+   provenance.
+
+Because every phase is checksum- and delta-gated, the job is safe to run
+repeatedly. Guard against overlapping runs (cron firing while a UI trigger is
+already running) with a single-flight lock, such as a Postgres advisory lock.
+
+### Recipes, Filenames, And The Manifest
+
+An **output recipe** defines how one derived artifact is produced from a source
+file — the settings, not the file. Examples mirror the Output Recipe list: letter
+PDF, 7x5 lyre PDF, MP3 export at a given bitrate. Recipes live as versioned config
+in the private repo alongside the generator code.
+
+Stored files use readable canonical slug filenames, never opaque hashes, so the
+directory tree and any git diff of the manifest stay human-inspectable. Examples:
+`mbbb_bad-guy_trumpet-1_lyre.pdf`, `mbbb_bad-guy_full_mp3.mp3`. This follows the
+existing canonical-filename pattern rather than naming files by checksum.
+
+The rebuild decision lives in the manifest, not in the filename. Each manifest row
+records the slug filename plus its `inputChecksum`, `recipeVersion`, and
+`toolVersion`. The job rebuilds when the freshly computed values differ from the
+stored ones, then overwrites the file in place under the same slug name. Bumping a
+`recipeVersion` (for example, changing lyre margins) invalidates and rebuilds only
+the matching outputs across the library, even though the source files are
+unchanged. Browser and CDN freshness is handled with ETag/Last-Modified or a
+`?v=<short-hash>` URL suffix, so files keep stable slug names on disk.
+
+The manifest belongs in Postgres, which the sync job writes on every run and which
+is queryable for admin review. For git-level inspectability, the job can export a
+read-only text snapshot of the manifest into the private repo as a one-way commit,
+avoiding any multi-writer git conflict.
+
+### Deployment Notes For Storage
+
+Railway container filesystems are ephemeral and are wiped on each deploy, restart,
+or crash. Persistent storage requires a mounted volume:
+
+- Clone or pull the private data/generator repo and hold the raw-input cache and
+  generated outputs on a mounted volume so they survive restarts.
+- Keep to a single replica while the cache lives on a volume, since a Railway
+  volume attaches to one instance and a git working copy with concurrent writers
+  can corrupt.
+- If the audio library outgrows the volume, back the cache with private object
+  storage and treat the volume as a warm cache.
+
 ## MuseScore Automation
 
 MuseScore is promising as a build engine. The official MuseScore handbook documents
@@ -427,87 +520,113 @@ Recommended initial access model:
 
 ## Web UI Concepts
 
-The hosted design surface can evolve as a single-page app or as multiple HTML
-entry points, depending on which interaction model best explains the product. In
-either case, visible controls should be wired to an obvious result. If several
-actions are placeholders for the same future workflow, they can route to the same
-detail/result area rather than leaving users to guess which controls are active.
+The player-facing app is a single-page interface with three surfaces: a
+persistent global header, two tabbed primary views (Collection and Gig Packets),
+and a full-screen Score/Performance overlay reached from either view. Every
+visible control maps to an obvious result, and global selections apply uniformly
+across all views rather than being repeated per row. The description below
+reflects the current static prototype under `docs/`; the Admin and future views
+that follow it are planned but not yet built.
 
-### Player View
+### Global Chrome
 
-- Select instrument globally and, only when that instrument has multiple choices,
-  select a specific part in the detail panel.
-- Select alternate parts within an instrument, such as Trumpet 1, Trumpet 2, or
-  treble-clef versus bass-clef euphonium.
-- Browse active tunes.
-- Search by title.
-- Treat gig music as the same collection interface filtered and ordered by the
-  selected gig set list.
-- Keep `Open Score` as the single primary action in the selected-music panel;
-  place it beside the part selector at the top right of the selected-music
-  header, parallel with the tune title. It opens the score in the full-screen
-  performance view.
-- Opening a score should push a browser history entry so the browser Back button
-  returns to the Collection or Gig Packets view that opened it.
-- Put tune downloads in a dedicated `Downloads` row under the selected title and
-  player: PDF for the selected instrument/part/format, MuseScore for the
-  full-score source file, and Audio for the canonical generated MP3.
-- Use a compact embedded practice player directly under the selected title in
-  the collection/detail panel. Clicking Audio on a tune tile selects that tune,
-  highlights it, and starts the player in place instead of opening the full
-  score view.
-- Keep the compact player focused on transport controls: play/pause toggle,
-  beginning reset, current time, and a draggable playback scrubber. Do not repeat
-  the tune title or canonical-audio label inside the compact player.
-- Treat the primary embedded audio as the tune's canonical generated performance
-  MP3, typically exported from MuseScore/MIDI or another mechanical score
-  playback process.
-- When a tune has reference performances, show them underneath the embedded
-  player as optional links/actions. References can include YouTube videos,
-  external videos, or uploaded MP3 performances, and each should have a concise
-  description plus either a play action or a new-window video link.
-- Download files with standardized app-generated filenames instead of original
-  Drive filenames.
-- Download all current music for that instrument.
-- Download a set-list packet.
-- Open a gig and view the ordered set list.
-- Download or print a gig packet for the player's instrument in set-list order.
-- Confirm attendance for a gig.
-- Play MP3 practice tracks.
-- Open PDFs in browser/tablet view.
-- Open a selected tune into a full-page score/performance view with print
-  controls and a print-format selector.
+Present on every primary view:
 
-### Gig View
+- Brand lockup: band logo, name, and a one-line description of the app.
+- Instrument selector: the normalized player-facing instrument list, used as the
+  single global instrument choice for all music and packets.
+- Print format selector: 8.5x11 letter or 7x5 lyre, applied to every part,
+  download, and score.
+- Primary navigation tabs: Collection and Gig Packets. The Score view is not a
+  tab; it opens as a full-screen overlay and hides the tabs while active.
 
-- Shows gig date, venue, address, arrival time, performance time, and notes.
-- Shows ordered gig music, including set breaks such as Set One and Set Two, as
-  the same music tiles used by the complete collection.
-- Keeps set-list rows to tune names and actions; the global instrument and print
-  format selectors apply universally and are not repeated on every set-list row.
-- Filters music to the signed-in member's instrument and part by default.
-- Offers print/download actions for the full gig packet or the member's packet.
-- Lets players open or print individual pieces and play practice audio from the
-  gig music list, instead of requiring a full packet download.
-- Keeps gig tile Audio behavior consistent with the collection: select the tune
-  and start the embedded player without changing pages.
-- Shows the member's attendance response and lets them update it.
-- For leaders/admins, shows attendance by player name, instrument, and response
-  state: no response, confirmed yes, or confirmed no.
-- Uses the same complete roster on every gig page, then allocates each player to
-  confirmed yes, confirmed no, or no response for the selected gig.
+Part selection is intentionally not global. It appears only in the
+selected-music panel, and only when the chosen instrument has more than one part.
+
+### Collection View
+
+A two-pane browse-and-detail layout.
+
+Library pane (left):
+
+- Heading and a live count of titles matching the current search.
+- Search-by-title field that filters the list as the user types.
+- Scrollable list of music tiles. Each tile shows the tune title plus two
+  per-tune actions, Score and Audio. The selected tile is highlighted.
+
+Selected-music pane (right):
+
+- Selected tune title with its active part, print format, and last-modified date.
+- A compact embedded practice player directly under the title: play/pause
+  toggle, beginning reset, current time, and a draggable scrubber. It does not
+  repeat the title or audio label.
+- Reference performances, shown only when the tune has them. Each reference has a
+  short description and either a Play action (uploaded MP3) or a Watch link that
+  opens an external video in a new window.
+- Downloads row: PDF (selected instrument/part/format), MuseScore (full-score
+  source), and Audio (canonical generated MP3), all using standardized
+  app-generated filenames.
+- Part selector and an Open Score action at the top of the pane. The part
+  selector is hidden when the instrument has a single part; Open Score launches
+  the full-screen performance view.
+
+### Gig Packets View
+
+A two-pane gig-picker and gig-detail layout.
+
+Gig picker (left):
+
+- Month calendar with gig dates highlighted and selectable and the active gig
+  marked; non-gig days are inert.
+- A gig dropdown for direct selection. Calendar and dropdown stay in sync.
+
+Gig detail (right):
+
+- Gig identity and logistics: name, date/time, location and address, arrival
+  time, and notes.
+- A Download Packet action for the member's packet in the global instrument,
+  part, and format.
+- Gig music: the set list in performance order, grouped into named sections such
+  as Set One and Set Two, with each entry numbered. Entries reuse the Collection
+  music tiles (title plus Score and Audio actions), so the global
+  instrument/format selectors apply without per-row controls.
+- Roster and attendance: a summary of response counts (confirmed yes, no
+  response, confirmed no) followed by the full band roster, each member showing
+  name, instrument, and response state. The complete roster appears on every gig
+  so quiet or pending players still show up. (Attendance is read-only in the
+  prototype; per-member confirm/update is planned.)
 
 ### Score / Performance View
 
-- Shows one selected score or part as the primary page surface.
-- Opens from a tune's Score or Open Score action as a full-screen performance
-  surface, not as a separate top-level navigation tab.
-- Hides app chrome, toolbars, and practice controls while the score is open;
-  Escape returns to the Collection or Gig Packets view that opened it.
-- Uses 8.5x11 as the standard iPad/letter PDF or image format.
-- Offers 7x5 lyre as a separate print/output format.
-- Keeps set-list and catalog context available without making players guess which
-  controls are active.
+A full-screen surface for one selected part, opened from a Score or Open Score
+action and dismissed back to wherever it was opened.
+
+- App chrome and tabs are hidden while the score is open.
+- Toolbar: tune title, the active part and format, a print-format selector, a
+  back-to-collection action, and a Print action.
+- A practice player (beginning, play, pause, progress, scrubber, and time) that
+  shares the same audio transport state as the Collection's embedded player.
+- The score page itself, sized to the selected print format (8.5x11 or 7x5 lyre).
+
+### Page Transitions
+
+- Tabs switch between Collection and Gig Packets without leaving the page.
+- Selecting a tune tile's title selects and highlights it and updates the
+  selected-music pane in place; it does not navigate.
+- A tile's Audio action selects the tune, highlights it, and starts the embedded
+  player in place, restarting playback when the tune changes. It never leaves the
+  current view.
+- A tile's Score action, and the selected pane's Open Score action, select the
+  tune and open the full-screen Score view. Opening a score pushes a browser
+  history entry recording the originating view (Collection or Gig).
+- Leaving the Score view returns to the originating view via the back action, the
+  Escape key, or the browser Back button; all three resolve to the same return
+  target.
+- Changing the global instrument, part, or print format re-renders the selected
+  tune, gig music, and score consistently, so every surface reflects the same
+  current selection.
+- Audio is a single shared transport: position and play state are continuous
+  across the compact Collection player and the Score view's practice player.
 
 ### Admin View
 
