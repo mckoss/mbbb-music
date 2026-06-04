@@ -77,6 +77,7 @@ const members = [
   { name: "Mark Cassidy", instrument: "Drums" },
   { name: "Bob Tearse", instrument: "TBD" },
   { name: "Joseph Katzinger", instrument: "Horn" },
+  { name: "Bruce Dewing", instrument: "TBD" },
   { name: "Steve Tarr", instrument: "TBD" },
   { name: "Tabatha Heiber", instrument: "TBD" },
   { name: "Lance", instrument: "Trumpet (B-flat)" },
@@ -88,7 +89,7 @@ const members = [
   { name: "Cole", instrument: "Baritone sax (E-flat)" }
 ];
 
-const rosterConfirmedYes = new Set([
+const juneConfirmedYes = [
   "David Stern",
   "Mark Cassidy",
   "Steve Buff",
@@ -102,7 +103,7 @@ const rosterConfirmedYes = new Set([
   "Bob Tearse",
   "Bruce Dewing",
   "Mike Koss"
-]);
+];
 
 const attendanceStates = {
   yes: "Confirmed yes",
@@ -121,6 +122,7 @@ const gigs = [
     arrival: "TBD by gig leader",
     performance: "Event listing for June 6, 2026",
     notes: "PRIDE Picnic with Mutiny Bay Brass Band for the SW Pride event. Source: mutinybaybrassband.com.",
+    confirmedYes: juneConfirmedYes,
     setList: [
       {
         name: "Set One",
@@ -154,6 +156,7 @@ const gigs = [
     arrival: "TBD by gig leader",
     performance: "12:00 PM - 3:00 PM",
     notes: "Sample packet with confirmed roster and two-set performance order.",
+    confirmedYes: juneConfirmedYes,
     setList: [
       {
         name: "Set One",
@@ -163,11 +166,7 @@ const gigs = [
         name: "Set Two",
         songs: ["Track Suit By Bruce", "Thriller", "Matador", "SAIL (Meute)", "Hot to Go", "Moliendo Cafe", "Hava Negila"]
       }
-    ],
-    attendance: members.map((member) => ({
-      ...member,
-      status: rosterConfirmedYes.has(member.name) ? "yes" : "pending"
-    })).concat([{ name: "Bruce Dewing", instrument: "TBD", status: "yes" }])
+    ]
   },
   {
     id: "freeland-library-family-festival",
@@ -268,8 +267,19 @@ function setListSections(gig) {
     : [{ name: "Gig Music", songs: gig.setList || [] }];
 }
 
+function attendanceForGig(gig) {
+  const confirmedYes = new Set(gig.confirmedYes || []);
+  const confirmedNo = new Set(gig.confirmedNo || []);
+  return members.map((member) => {
+    let status = "pending";
+    if (confirmedYes.has(member.name)) status = "yes";
+    if (confirmedNo.has(member.name)) status = "no";
+    return { ...member, status };
+  });
+}
+
 function countConfirmed(gig) {
-  return (gig.attendance || []).filter((person) => person.status === "yes").length;
+  return attendanceForGig(gig).filter((person) => person.status === "yes").length;
 }
 
 function formatLabel() {
@@ -646,7 +656,7 @@ function rewindAudio() {
 }
 
 function renderAttendance(gig) {
-  const roster = gig.attendance || [];
+  const roster = attendanceForGig(gig);
   const counts = {
     yes: roster.filter((person) => person.status === "yes").length,
     pending: roster.filter((person) => person.status === "pending").length,

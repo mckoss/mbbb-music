@@ -421,6 +421,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Shows the member's attendance response and lets them update it.
 - For leaders/admins, shows attendance by player name, instrument, and response
   state: no response, confirmed yes, or confirmed no.
+- Uses the same complete roster on every gig page, then allocates each player to
+  confirmed yes, confirmed no, or no response for the selected gig.
 
 ### Score / Performance View
 
@@ -449,6 +451,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Build ordered set lists from the catalog of practiced works.
 - See attendance summary by name, instrument, and response.
 - Track roster status counts for no response, confirmed yes, and confirmed no.
+- Keep a canonical roster separate from per-gig response status so quiet or
+  pending players still appear on each gig page.
 - Manage members, roles, and default instruments.
 
 ### Future Performance View
