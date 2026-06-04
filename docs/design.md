@@ -406,10 +406,11 @@ detail/result area rather than leaving users to guess which controls are active.
 - Search by title.
 - Treat gig music as the same collection interface filtered and ordered by the
   selected gig set list.
-- See music actions such as score, PDF download, MuseScore download, and audio
-  instead of Drive file/folder implementation details.
-- Offer `Download PDF` for the selected instrument/part/format and
-  `Download MuseScore` for the tune's full-score source file.
+- Keep `Open Score` as the single primary action in the selected-music panel;
+  it opens the score in the full-screen performance view.
+- Put tune downloads in a dedicated `Downloads` row under the selected title and
+  player: PDF for the selected instrument/part/format, MuseScore for the
+  full-score source file, and Audio for the canonical generated MP3.
 - Use a compact embedded practice player directly under the selected title in
   the collection/detail panel. Clicking Audio on a tune tile selects that tune,
   highlights it, and starts the player in place instead of opening the full

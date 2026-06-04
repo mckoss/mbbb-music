@@ -268,10 +268,6 @@ const elements = {
   selectedMeta: document.querySelector("#selectedMeta"),
   referenceSection: document.querySelector("#referenceSection"),
   referenceList: document.querySelector("#referenceList"),
-  assetTags: document.querySelector("#assetTags"),
-  assetResult: document.querySelector("#assetResult"),
-  assetResultTitle: document.querySelector("#assetResultTitle"),
-  assetResultDetail: document.querySelector("#assetResultDetail"),
   sheetTitle: document.querySelector("#sheetTitle"),
   sheetFooter: document.querySelector("#sheetFooter"),
   scoreTitle: document.querySelector("#scoreTitle"),
@@ -299,15 +295,13 @@ const elements = {
   gigLocation: document.querySelector("#gigLocation"),
   gigArrival: document.querySelector("#gigArrival"),
   gigNotes: document.querySelector("#gigNotes"),
-  packetResult: document.querySelector("#packetResult"),
-  packetResultTitle: document.querySelector("#packetResultTitle"),
-  packetResultDetail: document.querySelector("#packetResultDetail"),
   setList: document.querySelector("#setList"),
   attendanceSummary: document.querySelector("#attendanceSummary"),
   attendanceList: document.querySelector("#attendanceList"),
   toast: document.querySelector("#toast"),
   downloadPartButton: document.querySelector("#downloadPartButton"),
   downloadMuseScoreButton: document.querySelector("#downloadMuseScoreButton"),
+  downloadAudioButton: document.querySelector("#downloadAudioButton"),
   downloadGigButton: document.querySelector("#downloadGigButton"),
   performanceViewButton: document.querySelector("#performanceViewButton"),
   printScoreButton: document.querySelector("#printScoreButton"),
@@ -383,6 +377,10 @@ function museScoreDownloadFilename(workTitle) {
   return `mbbb_${fileSafeLabel(workTitle)}_full-score.mscz`;
 }
 
+function audioDownloadFilename(workTitle) {
+  return `mbbb_${fileSafeLabel(workTitle)}_canonical-performance.mp3`;
+}
+
 function gigPacketFilename(gig) {
   return `mbbb_${gig.date}_${fileSafeLabel(gig.name)}_${fileSafeLabel(state.selectedPart)}_${fileSafeLabel(formatLabel())}.zip`;
 }
@@ -418,34 +416,14 @@ function renderPartOptions() {
   elements.partField.hidden = choices.length < 2;
 }
 
-function displayAssets(work) {
-  const assets = ["PDF", "MuseScore", "Audio"];
-  if (referencePerformances(work).length > 0) {
-    assets.push("References");
-  }
-  return assets;
-}
-
 function referencePerformances(work) {
   return work.references || [];
-}
-
-function setActionResult(title, detail) {
-  elements.assetResultTitle.textContent = title;
-  elements.assetResultDetail.textContent = detail;
-  elements.assetResult.classList.add("active");
 }
 
 function setScoreResult(title, detail) {
   elements.scoreResultTitle.textContent = title;
   elements.scoreResultDetail.textContent = detail;
   elements.scoreResult.classList.add("active");
-}
-
-function setPacketResult(title, detail) {
-  elements.packetResultTitle.textContent = title;
-  elements.packetResultDetail.textContent = detail;
-  elements.packetResult.classList.add("active");
 }
 
 function openMusicAction(label, workTitle) {
@@ -463,7 +441,6 @@ function openMusicAction(label, workTitle) {
   }
 
   const part = state.selectedPart;
-  const format = formatLabel();
   const actions = {
     Score: {
       title: `Score opened: ${state.selectedSong}`,
@@ -472,14 +449,6 @@ function openMusicAction(label, workTitle) {
     Audio: {
       title: `Playing audio: ${state.selectedSong}`,
       detail: `Canonical performance MP3 is playing in the embedded player for ${state.selectedSong}.`
-    },
-    Part: {
-      title: `PDF ready: ${state.selectedSong}`,
-      detail: `${part} is ready in ${format} format as ${partDownloadFilename(state.selectedSong)}.`
-    },
-    MuseScore: {
-      title: `MuseScore ready: ${state.selectedSong}`,
-      detail: `Full score source is ready as ${museScoreDownloadFilename(state.selectedSong)}.`
     },
     Performance: {
       title: `Score view opened: ${state.selectedSong}`,
@@ -494,7 +463,6 @@ function openMusicAction(label, workTitle) {
   if (label === "Audio") {
     playAudio();
   }
-  setActionResult(action.title, action.detail);
   showToast(action.title);
 }
 
@@ -520,12 +488,6 @@ function renderMusicTile(workTitle, options = {}) {
     state.selectedSong = workTitle;
     renderSongs();
     renderSelectedSong();
-    if (options.context === "gig") {
-      setPacketResult(
-        `Selected from set list: ${workTitle}`,
-        `${state.selectedPart} is selected. Use Score for the page view, Audio for the embedded player, or download the full packet if needed.`
-      );
-    }
   });
   titleWrap.append(titleButton);
 
@@ -546,10 +508,6 @@ function renderMusicTile(workTitle, options = {}) {
 }
 
 function playReferencePerformance(reference) {
-  setActionResult(
-    `Reference playing: ${reference.title}`,
-    `${reference.description} for ${state.selectedSong}.`
-  );
   showToast(`Reference playing: ${state.selectedSong}`);
 }
 
@@ -613,15 +571,10 @@ function renderSelectedSong() {
   elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
-  elements.downloadPartButton.textContent = "Download PDF";
-  elements.downloadMuseScoreButton.textContent = "Download MuseScore";
+  elements.downloadPartButton.textContent = "PDF";
+  elements.downloadMuseScoreButton.textContent = "MuseScore";
+  elements.downloadAudioButton.textContent = "Audio";
   renderReferencePerformances(work);
-  elements.assetTags.innerHTML = "";
-  [...displayAssets(work), "Performance score view"].forEach((asset) => {
-    const tag = document.createElement("span");
-    tag.textContent = asset;
-    elements.assetTags.append(tag);
-  });
   renderScoreView();
 }
 
@@ -733,10 +686,6 @@ function renderGig() {
   });
 
   renderAttendance(gig);
-  setPacketResult(
-    `Packet selected: ${gig.name}`,
-    `${state.selectedPart} packet is ready to review for ${gig.displayDate}.`
-  );
   renderCalendar();
 }
 
@@ -816,10 +765,6 @@ function playAudio() {
     renderAudioPlayer();
   }, 1000);
   renderAudioPlayer();
-  setActionResult(
-    `Playing audio: ${state.selectedSong}`,
-    `Canonical performance MP3 is playing in the embedded player for ${state.selectedPart}.`
-  );
   setScoreResult(
     `Playing audio: ${state.selectedSong}`,
     `Canonical performance MP3 is playing alongside ${state.selectedPart}.`
@@ -831,10 +776,6 @@ function pauseAudio() {
   state.audio.status = "paused";
   stopAudioTimer();
   renderAudioPlayer();
-  setActionResult(
-    `Audio paused: ${state.selectedSong}`,
-    `Playback is paused at ${formatTime(state.audio.position)}.`
-  );
   setScoreResult(
     `Audio paused: ${state.selectedSong}`,
     `Playback is paused at ${formatTime(state.audio.position)}.`
@@ -852,10 +793,6 @@ function toggleAudio() {
 function restartAudio() {
   state.audio.position = 0;
   renderAudioPlayer();
-  setActionResult(
-    `Audio reset: ${state.selectedSong}`,
-    `Playback is back at the beginning of the song.`
-  );
   setScoreResult(
     `Audio reset: ${state.selectedSong}`,
     `Playback is back at the beginning of the song.`
@@ -970,20 +907,20 @@ elements.gigSelect.addEventListener("change", (event) => {
 });
 
 elements.downloadPartButton.addEventListener("click", () => {
-  openMusicAction("Part", state.selectedSong);
+  showToast(`PDF ready: ${partDownloadFilename(state.selectedSong)}`);
 });
 
 elements.downloadMuseScoreButton.addEventListener("click", () => {
-  openMusicAction("MuseScore", state.selectedSong);
+  showToast(`MuseScore ready: ${museScoreDownloadFilename(state.selectedSong)}`);
+});
+
+elements.downloadAudioButton.addEventListener("click", () => {
+  showToast(`Audio ready: ${audioDownloadFilename(state.selectedSong)}`);
 });
 
 elements.downloadGigButton.addEventListener("click", () => {
   const gig = currentGig();
-  setPacketResult(
-    `Packet opened: ${gig.name}`,
-    `${state.selectedPart} packet is assembled as ${gigPacketFilename(gig)} with ${countSetListSongs(gig)} tunes and ${countConfirmed(gig)} confirmed players.`
-  );
-  showToast(`Packet opened: ${gig.name}`);
+  showToast(`Packet ready: ${gigPacketFilename(gig)}`);
 });
 
 elements.performanceViewButton.addEventListener("click", () => {

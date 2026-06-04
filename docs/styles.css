@@ -290,6 +290,23 @@ select:focus, input:focus, button:focus-visible {
   gap: 8px;
 }
 
+.download-section {
+  width: min(100%, 620px);
+  margin-top: 12px;
+}
+
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.download-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .embedded-player {
   display: grid;
   grid-template-columns: auto minmax(160px, 1fr) auto auto;
@@ -422,23 +439,6 @@ select:focus, input:focus, button:focus-visible {
   border-color: rgba(36, 106, 115, 0.48);
 }
 
-.asset-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-bottom: 12px;
-}
-
-.asset-tags span {
-  border: 1px solid rgba(36, 106, 115, 0.24);
-  border-radius: 999px;
-  background: #edf4f3;
-  color: var(--accent-strong);
-  padding: 5px 9px;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
 .action-result {
   margin: 0 0 12px;
   border: 1px solid rgba(36, 106, 115, 0.24);
@@ -455,13 +455,6 @@ select:focus, input:focus, button:focus-visible {
 
 .action-result p:last-child {
   margin-bottom: 0;
-}
-
-.packet-result {
-  margin-bottom: 14px;
-  background: #f7f5ef;
-  border-color: rgba(182, 132, 46, 0.32);
-  border-left-color: var(--brass);
 }
 
 .sheet-frame {
@@ -924,6 +917,7 @@ dd { margin: 3px 0 0; }
   .attendance-summary { justify-content: flex-start; }
   .viewer-actions { justify-content: stretch; }
   .viewer-actions button { flex: 1; }
+  .download-actions button { flex: 1; }
   .embedded-player {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-28">
+    <link rel="stylesheet" href="styles.css?v=20260603-29">
   </head>
   <body>
     <header class="app-header">
@@ -90,23 +90,23 @@
                   <h3 id="referenceHeading">Listen or watch</h3>
                   <div id="referenceList" class="reference-list"></div>
                 </section>
+                <section class="download-section" aria-labelledby="downloadHeading">
+                  <p class="viewer-kicker" id="downloadHeading">Downloads</p>
+                  <div class="download-actions">
+                    <button id="downloadPartButton" class="secondary-action" type="button">PDF</button>
+                    <button id="downloadMuseScoreButton" class="secondary-action" type="button">MuseScore</button>
+                    <button id="downloadAudioButton" class="secondary-action" type="button">Audio</button>
+                  </div>
+                </section>
               </div>
               <label class="part-field">
                 <span>Part</span>
                 <select id="partSelect"></select>
               </label>
               <div class="viewer-actions">
-                <button id="performanceViewButton" class="secondary-action" type="button">Open Score</button>
-                <button id="downloadPartButton" class="primary-action" type="button">Download PDF</button>
-                <button id="downloadMuseScoreButton" class="secondary-action" type="button">Download MuseScore</button>
+                <button id="performanceViewButton" class="primary-action" type="button">Open Score</button>
               </div>
             </div>
-            <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
-            <section id="assetResult" class="action-result" aria-live="polite">
-              <p class="viewer-kicker">Action</p>
-              <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, use the player, Open Score, Download PDF, Download MuseScore, or a reference performance to preview the next step.</p>
-            </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
                 <div class="sheet-title" id="sheetTitle"></div>
@@ -150,11 +150,6 @@
               </div>
               <button id="downloadGigButton" class="primary-action" type="button">Download Packet</button>
             </div>
-            <section id="packetResult" class="action-result packet-result" aria-live="polite">
-              <p class="viewer-kicker">Packet action</p>
-              <h3 id="packetResultTitle">Ready to build packet</h3>
-              <p id="packetResultDetail">Choose a gig, then use the ordered music tiles below or open the full packet.</p>
-            </section>
             <dl class="gig-facts">
               <div>
                 <dt>Location</dt>
@@ -256,6 +251,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-28"></script>
+    <script src="app.js?v=20260603-29"></script>
   </body>
 </html>
