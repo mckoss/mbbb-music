@@ -55,9 +55,9 @@ const partOptions = {
   "Clarinet (B-flat)": ["Clarinet 1 (B-flat)", "Clarinet 2 (B-flat)", "Clarinet 3/4 (B-flat)"],
   "Horn (F)": ["Horn (F)"],
   "Mellophone (F)": ["Mellophone (F)"],
-  "Euphonium / baritone": ["Euphonium", "Euphonium treble clef (B-flat)", "Euphonium bass clef", "Baritone horn"],
-  Trombone: ["Trombone 1", "Trombone 2", "Bass trombone"],
-  "Tuba / sousaphone": ["Tuba", "Sousaphone"],
+  "Euphonium / baritone (B-flat)": ["Euphonium (B-flat)", "Euphonium treble clef (B-flat)", "Euphonium bass clef (B-flat)", "Baritone horn (B-flat)"],
+  "Trombone (B-flat)": ["Trombone 1 (B-flat)", "Trombone 2 (B-flat)", "Bass trombone (B-flat)"],
+  "Tuba / sousaphone (B-flat)": ["Tuba (B-flat)", "Sousaphone (B-flat)"],
   Flute: ["Flute 1", "Flute 2"],
   Melodica: ["Melodica"],
   "Drums / percussion": ["Drum set", "Snare drum", "Bass drum", "Cymbals", "Congas", "Tenor drums", "All percussion"]
@@ -81,8 +81,8 @@ const members = [
   { name: "Tabatha Heiber", instrument: "TBD" },
   { name: "Lance", instrument: "Trumpet (B-flat)" },
   { name: "Amy Petersen", instrument: "Trumpet (B-flat)" },
-  { name: "Bruce Hanson", instrument: "Euphonium" },
-  { name: "Gordon Bainbridge", instrument: "Tuba" },
+  { name: "Bruce Hanson", instrument: "Euphonium (B-flat)" },
+  { name: "Gordon Bainbridge", instrument: "Tuba (B-flat)" },
   { name: "Mike Koss", instrument: "Flugelhorn (B-flat)" },
   { name: "John", instrument: "Soprano sax (B-flat)" },
   { name: "Cole", instrument: "Baritone sax (E-flat)" }

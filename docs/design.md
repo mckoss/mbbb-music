@@ -101,9 +101,9 @@ A part is a playable score for a specific instrument or role.
 ### Instrument Naming
 
 Instrument and part labels should come from the imported part filenames where
-possible, then be normalized for the player-facing picker. Transposing instruments
-should include their key in the visible name instead of using a generic family
-label.
+possible, then be normalized for the player-facing picker. The picker should
+include default instrument tuning in the visible name, except for drums/percussion
+and concert-pitch C instruments where a suffix would add noise.
 
 A Drive sample of five tune bundles, including Track Suit and Iron Man, found
 these useful part labels across the PDF filenames:
@@ -131,9 +131,9 @@ Initial player-facing instrument options:
 - Clarinet (B-flat)
 - Horn (F)
 - Mellophone (F)
-- Euphonium / baritone
-- Trombone
-- Tuba / sousaphone
+- Euphonium / baritone (B-flat)
+- Trombone (B-flat)
+- Tuba / sousaphone (B-flat)
 - Flute
 - Melodica
 - Drums / percussion
