@@ -47,20 +47,27 @@ const works = [
 const songs = works.map((work) => work.title);
 
 const partOptions = {
-  Trumpet: ["Trumpet 1", "Trumpet 2", "Trumpet 3"],
-  Euphonium: ["Euphonium treble clef", "Euphonium bass clef", "Baritone"],
-  Tuba: ["Tuba", "Sousaphone"],
-  "Baritone sax": ["Baritone sax"],
-  Saxophone: ["Alto sax 1", "Alto sax 2", "Tenor sax"],
+  "Trumpet (B-flat)": ["Trumpet 1 (B-flat)", "Trumpet 2 (B-flat)", "Trumpet 3 (B-flat)", "Trumpet 4 (B-flat)"],
+  "Alto saxophone (E-flat)": ["Alto saxophone 1 (E-flat)", "Alto saxophone 2 (E-flat)", "Alto saxophone 3/4 (E-flat)"],
+  "Tenor saxophone (B-flat)": ["Tenor saxophone (B-flat)"],
+  "Baritone saxophone (E-flat)": ["Baritone saxophone (E-flat)"],
+  "Soprano saxophone (B-flat)": ["Soprano saxophone (B-flat)"],
+  "Clarinet (B-flat)": ["Clarinet 1 (B-flat)", "Clarinet 2 (B-flat)", "Clarinet 3/4 (B-flat)"],
+  "Horn (F)": ["Horn (F)"],
+  "Mellophone (F)": ["Mellophone (F)"],
+  "Euphonium / baritone": ["Euphonium", "Euphonium treble clef (B-flat)", "Euphonium bass clef", "Baritone horn"],
   Trombone: ["Trombone 1", "Trombone 2", "Bass trombone"],
-  Drums: ["Drum set", "Snare", "Bass drum"]
+  "Tuba / sousaphone": ["Tuba", "Sousaphone"],
+  Flute: ["Flute 1", "Flute 2"],
+  Melodica: ["Melodica"],
+  "Drums / percussion": ["Drum set", "Snare drum", "Bass drum", "Cymbals", "Congas", "Tenor drums", "All percussion"]
 };
 
 const members = [
   { name: "David Stern", instrument: "Drum / Leader" },
-  { name: "Tracy Bender", instrument: "Sax" },
+  { name: "Tracy Bender", instrument: "Saxophone" },
   { name: "Rickey Barnett", instrument: "TBD" },
-  { name: "Curtis Price", instrument: "Sax" },
+  { name: "Curtis Price", instrument: "Saxophone" },
   { name: "Robert Coale", instrument: "TBD" },
   { name: "Lynne Burrows", instrument: "Harmonium" },
   { name: "Steve Buff", instrument: "Drums" },
@@ -72,13 +79,13 @@ const members = [
   { name: "Joseph Katzinger", instrument: "Horn" },
   { name: "Steve Tarr", instrument: "TBD" },
   { name: "Tabatha Heiber", instrument: "TBD" },
-  { name: "Lance", instrument: "Trumpet" },
-  { name: "Amy Petersen", instrument: "Trumpet" },
+  { name: "Lance", instrument: "Trumpet (B-flat)" },
+  { name: "Amy Petersen", instrument: "Trumpet (B-flat)" },
   { name: "Bruce Hanson", instrument: "Euphonium" },
   { name: "Gordon Bainbridge", instrument: "Tuba" },
-  { name: "Mike Koss", instrument: "Flugelhorn" },
+  { name: "Mike Koss", instrument: "Flugelhorn (B-flat)" },
   { name: "John", instrument: "Soprano sax (B-flat)" },
-  { name: "Cole", instrument: "Baritone sax" }
+  { name: "Cole", instrument: "Baritone sax (E-flat)" }
 ];
 
 const rosterConfirmedYes = new Set([
@@ -179,7 +186,7 @@ const gigs = [
 const state = {
   selectedSong: songs[0],
   selectedGigId: "south-whidbey-pride",
-  selectedPart: partOptions.Trumpet[0],
+  selectedPart: partOptions["Trumpet (B-flat)"][0],
   printFormat: "letter",
   audio: {
     status: "paused",

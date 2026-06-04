@@ -98,6 +98,46 @@ A part is a playable score for a specific instrument or role.
 - Availability status for each user-facing asset: score, part PDF, performance
   view, and practice audio
 
+### Instrument Naming
+
+Instrument and part labels should come from the imported part filenames where
+possible, then be normalized for the player-facing picker. Transposing instruments
+should include their key in the visible name instead of using a generic family
+label.
+
+A Drive sample of five tune bundles, including Track Suit and Iron Man, found
+these useful part labels across the PDF filenames:
+
+- Track Suit: Alto saxophone, Euphonium, Trumpet
+- Iron Man: Alto saxophone, Baritone saxophone, Drum set, Euphonium, Melodica,
+  Soprano saxophone, Tenor saxophone, Trombone, Trumpet, Tuba
+- Moliendo Cafe: Alto saxophone, Baritone saxophone, Bass drums, Clarinet in
+  B-flat, Congas, Drumset, Euphonium, Flute, Horn in F, Tenor saxophone,
+  Trombone, Trumpet in B-flat, Tuba
+- Matador: Alto saxophone, Baritone horn, Baritone saxophone, Bass drum,
+  Clarinet in B-flat, Flute, Marching tenor drums, Mellophone, Snare drum,
+  Tenor saxophone, Trombone, Trumpet in B-flat, Tuba
+- Hot to Go: Alto saxophone, Baritone saxophone, Bass drums, Cymbals,
+  Euphonium, Melodica, Snare drum, Sousaphone, Tenor drums, Tenor saxophone,
+  Trombone, Trumpet
+
+Initial player-facing instrument options:
+
+- Trumpet (B-flat)
+- Alto saxophone (E-flat)
+- Tenor saxophone (B-flat)
+- Baritone saxophone (E-flat)
+- Soprano saxophone (B-flat)
+- Clarinet (B-flat)
+- Horn (F)
+- Mellophone (F)
+- Euphonium / baritone
+- Trombone
+- Tuba / sousaphone
+- Flute
+- Melodica
+- Drums / percussion
+
 ### Asset
 
 An asset is a physical file.
