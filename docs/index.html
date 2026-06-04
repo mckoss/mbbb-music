@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-6">
+    <link rel="stylesheet" href="styles.css?v=20260603-7">
   </head>
   <body>
     <header class="app-header">
@@ -137,13 +137,27 @@
                 <dd id="gigNotes"></dd>
               </div>
             </dl>
-            <ol id="setList" class="set-list"></ol>
+            <div class="gig-section-heading">
+              <div>
+                <p class="viewer-kicker">Set list</p>
+                <h3>Performance order</h3>
+              </div>
+            </div>
+            <div id="setList" class="set-list"></div>
+            <div class="gig-section-heading attendance-heading">
+              <div>
+                <p class="viewer-kicker">Roster</p>
+                <h3>Attendance responses</h3>
+              </div>
+              <div id="attendanceSummary" class="attendance-summary" aria-label="Attendance response summary"></div>
+            </div>
+            <div id="attendanceList" class="attendance-list" aria-label="Gig attendance"></div>
           </section>
         </div>
       </section>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-6"></script>
+    <script src="app.js?v=20260603-7"></script>
   </body>
 </html>

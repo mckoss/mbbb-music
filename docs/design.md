@@ -172,7 +172,7 @@ Attendance records each member's availability for a gig.
 
 - Gig reference
 - Member reference
-- Response: yes, no, maybe, unknown
+- Response: no response, confirmed yes, confirmed no
 - Instrument / part for this gig
 - Optional comment
 - Updated time
@@ -358,11 +358,12 @@ Recommended initial access model:
 ### Gig View
 
 - Shows gig date, venue, address, arrival time, performance time, and notes.
-- Shows ordered set list.
+- Shows ordered set list, including set breaks such as Set One and Set Two.
 - Filters music to the signed-in member's instrument and part by default.
 - Offers print/download actions for the full gig packet or the member's packet.
 - Shows the member's attendance response and lets them update it.
-- For leaders/admins, shows attendance by player name and instrument.
+- For leaders/admins, shows attendance by player name, instrument, and response
+  state: no response, confirmed yes, or confirmed no.
 
 ### Admin View
 
@@ -377,6 +378,7 @@ Recommended initial access model:
 - Create and edit gigs.
 - Build ordered set lists from the catalog of practiced works.
 - See attendance summary by name, instrument, and response.
+- Track roster status counts for no response, confirmed yes, and confirmed no.
 - Manage members, roles, and default instruments.
 
 ### Future Performance View

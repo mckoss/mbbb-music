@@ -425,18 +425,53 @@ dt {
 
 dd { margin: 3px 0 0; }
 
-.set-list {
-  display: grid;
-  gap: 9px;
-  margin: 0;
-  padding-left: 28px;
+.gig-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 10px;
 }
 
-.set-list li {
+.gig-section-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.attendance-heading {
+  align-items: center;
+}
+
+.set-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.set-section {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fbfaf6;
-  padding: 11px 12px;
+  padding: 12px;
+}
+
+.set-section h4 {
+  margin: 0 0 8px;
+  color: var(--brass);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.set-section ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 24px;
+}
+
+.set-section li {
+  padding: 4px 0;
 }
 
 .set-list button {
@@ -446,6 +481,96 @@ dd { margin: 3px 0 0; }
   padding: 0;
   font-weight: 800;
   text-align: left;
+}
+
+.attendance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.attendance-count, .status-pill {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.attendance-count {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 6px 9px;
+}
+
+.attendance-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+}
+
+.attendance-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 6px;
+  background: #fbfaf6;
+  padding: 10px 11px;
+}
+
+.attendance-card div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attendance-card strong,
+.attendance-card span:not(.status-pill) {
+  overflow-wrap: anywhere;
+}
+
+.attendance-card strong {
+  font-size: 0.92rem;
+}
+
+.attendance-card span:not(.status-pill) {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.attendance-card.yes { border-left-color: var(--accent); }
+.attendance-card.pending { border-left-color: var(--brass); }
+.attendance-card.no { border-left-color: var(--rose); }
+
+.status-pill {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+}
+
+.status-pill.yes, .attendance-count.yes {
+  background: #e5f2ef;
+  color: #12564d;
+}
+
+.status-pill.pending, .attendance-count.pending {
+  background: #fbf1dc;
+  color: #765013;
+}
+
+.status-pill.no, .attendance-count.no {
+  background: #fdebea;
+  color: #8a3035;
+}
+
+.empty-state {
+  margin: 0;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 12px;
 }
 
 .toast {
@@ -469,7 +594,7 @@ dd { margin: 3px 0 0; }
 }
 
 @media (max-width: 980px) {
-  .app-header, .brand-lockup, .pane-header, .viewer-toolbar, .gig-summary {
+  .app-header, .brand-lockup, .pane-header, .viewer-toolbar, .gig-summary, .gig-section-heading {
     align-items: stretch;
     flex-direction: column;
   }
@@ -480,6 +605,7 @@ dd { margin: 3px 0 0; }
   .split-layout, .gig-layout { grid-template-columns: 1fr; }
   .song-list { max-height: none; }
   .gig-facts { grid-template-columns: 1fr; }
+  .attendance-summary { justify-content: flex-start; }
   .viewer-actions { justify-content: stretch; }
   .viewer-actions button { flex: 1; }
 }

@@ -56,6 +56,53 @@ const partOptions = {
   Drums: ["Drum set", "Snare", "Bass drum"]
 };
 
+const members = [
+  { name: "David Stern", instrument: "Drum / Leader" },
+  { name: "Tracy Bender", instrument: "Sax" },
+  { name: "Rickey Barnett", instrument: "TBD" },
+  { name: "Curtis Price", instrument: "Sax" },
+  { name: "Robert Coale", instrument: "TBD" },
+  { name: "Lynne Burrows", instrument: "Harmonium" },
+  { name: "Steve Buff", instrument: "Drums" },
+  { name: "Jan Shannon", instrument: "TBD" },
+  { name: "Siobhan Wright", instrument: "Cymbals" },
+  { name: "Joe Greenheron", instrument: "TBD" },
+  { name: "Mark Cassidy", instrument: "Drums" },
+  { name: "Bob Tearse", instrument: "TBD" },
+  { name: "Joseph Katzinger", instrument: "Horn" },
+  { name: "Steve Tarr", instrument: "TBD" },
+  { name: "Tabatha Heiber", instrument: "TBD" },
+  { name: "Lance", instrument: "Trumpet" },
+  { name: "Amy Petersen", instrument: "Trumpet" },
+  { name: "Bruce Hanson", instrument: "Euphonium" },
+  { name: "Gordon Bainbridge", instrument: "Tuba" },
+  { name: "Mike Koss", instrument: "Flugelhorn" },
+  { name: "John", instrument: "Soprano sax (B-flat)" },
+  { name: "Cole", instrument: "Baritone sax" }
+];
+
+const rosterConfirmedYes = new Set([
+  "David Stern",
+  "Mark Cassidy",
+  "Steve Buff",
+  "Jan Shannon",
+  "Bruce Hanson",
+  "Amy Petersen",
+  "Lynne Burrows",
+  "Tracy Bender",
+  "Joseph Katzinger",
+  "John",
+  "Bob Tearse",
+  "Bruce Dewing",
+  "Mike Koss"
+]);
+
+const attendanceStates = {
+  yes: "Confirmed yes",
+  no: "Confirmed no",
+  pending: "No response"
+};
+
 const gigs = [
   {
     id: "pride-picnic",
@@ -90,8 +137,21 @@ const gigs = [
     address: "Langley, WA",
     arrival: "TBD by gig leader",
     performance: "12:00 PM - 3:00 PM",
-    notes: "South Whidbey Pride Parade and Festival. Source: mutinybaybrassband.com.",
-    setList: ["Soulful Strut", "Moliendo Cafe", "Bella Ciao", "Ring of Fire", "Rock Lobster"]
+    notes: "Sample packet with confirmed roster and two-set performance order.",
+    setList: [
+      {
+        name: "Set One",
+        songs: ["Rock Anthem", "Iko Iko", "Get Lucky", "Feel Like Funkin It Up", "Jump in the Line", "Iron Man", "Montserrat Serrat", "Bella Ciao"]
+      },
+      {
+        name: "Set Two",
+        songs: ["Track Suit By Bruce", "Thriller", "Matador", "SAIL (Meute)", "Hot to Go", "Moliendo Cafe", "Hava Negila"]
+      }
+    ],
+    attendance: members.map((member) => ({
+      ...member,
+      status: rosterConfirmedYes.has(member.name) ? "yes" : "pending"
+    })).concat([{ name: "Bruce Dewing", instrument: "TBD", status: "yes" }])
   },
   {
     id: "freeland-library-family-festival",
@@ -109,7 +169,7 @@ const gigs = [
 
 const state = {
   selectedSong: songs[0],
-  selectedGigId: gigs[0].id,
+  selectedGigId: "south-whidbey-pride",
   selectedPart: partOptions.Trumpet[0],
   search: ""
 };
@@ -135,6 +195,8 @@ const elements = {
   gigArrival: document.querySelector("#gigArrival"),
   gigNotes: document.querySelector("#gigNotes"),
   setList: document.querySelector("#setList"),
+  attendanceSummary: document.querySelector("#attendanceSummary"),
+  attendanceList: document.querySelector("#attendanceList"),
   toast: document.querySelector("#toast"),
   downloadPartButton: document.querySelector("#downloadPartButton"),
   downloadGigButton: document.querySelector("#downloadGigButton"),
@@ -316,22 +378,89 @@ function renderGig() {
   elements.gigNotes.textContent = gig.notes;
   elements.setList.innerHTML = "";
 
-  gig.setList.forEach((song) => {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = song;
-    button.addEventListener("click", () => {
-      state.selectedSong = song;
-      document.querySelector('[data-view="libraryView"]').click();
-      renderSongs();
-      renderSelectedSong();
+  const sections = Array.isArray(gig.setList?.[0]?.songs)
+    ? gig.setList
+    : [{ name: "Packet", songs: gig.setList || [] }];
+
+  sections.forEach((section) => {
+    const sectionBlock = document.createElement("section");
+    sectionBlock.className = "set-section";
+    const title = document.createElement("h4");
+    title.textContent = section.name;
+    const list = document.createElement("ol");
+
+    section.songs.forEach((song) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = song;
+      button.addEventListener("click", () => {
+        selectSong(song);
+        document.querySelector('[data-view="libraryView"]').click();
+        renderSongs();
+        renderSelectedSong();
+      });
+      item.append(button, ` - ${state.selectedPart}`);
+      list.append(item);
     });
-    item.append(button, ` - ${state.selectedPart}`);
-    elements.setList.append(item);
+
+    sectionBlock.append(title, list);
+    elements.setList.append(sectionBlock);
   });
 
+  renderAttendance(gig);
   renderCalendar();
+}
+
+function renderAttendance(gig) {
+  const roster = gig.attendance || [];
+  const counts = {
+    yes: roster.filter((person) => person.status === "yes").length,
+    pending: roster.filter((person) => person.status === "pending").length,
+    no: roster.filter((person) => person.status === "no").length
+  };
+
+  elements.attendanceSummary.innerHTML = "";
+  ["yes", "pending", "no"].forEach((status) => {
+    const chip = document.createElement("span");
+    chip.className = `attendance-count ${status}`;
+    chip.textContent = `${attendanceStates[status]}: ${counts[status]}`;
+    elements.attendanceSummary.append(chip);
+  });
+
+  elements.attendanceList.innerHTML = "";
+  roster.forEach((person) => {
+    const item = document.createElement("div");
+    item.className = `attendance-card ${person.status}`;
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = person.name;
+    const instrument = document.createElement("span");
+    instrument.textContent = person.instrument;
+    const status = document.createElement("span");
+    status.className = `status-pill ${person.status}`;
+    status.textContent = attendanceStates[person.status];
+
+    details.append(name, instrument);
+    item.append(details, status);
+    elements.attendanceList.append(item);
+  });
+
+  if (!roster.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No roster responses attached to this sample gig yet.";
+    elements.attendanceList.append(empty);
+  }
+}
+
+function selectSong(song) {
+  const matchingWork = works.find((work) => work.title === song);
+  if (matchingWork) {
+    state.selectedSong = matchingWork.title;
+  } else {
+    state.selectedSong = song;
+  }
 }
 
 function showToast(message) {
