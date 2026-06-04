@@ -1,5 +1,23 @@
 const works = [
-  { title: "Bad Guy", modified: "2025-11-16", assets: ["PDF parts"] },
+  {
+    title: "Bad Guy",
+    modified: "2025-11-16",
+    assets: ["PDF parts"],
+    references: [
+      {
+        type: "youtube",
+        title: "Billie Eilish reference video",
+        description: "Original recording reference",
+        url: "https://www.youtube.com/results?search_query=Billie+Eilish+Bad+Guy"
+      },
+      {
+        type: "mp3",
+        title: "Band reference performance",
+        description: "Uploaded MP3 reference performance",
+        url: "#bad-guy-band-reference"
+      }
+    ]
+  },
   { title: "Baile Inolvidable", modified: "2026-02-17", assets: ["PDF parts"] },
   { title: "Bella Ciao", modified: "2026-02-02", assets: ["PDF parts"] },
   { title: "Bumper to Bumper", modified: "2025-11-16", assets: ["PDF parts"] },
@@ -401,7 +419,11 @@ function renderPartOptions() {
 }
 
 function displayAssets(work) {
-  return ["PDF", "MuseScore", "Audio"];
+  const assets = ["PDF", "MuseScore", "Audio"];
+  if (referencePerformances(work).length > 0) {
+    assets.push("References");
+  }
+  return assets;
 }
 
 function referencePerformances(work) {
