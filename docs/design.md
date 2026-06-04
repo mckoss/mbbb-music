@@ -2,10 +2,11 @@
 
 ## Problem
 
-Mutiny Bay Brass Band has a useful but unwieldy music library spread across two
-Google Drive folders. The folders contain overlapping sheet music, MuseScore files,
-MP3 practice tracks, and possibly MIDI files. Band members need different slices of
-the same library:
+Mutiny Bay Brass Band has a useful but unwieldy music library currently sitting in
+Google Drive. That location is an import artifact, not the long-term product model.
+The future app should own a catalog and app-managed file storage for sheet music,
+MuseScore files, MP3 practice tracks, and possibly MIDI files. Band members need
+different slices of the same library:
 
 - iPad/tablet users want an offline folder or web/PWA experience.
 - Paper users want printable PDFs.
@@ -21,13 +22,14 @@ The first project goal is to design a catalog and sync system, not write code ye
 
 - Build a public GitHub project for the software and design.
 - Keep the actual music files private unless the band explicitly decides otherwise.
-- Scan the existing Google Drive folders and produce a deduplicated catalog.
-- Track title, arrangement, source file, instrument, part, output format, and audio
-  availability.
+- Import the existing music files into an app-owned catalog and storage system.
+- Track title, arrangement, source asset, instrument, part, output format, and
+  audio availability.
 - Let a musician download a ready-to-use package for their instrument.
 - Treat iPad/tablet field use as a primary target: large touch controls,
   outdoor-readable performance views, and offline-ready packets.
-- Let an admin add files through Drive or a future web interface.
+- Let an admin add files through Drive, local upload, bulk filesystem import, or a
+  future web interface.
 - Let a band leader or member create a gig with date, address, schedule details,
   ordered set list, and attendance tracking.
 - Let players view or print music in gig set-list order for their own instrument.
@@ -37,7 +39,8 @@ The first project goal is to design a catalog and sync system, not write code ye
 
 ## Non-Goals For The First Pass
 
-- Do not rewrite or reorganize the Drive folders by hand.
+- Do not treat the current Drive organization as a user-facing information
+  architecture.
 - Do not assume every tune has a clean MuseScore master.
 - Do not publish copyrighted PDFs, MP3s, or score files in this public repository.
 - Do not build a full performance viewer until the catalog and packet workflow are
@@ -77,7 +80,7 @@ Some tunes may have multiple arrangements or revisions.
 - Version label
 - Source authority: MuseScore master, PDF set, scanned image, manual upload
 - Revision date
-- Source folder/file references
+- Source asset references
 - Build status
 
 ### Part
@@ -89,7 +92,7 @@ A part is a playable score for a specific instrument or role.
 - Instrument
 - Part label, such as Trumpet 1, Trumpet 2, Trombone, Tuba, Drum, Conductor
 - Transposition/key, if useful
-- Source file reference
+- Source asset reference
 - Generated output references
 - Print recipes available
 - Availability status for each user-facing asset: score, part PDF, tablet view,
@@ -100,8 +103,10 @@ A part is a playable score for a specific instrument or role.
 An asset is a physical file.
 
 - Type: MuseScore, PDF, MP3, MIDI, image, other
-- Storage location: Google Drive, private object store, generated cache
-- Drive file id, if applicable
+- App-managed storage location: local filesystem, private object store, or
+  generated cache
+- Import provenance, if useful: original filename, original folder, Drive file id,
+  upload batch, or importer job id
 - Checksum
 - Size
 - Modified time
@@ -200,39 +205,47 @@ wind, gloves, stands, and unreliable connectivity matter.
 
 ## Source Strategy
 
-### Google Drive As Intake Source
+### Import Sources
 
-The initial source of truth is the existing Drive folder pair. A sync worker should
-poll the Drive API on a schedule, record file ids and revisions, and create import
-queue entries when files appear or change.
+Google Drive is only the current place where the files happen to live. The product
+should treat Drive, local filesystem folders, manual uploads, and future bulk import
+jobs as equivalent intake sources.
 
-The importer should avoid destructive behavior:
+After import, the durable source of truth should be the app catalog plus
+app-managed storage. Original Drive paths, folder structure, and file ids can be
+kept as provenance for debugging or re-imports, but they should not define the
+library identity and should not appear in performer workflows.
 
-- Never delete source Drive files.
-- Never rename source Drive files in the first pass.
-- Identify duplicates by checksum, Drive id, normalized title, and file metadata.
+The importer should avoid destructive behavior against any external source:
+
+- Never delete original source files during import.
+- Never rename original source files during import.
+- Identify duplicates by checksum, normalized title, embedded metadata, import
+  batch, and optional source-specific ids such as Drive file ids.
+- Copy accepted files into app-managed local storage or private object storage.
 - Let an admin resolve ambiguous matches in the web UI later.
 
-### App Catalog As Metadata Source
+### App Catalog And Storage As Source Of Truth
 
-Drive is good at storing files but weak at domain metadata. The app should own the
-catalog metadata in a database:
+The app should own the catalog metadata and canonical asset locations:
 
 - Tune grouping
 - Instrument and part mapping
 - Output recipe availability
 - Human decisions about duplicates
 - Current / archived state
+- Canonical storage path or object key for each accepted asset
 
-This means Drive remains the music-file inbox, while the app becomes the library
-index.
+This means Drive is just one possible music-file inbox. The app becomes the
+library, and runtime links should point to app-managed music or audio assets rather
+than original Drive locations.
 
 ### Out-of-Band Uploads
 
-The web UI can later upload files directly into an import queue. Those uploads
-should use the same asset model as Drive imports. The app can optionally mirror
-accepted uploads back into a canonical Drive folder, but that should be a phase-two
-decision.
+The web UI can later upload files directly into an import queue. Bulk filesystem
+imports should use the same asset model as Drive imports. The app can optionally
+record external provenance or mirror accepted uploads elsewhere, but that should be
+a separate archival decision rather than the core storage model.
 
 ## MuseScore Automation
 
@@ -281,19 +294,20 @@ or failed.
 
 - Web app: catalog UI, gig/set-list UI, attendance UI, download endpoints, admin
   review screens.
-- Worker: Drive sync, import classification, duplicate detection, output builds.
+- Worker: import jobs, classification, duplicate detection, output builds.
 - Database: Railway Postgres for catalog metadata and job state.
-- Private file storage: Google Drive and/or object storage for source assets and
-  generated artifacts.
+- Private file storage: app-managed local filesystem or object storage for source
+  assets and generated artifacts.
 
 ### Suggested Stack
 
 - TypeScript web app, likely SvelteKit or a small Node/Express app.
 - Postgres with a migration tool.
-- Google Drive API for sync.
+- Google Drive API only as one optional importer.
 - Google OAuth for sign-in.
 - DB-backed job queue initially, with a separate Railway worker process.
-- Object storage for generated zips/PDFs if Drive is not a good cache target.
+- Object storage for app-owned music, audio, generated zips, and PDFs when local
+  filesystem storage is not enough.
 - Dockerfile if MuseScore CLI becomes part of the production build path.
 
 ### Deployment Shape
@@ -303,8 +317,8 @@ Railway project:
 - `web`: serves the UI and download requests.
 - `worker`: scheduled or always-on import/build worker.
 - `postgres`: metadata.
-- environment variables for Google OAuth, Drive credentials, storage credentials,
-  session secret, and admin/member access configuration.
+- environment variables for Google OAuth, optional importer credentials, storage
+  credentials, session secret, and admin/member access configuration.
 
 ## Access And Privacy
 
@@ -352,7 +366,7 @@ Recommended initial access model:
 
 ### Admin View
 
-- See new Drive imports.
+- See new import jobs from Drive, filesystem, or upload sources.
 - Match files to existing tunes.
 - Create a tune/arrangement/part from imported files.
 - Resolve duplicates.
@@ -401,12 +415,12 @@ Requirements to explore:
 
 | Decision | Option A | Option B | Recommendation |
 |---|---|---|---|
-| Source of truth | Drive folders | App database | Drive for files, app database for metadata |
+| Source of truth | External folders | App catalog plus app-managed storage | App catalog/storage; external sources only feed imports |
 | Music assets in repo | Store files in GitHub | Keep files private | Keep public repo code/docs only |
 | Generated outputs | Pre-generate and cache | Generate on demand | Cache outputs; rebuild on source/recipe changes |
 | MuseScore dependency | Required from day one | Optional build worker | Optional until source quality is known |
 | UI scope | Downloads first | Full performance viewer | Downloads first, PWA later |
-| Upload path | Drive only | Drive plus web upload | Drive first, web upload later through same import queue |
+| Upload path | Drive only | Drive, filesystem, and web upload | Common import queue for all sources |
 | Gig workflow | Music catalog only | Gigs, set lists, and attendance | Include in backlog now; build after catalog basics |
 | Transposition | Manual arranging | Automatic instrument-aware generation | Future feature after source quality and review workflow are proven |
 | Auth | Public links | Google account member/admin access | Google OAuth with allowlist/roles |
@@ -415,8 +429,8 @@ Requirements to explore:
 
 ### Phase 0: Inventory And Design
 
-- Identify the two Drive folder ids.
-- Export a read-only inventory of files.
+- Identify the current import sources, including any Drive folders.
+- Export a read-only inventory of files for import planning.
 - Define canonical instrument and part names.
 - Define initial metadata schema.
 - Decide first target output: likely per-instrument zip.
@@ -425,11 +439,11 @@ Requirements to explore:
 
 - Google OAuth login with an admin/member role model.
 - Member profiles with name, email, instrument, and default part.
-- Sync Drive metadata.
+- Import files into app-managed storage.
 - Detect duplicates.
 - Manually classify tunes, arrangements, parts, and audio.
 - Browse/search catalog.
-- Download source files by instrument.
+- Download app-stored music assets by instrument and part.
 
 ### Phase 2: Packet Builder
 
@@ -472,7 +486,7 @@ Requirements to explore:
 
 ## Open Questions
 
-- What are the two current Google Drive folder ids?
+- What are the current import sources, including any Google Drive folders?
 - Which Google accounts/email domains should be allowed at launch?
 - Who should have admin rights to create gigs, manage set lists, and view
   attendance?
@@ -488,13 +502,15 @@ Requirements to explore:
 - Which transposition pairs matter most, such as C to B-flat, B-flat euphonium to
   E-flat alto horn, or other common substitutions?
 - Who should review and approve generated transposed parts before players use them?
-- Should the app ever write back into Drive, or only read from Drive and store
-  generated outputs elsewhere?
+- Should Drive provenance be retained indefinitely, or only until import quality is
+  verified?
+- Should the first app-managed storage target be Railway volume storage, S3-style
+  object storage, or another private file store?
 - What is the copyright/licensing position for member-only distribution?
 
 ## Near-Term Design Tasks
 
-- Add Drive folder ids and an example inventory.
+- Add current import-source ids/paths and an example inventory.
 - Draft the database schema.
 - Draft the import matching rules.
 - Draft gig, set-list, member, and attendance schemas.
