@@ -6,7 +6,8 @@ The goal is to turn the band's sheet-music collection into a searchable,
 instrument-aware catalog that can produce useful packets for practice and
 performance: PDFs, audio, set lists, and per-player downloads. The files currently
 live in Google Drive, but the product should import them into app-owned storage
-instead of treating Drive paths as permanent library structure.
+instead of treating Drive paths or original filenames as permanent library
+structure. Player downloads should use standardized app-generated filenames.
 
 This repository is public and should contain only code, documentation, schemas, and
 sample fixtures that are safe to publish. The actual band music library, generated

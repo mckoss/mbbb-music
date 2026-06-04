@@ -297,6 +297,26 @@ function formatUseNote() {
   return "8.5 x 11 PDF or image for paper and iPad use";
 }
 
+function fileSafeLabel(value) {
+  return value
+    .toLowerCase()
+    .replace(/\(b-flat\)/g, "bb")
+    .replace(/\(e-flat\)/g, "eb")
+    .replace(/\(f\)/g, "f")
+    .replace(/8\.5 x 11/g, "letter")
+    .replace(/7 x 5 lyre/g, "7x5-lyre")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function partDownloadFilename(workTitle) {
+  return `mbbb_${fileSafeLabel(workTitle)}_${fileSafeLabel(state.selectedPart)}_${fileSafeLabel(formatLabel())}.pdf`;
+}
+
+function gigPacketFilename(gig) {
+  return `mbbb_${gig.date}_${fileSafeLabel(gig.name)}_${fileSafeLabel(state.selectedPart)}_${fileSafeLabel(formatLabel())}.zip`;
+}
+
 function formatTime(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
@@ -369,7 +389,7 @@ function openMusicAction(label, workTitle) {
     },
     Part: {
       title: `Part opened: ${state.selectedSong}`,
-      detail: `${part} is ready in ${format} format.`
+      detail: `${part} is ready in ${format} format as ${partDownloadFilename(state.selectedSong)}.`
     },
     Performance: {
       title: `Score view opened: ${state.selectedSong}`,
@@ -770,7 +790,7 @@ elements.downloadGigButton.addEventListener("click", () => {
   const gig = currentGig();
   setPacketResult(
     `Packet opened: ${gig.name}`,
-    `${state.selectedPart} packet is assembled in ${formatLabel()} format with ${countSetListSongs(gig)} tunes and ${countConfirmed(gig)} confirmed players.`
+    `${state.selectedPart} packet is assembled as ${gigPacketFilename(gig)} with ${countSetListSongs(gig)} tunes and ${countConfirmed(gig)} confirmed players.`
   );
   showToast(`Packet opened: ${gig.name}`);
 });

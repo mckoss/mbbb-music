@@ -260,6 +260,12 @@ app-managed storage. Original Drive paths, folder structure, and file ids can be
 kept as provenance for debugging or re-imports, but they should not define the
 library identity and should not appear in performer workflows.
 
+Original source filenames should also stay hidden from players. During
+synchronization, the importer can parse messy Drive filenames to infer tune,
+instrument, part, and source provenance, but accepted assets should receive
+canonical app filenames or object keys. Downloaded parts and packets should be
+named by normalized app metadata, not by the original Drive filename.
+
 The importer should avoid destructive behavior against any external source:
 
 - Never delete original source files during import.
@@ -279,10 +285,12 @@ The app should own the catalog metadata and canonical asset locations:
 - Human decisions about duplicates
 - Current / archived state
 - Canonical storage path or object key for each accepted asset
+- Canonical download filename pattern for each generated part, score, audio, or
+  packet artifact
 
 This means Drive is just one possible music-file inbox. The app becomes the
 library, and runtime links should point to app-managed music or audio assets rather
-than original Drive locations.
+than original Drive locations or original Drive filenames.
 
 ### Out-of-Band Uploads
 
@@ -399,6 +407,8 @@ detail/result area rather than leaving users to guess which controls are active.
   selected gig set list.
 - See music actions such as score, part, and audio instead of Drive file/folder
   implementation details.
+- Download files with standardized app-generated filenames instead of original
+  Drive filenames.
 - Download all current music for that instrument.
 - Download a set-list packet.
 - Open a gig and view the ordered set list.
@@ -527,6 +537,8 @@ Requirements to explore:
 - Include PDFs and MP3 practice tracks.
 - Add set-list packet support.
 - Cache artifacts with checksums.
+- Use a canonical filename recipe for generated downloads, such as app prefix,
+  gig or tune identity, instrument/part, and output format.
 
 ### Phase 3: Gig Backlog
 
