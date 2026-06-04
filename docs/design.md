@@ -43,8 +43,8 @@ The first project goal is to design a catalog and sync system, not write code ye
   architecture.
 - Do not assume every tune has a clean MuseScore master.
 - Do not publish copyrighted PDFs, MP3s, or score files in this public repository.
-- Do not build a full performance viewer until the catalog and packet workflow are
-  proven.
+- Do not build the production performance viewer until the catalog and packet
+  workflow are proven.
 - Do not build automatic transposition until source quality, instrument mappings,
   and generated-output workflows are proven.
 
@@ -95,8 +95,8 @@ A part is a playable score for a specific instrument or role.
 - Source asset reference
 - Generated output references
 - Print recipes available
-- Availability status for each user-facing asset: score, part PDF, tablet view,
-  and practice audio
+- Availability status for each user-facing asset: score, part PDF, performance
+  view, and practice audio
 
 ### Asset
 
@@ -119,7 +119,6 @@ An output recipe defines what the system can build.
 
 - Letter PDF, 8.5x11
 - Lyre PDF, 7x5
-- Tablet PDF
 - iPad/tablet performance view
 - Per-instrument zip
 - Section zip
@@ -185,7 +184,12 @@ wind, gloves, stands, and unreliable connectivity matter.
 
 ### Tablet Requirements
 
-- Provide a tablet-optimized gig packet for each player and instrument.
+- Treat tablet use as a viewing and interaction context, not as a separate paper
+  size.
+- Use the 8.5x11 PDF/image output for iPad display unless a future source calls
+  for a different aspect ratio.
+- Provide a performance score view for each player and instrument.
+- Include a print action with output choices such as 8.5x11 and 7x5 lyre.
 - Keep controls large enough for quick stage use.
 - Favor set-list order over catalog browsing during a gig.
 - Show the current tune, part, page position, and next tune clearly.
@@ -196,7 +200,7 @@ wind, gloves, stands, and unreliable connectivity matter.
 
 ### Tablet Open Questions
 
-- Should the first tablet implementation be a PDF packet viewer, a PWA with
+- Should the first performance implementation be a PDF packet viewer, a PWA with
   cached PDFs, or a purpose-built page-by-page performance UI?
 - Do performers need annotation support, or is read-only music enough for the
   first pass?
@@ -360,6 +364,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Confirm attendance for a gig.
 - Play MP3 practice tracks.
 - Open PDFs in browser/tablet view.
+- Open a full-page score/performance view with print controls and a print-format
+  selector.
 
 ### Gig View
 
@@ -370,6 +376,15 @@ detail/result area rather than leaving users to guess which controls are active.
 - Shows the member's attendance response and lets them update it.
 - For leaders/admins, shows attendance by player name, instrument, and response
   state: no response, confirmed yes, or confirmed no.
+
+### Score / Performance View
+
+- Shows one selected score or part as the primary page surface.
+- Uses 8.5x11 as the standard iPad/letter PDF or image format.
+- Offers 7x5 lyre as a separate print/output format.
+- Provides a print button and print-format selector on the score view itself.
+- Keeps set-list and catalog context available without making players guess which
+  controls are active.
 
 ### Admin View
 
@@ -479,7 +494,9 @@ Requirements to explore:
 
 ### Phase 5: Practice / Performance UI
 
-- Tablet-friendly PDF viewer.
+- Full score/performance view.
+- Print controls for 8.5x11 and 7x5 lyre output.
+- Tablet-friendly PDF/image viewer using 8.5x11 content for iPad.
 - Audio player.
 - Offline/PWA cache.
 - Page-turn and set-list flow.

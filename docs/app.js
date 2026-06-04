@@ -171,6 +171,7 @@ const state = {
   selectedSong: songs[0],
   selectedGigId: "south-whidbey-pride",
   selectedPart: partOptions.Trumpet[0],
+  printFormat: "letter",
   search: ""
 };
 
@@ -189,6 +190,15 @@ const elements = {
   assetResultDetail: document.querySelector("#assetResultDetail"),
   sheetTitle: document.querySelector("#sheetTitle"),
   sheetFooter: document.querySelector("#sheetFooter"),
+  scoreTitle: document.querySelector("#scoreTitle"),
+  scoreMeta: document.querySelector("#scoreMeta"),
+  scoreFormat: document.querySelector("#scoreFormatSelect"),
+  scoreResult: document.querySelector("#scoreResult"),
+  scoreResultTitle: document.querySelector("#scoreResultTitle"),
+  scoreResultDetail: document.querySelector("#scoreResultDetail"),
+  scorePage: document.querySelector("#scorePage"),
+  scoreSheetTitle: document.querySelector("#scoreSheetTitle"),
+  scoreSheetFooter: document.querySelector("#scoreSheetFooter"),
   gigSelect: document.querySelector("#gigSelect"),
   calendarLabel: document.querySelector("#calendarLabel"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -207,7 +217,9 @@ const elements = {
   downloadPartButton: document.querySelector("#downloadPartButton"),
   downloadGigButton: document.querySelector("#downloadGigButton"),
   previewAudioButton: document.querySelector("#previewAudioButton"),
-  tabletViewButton: document.querySelector("#tabletViewButton")
+  performanceViewButton: document.querySelector("#performanceViewButton"),
+  printScoreButton: document.querySelector("#printScoreButton"),
+  backToCollectionButton: document.querySelector("#backToCollectionButton")
 };
 
 function currentGig() {
@@ -227,11 +239,17 @@ function countConfirmed(gig) {
 
 function formatLabel() {
   const labels = {
-    tablet: "iPad / tablet",
     letter: "8.5 x 11",
     lyre: "7 x 5 lyre"
   };
-  return labels[elements.format.value] || labels.tablet;
+  return labels[state.printFormat] || labels.letter;
+}
+
+function formatUseNote() {
+  if (state.printFormat === "lyre") {
+    return "7 x 5 lyre card";
+  }
+  return "8.5 x 11 PDF or image for paper and iPad use";
 }
 
 function partsForInstrument() {
@@ -269,6 +287,12 @@ function setActionResult(title, detail) {
   elements.assetResult.classList.add("active");
 }
 
+function setScoreResult(title, detail) {
+  elements.scoreResultTitle.textContent = title;
+  elements.scoreResultDetail.textContent = detail;
+  elements.scoreResult.classList.add("active");
+}
+
 function setPacketResult(title, detail) {
   elements.packetResultTitle.textContent = title;
   elements.packetResultDetail.textContent = detail;
@@ -279,6 +303,7 @@ function openMusicAction(label, workTitle) {
   selectSong(workTitle);
   renderSongs();
   renderSelectedSong();
+  renderScoreView();
 
   const part = state.selectedPart;
   const format = formatLabel();
@@ -295,12 +320,16 @@ function openMusicAction(label, workTitle) {
       title: `Part opened: ${state.selectedSong}`,
       detail: `${part} is ready in ${format} format.`
     },
-    Tablet: {
-      title: `Tablet view opened: ${state.selectedSong}`,
-      detail: `${part} is shown in the iPad/tablet performance format.`
+    Performance: {
+      title: `Score view opened: ${state.selectedSong}`,
+      detail: `${part} is shown in performance view using ${formatUseNote()}.`
     }
   };
   const action = actions[label] || actions.Part;
+  if (label === "Performance" || label === "Score") {
+    showView("scoreView");
+    setScoreResult(action.title, action.detail);
+  }
   setActionResult(action.title, action.detail);
   showToast(action.title);
 }
@@ -344,22 +373,33 @@ function renderSongs() {
 
 function renderSelectedSong() {
   const work = works.find((item) => item.title === state.selectedSong) || works[0];
-  const isTablet = elements.format.value === "tablet";
   ensureSelectedPart();
   renderPartOptions();
   elements.selectedTitle.textContent = state.selectedSong;
   elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
-  document.body.classList.toggle("tablet-format", isTablet);
-  elements.downloadPartButton.textContent = isTablet ? "Open Part" : "Download Part";
-  elements.tabletViewButton.hidden = !isTablet;
+  document.body.classList.toggle("performance-mode", document.querySelector("#scoreView").classList.contains("active"));
+  elements.downloadPartButton.textContent = "Download Part";
   elements.assetTags.innerHTML = "";
-  [...displayAssets(work), ...(isTablet ? ["Offline-ready tablet view"] : [])].forEach((asset) => {
+  [...displayAssets(work), "Performance score view"].forEach((asset) => {
     const tag = document.createElement("span");
     tag.textContent = asset;
     elements.assetTags.append(tag);
   });
+  renderScoreView();
+}
+
+function renderScoreView() {
+  const work = works.find((item) => item.title === state.selectedSong) || works[0];
+  elements.scoreTitle.textContent = state.selectedSong;
+  elements.scoreMeta.textContent = `${state.selectedPart} - ${formatUseNote()} - modified ${work.modified}`;
+  elements.scoreSheetTitle.textContent = state.selectedSong;
+  elements.scoreSheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
+  elements.scorePage.classList.toggle("letter-format", state.printFormat === "letter");
+  elements.scorePage.classList.toggle("lyre-format", state.printFormat === "lyre");
+  elements.scoreFormat.value = state.printFormat;
+  elements.format.value = state.printFormat;
 }
 
 function renderGigOptions() {
@@ -450,7 +490,7 @@ function renderGig() {
       button.type = "button";
       button.textContent = song;
       button.addEventListener("click", () => {
-        document.querySelector('[data-view="libraryView"]').click();
+        showView("libraryView");
         openMusicAction("Part", song);
       });
       item.append(button, ` - ${state.selectedPart}`);
@@ -467,6 +507,19 @@ function renderGig() {
     `${state.selectedPart} packet is ready to review for ${gig.displayDate}.`
   );
   renderCalendar();
+}
+
+function showView(viewId) {
+  document.querySelectorAll(".tab").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === viewId);
+  });
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.toggle("active", view.id === viewId);
+  });
+  document.body.classList.toggle("performance-mode", viewId === "scoreView");
+  if (viewId === "scoreView") {
+    renderScoreView();
+  }
 }
 
 function renderAttendance(gig) {
@@ -528,10 +581,7 @@ function showToast(message) {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
-    document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
-    tab.classList.add("active");
-    document.querySelector(`#${tab.dataset.view}`).classList.add("active");
+    showView(tab.dataset.view);
   });
 });
 
@@ -552,7 +602,27 @@ elements.part.addEventListener("change", (event) => {
   renderGig();
 });
 
-elements.format.addEventListener("change", renderSelectedSong);
+function updatePrintFormat(value) {
+  state.printFormat = value === "lyre" ? "lyre" : "letter";
+  elements.format.value = state.printFormat;
+  elements.scoreFormat.value = state.printFormat;
+  renderSelectedSong();
+  renderGig();
+}
+
+elements.format.addEventListener("change", (event) => {
+  updatePrintFormat(event.target.value);
+});
+
+elements.scoreFormat.addEventListener("change", (event) => {
+  updatePrintFormat(event.target.value);
+  setScoreResult(
+    `Print format selected: ${formatLabel()}`,
+    state.printFormat === "lyre"
+      ? "This score is sized for 7 x 5 lyre cards."
+      : "This score is sized as 8.5 x 11 for printing or iPad display."
+  );
+});
 
 elements.gigSelect.addEventListener("change", (event) => {
   state.selectedGigId = event.target.value;
@@ -576,8 +646,20 @@ elements.previewAudioButton.addEventListener("click", () => {
   openMusicAction("Audio", state.selectedSong);
 });
 
-elements.tabletViewButton.addEventListener("click", () => {
-  openMusicAction("Tablet", state.selectedSong);
+elements.performanceViewButton.addEventListener("click", () => {
+  openMusicAction("Performance", state.selectedSong);
+});
+
+elements.printScoreButton.addEventListener("click", () => {
+  setScoreResult(
+    `Print ready: ${state.selectedSong}`,
+    `${state.selectedPart} is ready as ${formatUseNote()}.`
+  );
+  showToast(`Print ready: ${formatLabel()}`);
+});
+
+elements.backToCollectionButton.addEventListener("click", () => {
+  showView("libraryView");
 });
 
 renderSongs();

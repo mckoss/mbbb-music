@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-9">
+    <link rel="stylesheet" href="styles.css?v=20260603-10">
   </head>
   <body>
     <header class="app-header">
@@ -30,11 +30,10 @@
           </select>
         </label>
         <label>
-          <span>Format</span>
+          <span>Print format</span>
           <select id="formatSelect">
-            <option value="tablet">iPad / tablet</option>
             <option value="letter">8.5 x 11</option>
-            <option value="lyre">7 x 5</option>
+            <option value="lyre">7 x 5 lyre</option>
           </select>
         </label>
       </div>
@@ -44,6 +43,7 @@
       <nav class="tabs" aria-label="Music portfolio sections">
         <button class="tab active" type="button" data-view="libraryView">Collection</button>
         <button class="tab" type="button" data-view="gigView">Gig Packets</button>
+        <button class="tab" type="button" data-view="scoreView">Score View</button>
       </nav>
 
       <section id="libraryView" class="view active" aria-labelledby="libraryTitle">
@@ -75,7 +75,7 @@
               </label>
               <div class="viewer-actions">
                 <button id="previewAudioButton" class="secondary-action" type="button">Audio</button>
-                <button id="tabletViewButton" class="secondary-action" type="button">Tablet View</button>
+                <button id="performanceViewButton" class="secondary-action" type="button">Score View</button>
                 <button id="downloadPartButton" class="primary-action" type="button">Download Part</button>
               </div>
             </div>
@@ -83,7 +83,7 @@
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, Audio, Tablet View, or Open Part to preview the next step.</p>
+              <p id="assetResultDetail">Choose Score, Audio, Score View, or Download Part to preview the next step.</p>
             </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
@@ -165,9 +165,57 @@
           </section>
         </div>
       </section>
+
+      <section id="scoreView" class="view score-view" aria-labelledby="scoreTitle">
+        <div class="score-layout">
+          <section class="score-workspace">
+            <div class="score-toolbar">
+              <div>
+                <p class="viewer-kicker">Performance view</p>
+                <h2 id="scoreTitle"></h2>
+                <p id="scoreMeta"></p>
+              </div>
+              <label>
+                <span>Print format</span>
+                <select id="scoreFormatSelect">
+                  <option value="letter">8.5 x 11</option>
+                  <option value="lyre">7 x 5 lyre</option>
+                </select>
+              </label>
+              <div class="viewer-actions">
+                <button id="backToCollectionButton" class="secondary-action" type="button">Collection</button>
+                <button id="printScoreButton" class="primary-action" type="button">Print</button>
+              </div>
+            </div>
+            <section id="scoreResult" class="action-result" aria-live="polite">
+              <p class="viewer-kicker">Score action</p>
+              <h3 id="scoreResultTitle">Ready for performance</h3>
+              <p id="scoreResultDetail">Choose a print format, then print or continue playing from this view.</p>
+            </section>
+            <div class="performance-frame">
+              <div id="scorePage" class="performance-page letter-format" aria-label="Full score view">
+                <div class="sheet-title" id="scoreSheetTitle"></div>
+                <div class="staff-group performance-staff">
+                  <div class="staff"></div>
+                  <div class="notes notes-a"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-b"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-c"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-a"></div>
+                  <div class="staff"></div>
+                  <div class="notes notes-b"></div>
+                </div>
+                <div class="sheet-footer" id="scoreSheetFooter"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-9"></script>
+    <script src="app.js?v=20260603-10"></script>
   </body>
 </html>
