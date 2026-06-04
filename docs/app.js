@@ -114,7 +114,16 @@ const gigs = [
     arrival: "TBD by gig leader",
     performance: "Event listing for June 6, 2026",
     notes: "PRIDE Picnic with Mutiny Bay Brass Band for the SW Pride event. Source: mutinybaybrassband.com.",
-    setList: ["Hot to Go", "Dancing Queen", "Iko Iko", "Sweet Dreams", "Uptown Funk"]
+    setList: [
+      {
+        name: "Set One",
+        songs: ["Rock Anthem", "Iko Iko", "Get Lucky", "Funkin' it Up", "Jump in the Line", "Iron Man", "Montserrat", "Bella Ciao"]
+      },
+      {
+        name: "Set Two",
+        songs: ["Track Suit", "Thriller", "Matador", "Sail", "Hot to Go", "Moliendo Cafe", "Hava Negila"]
+      }
+    ]
   },
   {
     id: "coupeville-pride",
