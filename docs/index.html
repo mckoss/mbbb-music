@@ -80,16 +80,33 @@
                 <select id="partSelect"></select>
               </label>
               <div class="viewer-actions">
-                <button id="previewAudioButton" class="secondary-action" type="button">Audio</button>
                 <button id="performanceViewButton" class="secondary-action" type="button">Open Score</button>
                 <button id="downloadPartButton" class="primary-action" type="button">Download Part</button>
               </div>
             </div>
             <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
+            <section class="practice-player library-player" aria-labelledby="libraryPracticeTitle">
+              <div>
+                <p class="viewer-kicker">Practice audio</p>
+                <h3 id="libraryPracticeTitle">Practice MP3</h3>
+                <p data-audio-track></p>
+              </div>
+              <div class="media-controls" aria-label="Practice audio controls">
+                <button class="secondary-action" type="button" data-audio-restart>Beginning</button>
+                <button class="primary-action" type="button" data-audio-play>Play</button>
+                <button class="secondary-action" type="button" data-audio-pause>Pause</button>
+              </div>
+              <div class="audio-progress" aria-label="Audio progress">
+                <div class="audio-progress-bar">
+                  <span data-audio-progress></span>
+                </div>
+                <span data-audio-time></span>
+              </div>
+            </section>
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, Audio, Open Score, or Download Part to preview the next step.</p>
+              <p id="assetResultDetail">Choose Score, use the player, Open Score, or Download Part to preview the next step.</p>
             </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
@@ -205,15 +222,15 @@
                 <p id="practiceTrack"></p>
               </div>
               <div class="media-controls" aria-label="Practice audio controls">
-                <button id="audioRewindButton" class="secondary-action" type="button">Rewind</button>
-                <button id="audioPlayButton" class="primary-action" type="button">Play</button>
-                <button id="audioPauseButton" class="secondary-action" type="button">Pause</button>
+                <button class="secondary-action" type="button" data-audio-restart>Beginning</button>
+                <button class="primary-action" type="button" data-audio-play>Play</button>
+                <button class="secondary-action" type="button" data-audio-pause>Pause</button>
               </div>
               <div class="audio-progress" aria-label="Audio progress">
                 <div class="audio-progress-bar">
-                  <span id="audioProgressBar"></span>
+                  <span data-audio-progress></span>
                 </div>
-                <span id="audioTime"></span>
+                <span data-audio-time></span>
               </div>
             </section>
             <div class="performance-frame">
@@ -240,6 +257,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-20"></script>
+    <script src="app.js?v=20260603-21"></script>
   </body>
 </html>

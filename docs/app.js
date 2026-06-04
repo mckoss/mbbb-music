@@ -220,11 +220,12 @@ const elements = {
   scoreSheetTitle: document.querySelector("#scoreSheetTitle"),
   scoreSheetFooter: document.querySelector("#scoreSheetFooter"),
   practiceTrack: document.querySelector("#practiceTrack"),
-  audioRewindButton: document.querySelector("#audioRewindButton"),
-  audioPlayButton: document.querySelector("#audioPlayButton"),
-  audioPauseButton: document.querySelector("#audioPauseButton"),
-  audioProgressBar: document.querySelector("#audioProgressBar"),
-  audioTime: document.querySelector("#audioTime"),
+  audioTracks: document.querySelectorAll("[data-audio-track], #practiceTrack"),
+  audioPlayButtons: document.querySelectorAll("[data-audio-play]"),
+  audioPauseButtons: document.querySelectorAll("[data-audio-pause]"),
+  audioRestartButtons: document.querySelectorAll("[data-audio-restart]"),
+  audioProgressBars: document.querySelectorAll("[data-audio-progress]"),
+  audioTimes: document.querySelectorAll("[data-audio-time]"),
   gigSelect: document.querySelector("#gigSelect"),
   calendarLabel: document.querySelector("#calendarLabel"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -242,7 +243,6 @@ const elements = {
   toast: document.querySelector("#toast"),
   downloadPartButton: document.querySelector("#downloadPartButton"),
   downloadGigButton: document.querySelector("#downloadGigButton"),
-  previewAudioButton: document.querySelector("#previewAudioButton"),
   performanceViewButton: document.querySelector("#performanceViewButton"),
   printScoreButton: document.querySelector("#printScoreButton"),
   backToCollectionButton: document.querySelector("#backToCollectionButton")
@@ -371,10 +371,17 @@ function setPacketResult(title, detail) {
 }
 
 function openMusicAction(label, workTitle) {
+  const previousSong = state.selectedSong;
   selectSong(workTitle);
+  if (label === "Audio" && previousSong !== state.selectedSong) {
+    state.audio.position = 0;
+  }
   renderSongs();
   renderSelectedSong();
   renderScoreView();
+  if (document.querySelector("#gigView").classList.contains("active")) {
+    renderGig();
+  }
 
   const part = state.selectedPart;
   const format = formatLabel();
@@ -384,8 +391,8 @@ function openMusicAction(label, workTitle) {
       detail: `Showing the full score entry for ${state.selectedSong}. Player packet remains set to ${part}.`
     },
     Audio: {
-      title: `Audio opened: ${state.selectedSong}`,
-      detail: `Practice MP3 is ready for ${state.selectedSong}. Use the score player to play, pause, or rewind.`
+      title: `Playing audio: ${state.selectedSong}`,
+      detail: `Practice MP3 is playing in the embedded player for ${state.selectedSong}.`
     },
     Part: {
       title: `Part opened: ${state.selectedSong}`,
@@ -397,9 +404,12 @@ function openMusicAction(label, workTitle) {
     }
   };
   const action = actions[label] || actions.Part;
-  if (label === "Performance" || label === "Score" || label === "Audio") {
+  if (label === "Performance" || label === "Score") {
     showView("scoreView");
     setScoreResult(action.title, action.detail);
+  }
+  if (label === "Audio") {
+    playAudio();
   }
   setActionResult(action.title, action.detail);
   showToast(action.title);
@@ -430,7 +440,7 @@ function renderMusicTile(workTitle, options = {}) {
     if (options.context === "gig") {
       setPacketResult(
         `Selected from set list: ${workTitle}`,
-        `${state.selectedPart} is selected. Use Score or Audio for this tune, or download the full packet if needed.`
+        `${state.selectedPart} is selected. Use Score for the page view, Audio for the embedded player, or download the full packet if needed.`
       );
     }
   });
@@ -623,11 +633,21 @@ function showView(viewId) {
 
 function renderAudioPlayer() {
   const percent = Math.min(100, Math.max(0, (state.audio.position / state.audio.duration) * 100));
-  elements.audioProgressBar.style.width = `${percent}%`;
-  elements.audioTime.textContent = `${formatTime(state.audio.position)} / ${formatTime(state.audio.duration)}`;
-  elements.audioPlayButton.disabled = state.audio.status === "playing";
-  elements.audioPauseButton.disabled = state.audio.status !== "playing";
-  elements.practiceTrack.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
+  elements.audioProgressBars.forEach((bar) => {
+    bar.style.width = `${percent}%`;
+  });
+  elements.audioTimes.forEach((time) => {
+    time.textContent = `${formatTime(state.audio.position)} / ${formatTime(state.audio.duration)}`;
+  });
+  elements.audioPlayButtons.forEach((button) => {
+    button.disabled = state.audio.status === "playing";
+  });
+  elements.audioPauseButtons.forEach((button) => {
+    button.disabled = state.audio.status !== "playing";
+  });
+  elements.audioTracks.forEach((track) => {
+    track.textContent = `${state.selectedSong} - practice MP3 - ${state.audio.status}`;
+  });
 }
 
 function stopAudioTimer() {
@@ -649,6 +669,10 @@ function playAudio() {
     renderAudioPlayer();
   }, 1000);
   renderAudioPlayer();
+  setActionResult(
+    `Playing audio: ${state.selectedSong}`,
+    `Practice MP3 is playing in the embedded player for ${state.selectedPart}.`
+  );
   setScoreResult(
     `Playing audio: ${state.selectedSong}`,
     `Practice MP3 is playing alongside ${state.selectedPart}.`
@@ -660,18 +684,26 @@ function pauseAudio() {
   state.audio.status = "paused";
   stopAudioTimer();
   renderAudioPlayer();
+  setActionResult(
+    `Audio paused: ${state.selectedSong}`,
+    `Playback is paused at ${formatTime(state.audio.position)}.`
+  );
   setScoreResult(
     `Audio paused: ${state.selectedSong}`,
     `Playback is paused at ${formatTime(state.audio.position)}.`
   );
 }
 
-function rewindAudio() {
-  state.audio.position = Math.max(0, state.audio.position - 15);
+function restartAudio() {
+  state.audio.position = 0;
   renderAudioPlayer();
+  setActionResult(
+    `Audio reset: ${state.selectedSong}`,
+    `Playback is back at the beginning of the song.`
+  );
   setScoreResult(
-    `Audio rewound: ${state.selectedSong}`,
-    `Playback moved back to ${formatTime(state.audio.position)}.`
+    `Audio reset: ${state.selectedSong}`,
+    `Playback is back at the beginning of the song.`
   );
 }
 
@@ -795,10 +827,6 @@ elements.downloadGigButton.addEventListener("click", () => {
   showToast(`Packet opened: ${gig.name}`);
 });
 
-elements.previewAudioButton.addEventListener("click", () => {
-  openMusicAction("Audio", state.selectedSong);
-});
-
 elements.performanceViewButton.addEventListener("click", () => {
   openMusicAction("Performance", state.selectedSong);
 });
@@ -815,9 +843,15 @@ elements.backToCollectionButton.addEventListener("click", () => {
   showView("libraryView");
 });
 
-elements.audioPlayButton.addEventListener("click", playAudio);
-elements.audioPauseButton.addEventListener("click", pauseAudio);
-elements.audioRewindButton.addEventListener("click", rewindAudio);
+elements.audioPlayButtons.forEach((button) => {
+  button.addEventListener("click", playAudio);
+});
+elements.audioPauseButtons.forEach((button) => {
+  button.addEventListener("click", pauseAudio);
+});
+elements.audioRestartButtons.forEach((button) => {
+  button.addEventListener("click", restartAudio);
+});
 
 renderSongs();
 renderSelectedSong();

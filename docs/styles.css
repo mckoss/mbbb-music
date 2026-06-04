@@ -507,7 +507,7 @@ select:focus, input:focus, button:focus-visible {
   background: var(--accent);
 }
 
-#audioTime {
+[data-audio-time] {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
@@ -753,7 +753,7 @@ dd { margin: 3px 0 0; }
   .practice-player { grid-template-columns: 1fr; }
   .media-controls { justify-content: stretch; }
   .media-controls button { flex: 1; }
-  #audioTime { text-align: left; }
+  [data-audio-time] { text-align: left; }
 }
 
 @media (min-width: 740px) and (max-width: 1180px) {

@@ -407,6 +407,9 @@ detail/result area rather than leaving users to guess which controls are active.
   selected gig set list.
 - See music actions such as score, part, and audio instead of Drive file/folder
   implementation details.
+- Use an embedded practice player in the collection/detail panel. Clicking Audio
+  on a tune tile selects that tune, highlights it, and starts the player in place
+  instead of opening the full score view.
 - Download files with standardized app-generated filenames instead of original
   Drive filenames.
 - Download all current music for that instrument.
@@ -428,6 +431,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Offers print/download actions for the full gig packet or the member's packet.
 - Lets players open or print individual pieces and play practice audio from the
   gig music list, instead of requiring a full packet download.
+- Keeps gig tile Audio behavior consistent with the collection: select the tune
+  and start the embedded player without changing pages.
 - Shows the member's attendance response and lets them update it.
 - For leaders/admins, shows attendance by player name, instrument, and response
   state: no response, confirmed yes, or confirmed no.
@@ -437,12 +442,12 @@ detail/result area rather than leaving users to guess which controls are active.
 ### Score / Performance View
 
 - Shows one selected score or part as the primary page surface.
-- Is opened from a tune's Score or Audio action, not as a separate top-level
+- Is opened from a tune's Score or Open Score action, not as a separate top-level
   navigation tab.
 - Uses 8.5x11 as the standard iPad/letter PDF or image format.
 - Offers 7x5 lyre as a separate print/output format.
 - Provides a print button and print-format selector on the score view itself.
-- Includes practice MP3 controls on the score view: play, pause, rewind, and
+- Includes practice MP3 controls on the score view: play, pause, beginning, and
   visible progress.
 - Keeps set-list and catalog context available without making players guess which
   controls are active.
@@ -563,7 +568,7 @@ Requirements to explore:
 - Full score/performance view.
 - Print controls for 8.5x11 and 7x5 lyre output.
 - Tablet-friendly PDF/image viewer using 8.5x11 content for iPad.
-- Audio player with play, pause, rewind, and visible progress.
+- Audio player with play, pause, beginning, and visible progress.
 - Offline/PWA cache.
 - Page-turn and set-list flow.
 
