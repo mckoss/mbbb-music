@@ -252,12 +252,6 @@ select:focus, input:focus, button:focus-visible {
   font-weight: 800;
 }
 
-.song-detail {
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
 .viewer-toolbar, .gig-summary, .score-toolbar {
   justify-content: space-between;
   margin-bottom: 14px;

@@ -449,13 +449,6 @@ function renderMusicTile(workTitle, options = {}) {
   });
   titleWrap.append(titleButton);
 
-  if (options.detail) {
-    const detail = document.createElement("span");
-    detail.className = "song-detail";
-    detail.textContent = options.detail;
-    titleWrap.append(detail);
-  }
-
   const actions = document.createElement("div");
   actions.className = "song-actions";
   ["Score", "Audio"].forEach((label) => {
@@ -599,8 +592,7 @@ function renderGig() {
     section.songs.forEach((song) => {
       list.append(renderMusicTile(song, {
         context: "gig",
-        indexLabel: `${songIndex}.`,
-        detail: `${state.selectedPart} - ${formatLabel()}`
+        indexLabel: `${songIndex}.`
       }));
       songIndex += 1;
     });

@@ -428,6 +428,8 @@ detail/result area rather than leaving users to guess which controls are active.
 - Shows gig date, venue, address, arrival time, performance time, and notes.
 - Shows ordered gig music, including set breaks such as Set One and Set Two, as
   the same music tiles used by the complete collection.
+- Keeps set-list rows to tune names and actions; the global instrument and print
+  format selectors apply universally and are not repeated on every set-list row.
 - Filters music to the signed-in member's instrument and part by default.
 - Offers print/download actions for the full gig packet or the member's packet.
 - Lets players open or print individual pieces and play practice audio from the
