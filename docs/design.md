@@ -129,7 +129,7 @@ Initial player-facing instrument options:
 - Drums / percussion
 - Euphonium / baritone (B-flat)
 - Flute
-- Horn (F)
+- French horn (F)
 - Mellophone (F)
 - Melodica
 - Soprano saxophone (B-flat)
