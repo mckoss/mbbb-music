@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-8">
+    <link rel="stylesheet" href="styles.css?v=20260603-9">
   </head>
   <body>
     <header class="app-header">
@@ -80,8 +80,13 @@
               </div>
             </div>
             <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
+            <section id="assetResult" class="action-result" aria-live="polite">
+              <p class="viewer-kicker">Action</p>
+              <h3 id="assetResultTitle">Ready to open music</h3>
+              <p id="assetResultDetail">Choose Score, Audio, Tablet View, or Open Part to preview the next step.</p>
+            </section>
             <div class="sheet-frame">
-              <div class="mock-sheet" aria-label="Sheet music preview">
+              <div class="sheet-preview" aria-label="Sheet music preview">
                 <div class="sheet-title" id="sheetTitle"></div>
                 <div class="staff-group">
                   <div class="staff"></div>
@@ -123,6 +128,11 @@
               </div>
               <button id="downloadGigButton" class="primary-action" type="button">Download Packet</button>
             </div>
+            <section id="packetResult" class="action-result packet-result" aria-live="polite">
+              <p class="viewer-kicker">Packet action</p>
+              <h3 id="packetResultTitle">Ready to build packet</h3>
+              <p id="packetResultDetail">Choose a gig, instrument, and part, then open the packet for the selected player view.</p>
+            </section>
             <dl class="gig-facts">
               <div>
                 <dt>Location</dt>
@@ -158,6 +168,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-8"></script>
+    <script src="app.js?v=20260603-9"></script>
   </body>
 </html>

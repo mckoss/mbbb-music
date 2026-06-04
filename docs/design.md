@@ -338,6 +338,12 @@ Recommended initial access model:
 
 ## Web UI Concepts
 
+The hosted design surface can evolve as a single-page app or as multiple HTML
+entry points, depending on which interaction model best explains the product. In
+either case, visible controls should be wired to an obvious result. If several
+actions are placeholders for the same future workflow, they can route to the same
+detail/result area rather than leaving users to guess which controls are active.
+
 ### Player View
 
 - Select instrument and optional part.

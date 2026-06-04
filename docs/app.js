@@ -184,6 +184,9 @@ const elements = {
   selectedTitle: document.querySelector("#selectedTitle"),
   selectedMeta: document.querySelector("#selectedMeta"),
   assetTags: document.querySelector("#assetTags"),
+  assetResult: document.querySelector("#assetResult"),
+  assetResultTitle: document.querySelector("#assetResultTitle"),
+  assetResultDetail: document.querySelector("#assetResultDetail"),
   sheetTitle: document.querySelector("#sheetTitle"),
   sheetFooter: document.querySelector("#sheetFooter"),
   gigSelect: document.querySelector("#gigSelect"),
@@ -194,6 +197,9 @@ const elements = {
   gigLocation: document.querySelector("#gigLocation"),
   gigArrival: document.querySelector("#gigArrival"),
   gigNotes: document.querySelector("#gigNotes"),
+  packetResult: document.querySelector("#packetResult"),
+  packetResultTitle: document.querySelector("#packetResultTitle"),
+  packetResultDetail: document.querySelector("#packetResultDetail"),
   setList: document.querySelector("#setList"),
   attendanceSummary: document.querySelector("#attendanceSummary"),
   attendanceList: document.querySelector("#attendanceList"),
@@ -206,6 +212,17 @@ const elements = {
 
 function currentGig() {
   return gigs.find((gig) => gig.id === state.selectedGigId) || gigs[0];
+}
+
+function countSetListSongs(gig) {
+  if (Array.isArray(gig.setList?.[0]?.songs)) {
+    return gig.setList.reduce((count, section) => count + section.songs.length, 0);
+  }
+  return gig.setList?.length || 0;
+}
+
+function countConfirmed(gig) {
+  return (gig.attendance || []).filter((person) => person.status === "yes").length;
 }
 
 function formatLabel() {
@@ -246,6 +263,48 @@ function displayAssets(work) {
   return [...new Set(assets)];
 }
 
+function setActionResult(title, detail) {
+  elements.assetResultTitle.textContent = title;
+  elements.assetResultDetail.textContent = detail;
+  elements.assetResult.classList.add("active");
+}
+
+function setPacketResult(title, detail) {
+  elements.packetResultTitle.textContent = title;
+  elements.packetResultDetail.textContent = detail;
+  elements.packetResult.classList.add("active");
+}
+
+function openMusicAction(label, workTitle) {
+  selectSong(workTitle);
+  renderSongs();
+  renderSelectedSong();
+
+  const part = state.selectedPart;
+  const format = formatLabel();
+  const actions = {
+    Score: {
+      title: `Score opened: ${state.selectedSong}`,
+      detail: `Showing the full score entry for ${state.selectedSong}. Player packet remains set to ${part}.`
+    },
+    Audio: {
+      title: `Audio opened: ${state.selectedSong}`,
+      detail: `Practice audio is queued for ${state.selectedSong}. The music preview stays on ${part}.`
+    },
+    Part: {
+      title: `Part opened: ${state.selectedSong}`,
+      detail: `${part} is ready in ${format} format.`
+    },
+    Tablet: {
+      title: `Tablet view opened: ${state.selectedSong}`,
+      detail: `${part} is shown in the iPad/tablet performance format.`
+    }
+  };
+  const action = actions[label] || actions.Part;
+  setActionResult(action.title, action.detail);
+  showToast(action.title);
+}
+
 function renderSongs() {
   const query = state.search.trim().toLowerCase();
   const filtered = works.filter((work) => work.title.toLowerCase().includes(query));
@@ -273,10 +332,7 @@ function renderSongs() {
       action.type = "button";
       action.textContent = label;
       action.addEventListener("click", () => {
-        state.selectedSong = work.title;
-        renderSongs();
-        renderSelectedSong();
-        showToast(`Opening ${label.toLowerCase()}: ${work.title}`);
+        openMusicAction(label, work.title);
       });
       actions.append(action);
     });
@@ -287,7 +343,6 @@ function renderSongs() {
 }
 
 function renderSelectedSong() {
-  const instrument = elements.instrument.value;
   const work = works.find((item) => item.title === state.selectedSong) || works[0];
   const isTablet = elements.format.value === "tablet";
   ensureSelectedPart();
@@ -395,10 +450,8 @@ function renderGig() {
       button.type = "button";
       button.textContent = song;
       button.addEventListener("click", () => {
-        selectSong(song);
         document.querySelector('[data-view="libraryView"]').click();
-        renderSongs();
-        renderSelectedSong();
+        openMusicAction("Part", song);
       });
       item.append(button, ` - ${state.selectedPart}`);
       list.append(item);
@@ -409,6 +462,10 @@ function renderGig() {
   });
 
   renderAttendance(gig);
+  setPacketResult(
+    `Packet selected: ${gig.name}`,
+    `${state.selectedPart} packet is ready to review for ${gig.displayDate}.`
+  );
   renderCalendar();
 }
 
@@ -503,19 +560,24 @@ elements.gigSelect.addEventListener("change", (event) => {
 });
 
 elements.downloadPartButton.addEventListener("click", () => {
-  showToast(`Opening part: ${state.selectedSong} for ${state.selectedPart}, ${formatLabel()}`);
+  openMusicAction("Part", state.selectedSong);
 });
 
 elements.downloadGigButton.addEventListener("click", () => {
-  showToast(`Preparing packet: ${currentGig().name} for ${state.selectedPart}, ${formatLabel()}`);
+  const gig = currentGig();
+  setPacketResult(
+    `Packet opened: ${gig.name}`,
+    `${state.selectedPart} packet is assembled in ${formatLabel()} format with ${countSetListSongs(gig)} tunes and ${countConfirmed(gig)} confirmed players.`
+  );
+  showToast(`Packet opened: ${gig.name}`);
 });
 
 elements.previewAudioButton.addEventListener("click", () => {
-  showToast(`Opening audio: ${state.selectedSong}`);
+  openMusicAction("Audio", state.selectedSong);
 });
 
 elements.tabletViewButton.addEventListener("click", () => {
-  showToast(`Opening tablet performance view: ${state.selectedSong}`);
+  openMusicAction("Tablet", state.selectedSong);
 });
 
 renderSongs();
