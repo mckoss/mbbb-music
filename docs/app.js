@@ -276,7 +276,7 @@ function renderSongs() {
         state.selectedSong = work.title;
         renderSongs();
         renderSelectedSong();
-        showToast(`Mock ${label.toLowerCase()} link: ${work.title}`);
+        showToast(`Opening ${label.toLowerCase()}: ${work.title}`);
       });
       actions.append(action);
     });
@@ -295,7 +295,7 @@ function renderSelectedSong() {
   elements.selectedTitle.textContent = state.selectedSong;
   elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
-  elements.sheetFooter.textContent = `Mock preview for ${state.selectedPart} - ${formatLabel()}`;
+  elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
   document.body.classList.toggle("tablet-format", isTablet);
   elements.downloadPartButton.textContent = isTablet ? "Open Part" : "Download Part";
   elements.tabletViewButton.hidden = !isTablet;
@@ -503,19 +503,19 @@ elements.gigSelect.addEventListener("change", (event) => {
 });
 
 elements.downloadPartButton.addEventListener("click", () => {
-  showToast(`Mock part link: ${state.selectedSong} for ${state.selectedPart}, ${formatLabel()}`);
+  showToast(`Opening part: ${state.selectedSong} for ${state.selectedPart}, ${formatLabel()}`);
 });
 
 elements.downloadGigButton.addEventListener("click", () => {
-  showToast(`Mock packet: ${currentGig().name} for ${state.selectedPart}, ${formatLabel()}`);
+  showToast(`Preparing packet: ${currentGig().name} for ${state.selectedPart}, ${formatLabel()}`);
 });
 
 elements.previewAudioButton.addEventListener("click", () => {
-  showToast(`Mock audio preview: ${state.selectedSong}`);
+  showToast(`Opening audio: ${state.selectedSong}`);
 });
 
 elements.tabletViewButton.addEventListener("click", () => {
-  showToast(`Mock tablet performance view: ${state.selectedSong}, swipe to advance pages`);
+  showToast(`Opening tablet performance view: ${state.selectedSong}`);
 });
 
 renderSongs();

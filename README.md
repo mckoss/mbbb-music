@@ -14,10 +14,10 @@ PDFs, MP3s, and any copyrighted source material should live in private storage.
 
 ## Current Status
 
-- Design and static prototyping only.
+- Design endpoint and static product surface.
 - No deployable application code yet.
 - Main design document: [docs/design.md](docs/design.md)
-- Static user-interface prototype: [docs/index.html](docs/index.html)
+- Hosted product design surface: [docs/index.html](docs/index.html)
 
 ## Initial Questions
 

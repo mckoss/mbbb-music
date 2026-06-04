@@ -3,17 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>MBBB Music Portfolio Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-7">
+    <title>MBBB Music Portfolio</title>
+    <link rel="stylesheet" href="styles.css?v=20260603-8">
   </head>
   <body>
     <header class="app-header">
       <div class="brand-lockup">
         <img src="assets/mbbb-logo.png" alt="Mutiny Bay Brass Band" width="512" height="512">
         <div>
-          <p class="eyebrow">Static prototype</p>
+          <p class="eyebrow">Mutiny Bay Brass Band</p>
           <h1>Music Portfolio</h1>
-          <p class="header-copy">A working sketch for browsing the complete library, choosing an instrument, and assembling gig packets in set-list order.</p>
+          <p class="header-copy">Browse the music library, choose an instrument and part, and assemble gig packets in set-list order.</p>
         </div>
       </div>
       <div class="global-controls" aria-label="Music preferences">
@@ -41,7 +41,7 @@
     </header>
 
     <main class="app-shell">
-      <nav class="tabs" aria-label="Prototype sections">
+      <nav class="tabs" aria-label="Music portfolio sections">
         <button class="tab active" type="button" data-view="libraryView">Collection</button>
         <button class="tab" type="button" data-view="gigView">Gig Packets</button>
       </nav>
@@ -81,7 +81,7 @@
             </div>
             <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
             <div class="sheet-frame">
-              <div class="mock-sheet" aria-label="Mock sheet music preview">
+              <div class="mock-sheet" aria-label="Sheet music preview">
                 <div class="sheet-title" id="sheetTitle"></div>
                 <div class="staff-group">
                   <div class="staff"></div>
@@ -158,6 +158,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-7"></script>
+    <script src="app.js?v=20260603-8"></script>
   </body>
 </html>
