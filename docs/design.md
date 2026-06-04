@@ -355,6 +355,8 @@ detail/result area rather than leaving users to guess which controls are active.
   treble-clef versus bass-clef euphonium.
 - Browse active tunes.
 - Search by title.
+- Treat gig music as the same collection interface filtered and ordered by the
+  selected gig set list.
 - See music actions such as score, part, and audio instead of Drive file/folder
   implementation details.
 - Download all current music for that instrument.
@@ -370,9 +372,12 @@ detail/result area rather than leaving users to guess which controls are active.
 ### Gig View
 
 - Shows gig date, venue, address, arrival time, performance time, and notes.
-- Shows ordered set list, including set breaks such as Set One and Set Two.
+- Shows ordered gig music, including set breaks such as Set One and Set Two, as
+  the same music tiles used by the complete collection.
 - Filters music to the signed-in member's instrument and part by default.
 - Offers print/download actions for the full gig packet or the member's packet.
+- Lets players open or print individual pieces and play practice audio from the
+  gig music list, instead of requiring a full packet download.
 - Shows the member's attendance response and lets them update it.
 - For leaders/admins, shows attendance by player name, instrument, and response
   state: no response, confirmed yes, or confirmed no.
@@ -485,7 +490,8 @@ Requirements to explore:
 - Let players confirm attendance.
 - Show leaders/admins attendance by player name and instrument.
 - Generate gig-specific instrument packets in set-list order.
-- Let players view gig music from the site.
+- Let players view gig music from the site as a filtered, ordered collection with
+  per-tune score and audio actions.
 
 ### Phase 4: MuseScore Builds
 

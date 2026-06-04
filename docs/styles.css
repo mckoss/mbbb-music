@@ -214,6 +214,17 @@ select:focus, input:focus, button:focus-visible {
   text-align: left;
 }
 
+.song-title-block {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.song-title-block .song-main {
+  padding-left: 0;
+}
+
 .song-actions {
   display: flex;
   flex: 0 0 auto;
@@ -239,6 +250,12 @@ select:focus, input:focus, button:focus-visible {
   color: var(--brass);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.song-detail {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .viewer-toolbar, .gig-summary, .score-toolbar {
@@ -598,24 +615,13 @@ dd { margin: 3px 0 0; }
   text-transform: uppercase;
 }
 
-.set-section ol {
+.set-section .song-list {
   display: grid;
   gap: 7px;
   margin: 0;
-  padding-left: 24px;
-}
-
-.set-section li {
-  padding: 4px 0;
-}
-
-.set-list button {
-  border: 0;
-  background: transparent;
-  color: var(--accent-strong);
-  padding: 0;
-  font-weight: 800;
-  text-align: left;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .attendance-summary {

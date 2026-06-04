@@ -246,6 +246,12 @@ function countSetListSongs(gig) {
   return gig.setList?.length || 0;
 }
 
+function setListSections(gig) {
+  return Array.isArray(gig.setList?.[0]?.songs)
+    ? gig.setList
+    : [{ name: "Gig Music", songs: gig.setList || [] }];
+}
+
 function countConfirmed(gig) {
   return (gig.attendance || []).filter((person) => person.status === "yes").length;
 }
@@ -353,6 +359,60 @@ function openMusicAction(label, workTitle) {
   showToast(action.title);
 }
 
+function renderMusicTile(workTitle, options = {}) {
+  const item = document.createElement("div");
+  item.className = `song-item${workTitle === state.selectedSong ? " active" : ""}`;
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "song-title-block";
+
+  if (options.indexLabel) {
+    const index = document.createElement("span");
+    index.className = "song-index";
+    index.textContent = options.indexLabel;
+    titleWrap.append(index);
+  }
+
+  const titleButton = document.createElement("button");
+  titleButton.type = "button";
+  titleButton.className = "song-main";
+  titleButton.textContent = workTitle;
+  titleButton.addEventListener("click", () => {
+    state.selectedSong = workTitle;
+    renderSongs();
+    renderSelectedSong();
+    if (options.context === "gig") {
+      setPacketResult(
+        `Selected from set list: ${workTitle}`,
+        `${state.selectedPart} is selected. Use Score or Audio for this tune, or download the full packet if needed.`
+      );
+    }
+  });
+  titleWrap.append(titleButton);
+
+  if (options.detail) {
+    const detail = document.createElement("span");
+    detail.className = "song-detail";
+    detail.textContent = options.detail;
+    titleWrap.append(detail);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "song-actions";
+  ["Score", "Audio"].forEach((label) => {
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = label;
+    action.addEventListener("click", () => {
+      openMusicAction(label, workTitle);
+    });
+    actions.append(action);
+  });
+
+  item.append(titleWrap, actions);
+  return item;
+}
+
 function renderSongs() {
   const query = state.search.trim().toLowerCase();
   const filtered = works.filter((work) => work.title.toLowerCase().includes(query));
@@ -360,33 +420,7 @@ function renderSongs() {
   elements.songList.innerHTML = "";
 
   filtered.forEach((work) => {
-    const item = document.createElement("div");
-    item.className = `song-item${work.title === state.selectedSong ? " active" : ""}`;
-
-    const titleButton = document.createElement("button");
-    titleButton.type = "button";
-    titleButton.className = "song-main";
-    titleButton.textContent = work.title;
-    titleButton.addEventListener("click", () => {
-      state.selectedSong = work.title;
-      renderSongs();
-      renderSelectedSong();
-    });
-
-    const actions = document.createElement("div");
-    actions.className = "song-actions";
-    ["Score", "Audio"].forEach((label) => {
-      const action = document.createElement("button");
-      action.type = "button";
-      action.textContent = label;
-      action.addEventListener("click", () => {
-        openMusicAction(label, work.title);
-      });
-      actions.append(action);
-    });
-
-    item.append(titleButton, actions);
-    elements.songList.append(item);
+    elements.songList.append(renderMusicTile(work.title));
   });
 }
 
@@ -494,28 +528,23 @@ function renderGig() {
   elements.gigNotes.textContent = gig.notes;
   elements.setList.innerHTML = "";
 
-  const sections = Array.isArray(gig.setList?.[0]?.songs)
-    ? gig.setList
-    : [{ name: "Packet", songs: gig.setList || [] }];
+  let songIndex = 1;
 
-  sections.forEach((section) => {
+  setListSections(gig).forEach((section) => {
     const sectionBlock = document.createElement("section");
     sectionBlock.className = "set-section";
     const title = document.createElement("h4");
     title.textContent = section.name;
-    const list = document.createElement("ol");
+    const list = document.createElement("div");
+    list.className = "song-list gig-song-list";
 
     section.songs.forEach((song) => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = song;
-      button.addEventListener("click", () => {
-        showView("libraryView");
-        openMusicAction("Part", song);
-      });
-      item.append(button, ` - ${state.selectedPart}`);
-      list.append(item);
+      list.append(renderMusicTile(song, {
+        context: "gig",
+        indexLabel: `${songIndex}.`,
+        detail: `${state.selectedPart} - ${formatLabel()}`
+      }));
+      songIndex += 1;
     });
 
     sectionBlock.append(title, list);
