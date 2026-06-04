@@ -398,14 +398,15 @@ detail/result area rather than leaving users to guess which controls are active.
 
 ### Player View
 
-- Select instrument and optional part.
+- Select instrument globally and, only when that instrument has multiple choices,
+  select a specific part in the detail panel.
 - Select alternate parts within an instrument, such as Trumpet 1, Trumpet 2, or
   treble-clef versus bass-clef euphonium.
 - Browse active tunes.
 - Search by title.
 - Treat gig music as the same collection interface filtered and ordered by the
   selected gig set list.
-- See music actions such as score, part, and audio instead of Drive file/folder
+- See music actions such as score, PDF download, and audio instead of Drive file/folder
   implementation details.
 - Use a compact embedded practice player directly under the selected title in
   the collection/detail panel. Clicking Audio on a tune tile selects that tune,

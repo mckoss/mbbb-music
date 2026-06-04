@@ -198,6 +198,7 @@ const state = {
 
 const elements = {
   instrument: document.querySelector("#instrumentSelect"),
+  partField: document.querySelector(".part-field"),
   part: document.querySelector("#partSelect"),
   format: document.querySelector("#formatSelect"),
   songSearch: document.querySelector("#songSearch"),
@@ -338,20 +339,20 @@ function ensureSelectedPart() {
 
 function renderPartOptions() {
   ensureSelectedPart();
+  const choices = partsForInstrument();
   elements.part.innerHTML = "";
-  partsForInstrument().forEach((part) => {
+  choices.forEach((part) => {
     const option = document.createElement("option");
     option.value = part;
     option.textContent = part;
     elements.part.append(option);
   });
   elements.part.value = state.selectedPart;
+  elements.partField.hidden = choices.length < 2;
 }
 
 function displayAssets(work) {
-  const assets = ["Score PDF", "Part PDF", "Audio"];
-  if (work.assets.includes("Full score")) assets.unshift("Full score");
-  return [...new Set(assets)];
+  return ["PDF", "Audio"];
 }
 
 function setActionResult(title, detail) {
@@ -398,7 +399,7 @@ function openMusicAction(label, workTitle) {
       detail: `Practice MP3 is playing in the embedded player for ${state.selectedSong}.`
     },
     Part: {
-      title: `Part opened: ${state.selectedSong}`,
+      title: `PDF ready: ${state.selectedSong}`,
       detail: `${part} is ready in ${format} format as ${partDownloadFilename(state.selectedSong)}.`
     },
     Performance: {
@@ -484,7 +485,7 @@ function renderSelectedSong() {
   elements.selectedMeta.textContent = `${state.selectedPart} - ${formatLabel()} format - modified ${work.modified}`;
   elements.sheetTitle.textContent = state.selectedSong;
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
-  elements.downloadPartButton.textContent = "Download Part";
+  elements.downloadPartButton.textContent = "Download PDF";
   elements.assetTags.innerHTML = "";
   [...displayAssets(work), "Performance score view"].forEach((asset) => {
     const tag = document.createElement("span");

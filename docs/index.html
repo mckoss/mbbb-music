@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MBBB Music Portfolio</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-24">
+    <link rel="stylesheet" href="styles.css?v=20260603-25">
   </head>
   <body>
     <header class="app-header">
@@ -71,7 +71,7 @@
           <section class="viewer-pane" aria-live="polite">
             <div class="viewer-toolbar">
               <div>
-                <p class="viewer-kicker">Selected part</p>
+                <p class="viewer-kicker">Selected music</p>
                 <h2 id="selectedTitle"></h2>
                 <p id="selectedMeta"></p>
                 <div class="embedded-player" aria-label="Practice audio player">
@@ -92,14 +92,14 @@
               </label>
               <div class="viewer-actions">
                 <button id="performanceViewButton" class="secondary-action" type="button">Open Score</button>
-                <button id="downloadPartButton" class="primary-action" type="button">Download Part</button>
+                <button id="downloadPartButton" class="primary-action" type="button">Download PDF</button>
               </div>
             </div>
             <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
-              <p id="assetResultDetail">Choose Score, use the player, Open Score, or Download Part to preview the next step.</p>
+              <p id="assetResultDetail">Choose Score, use the player, Open Score, or Download PDF to preview the next step.</p>
             </section>
             <div class="sheet-frame">
               <div class="sheet-preview" aria-label="Sheet music preview">
@@ -250,6 +250,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-24"></script>
+    <script src="app.js?v=20260603-25"></script>
   </body>
 </html>
