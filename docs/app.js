@@ -245,6 +245,7 @@ const elements = {
   attendanceList: document.querySelector("#attendanceList"),
   toast: document.querySelector("#toast"),
   downloadPartButton: document.querySelector("#downloadPartButton"),
+  downloadMuseScoreButton: document.querySelector("#downloadMuseScoreButton"),
   downloadGigButton: document.querySelector("#downloadGigButton"),
   performanceViewButton: document.querySelector("#performanceViewButton"),
   printScoreButton: document.querySelector("#printScoreButton"),
@@ -316,6 +317,10 @@ function partDownloadFilename(workTitle) {
   return `mbbb_${fileSafeLabel(workTitle)}_${fileSafeLabel(state.selectedPart)}_${fileSafeLabel(formatLabel())}.pdf`;
 }
 
+function museScoreDownloadFilename(workTitle) {
+  return `mbbb_${fileSafeLabel(workTitle)}_full-score.mscz`;
+}
+
 function gigPacketFilename(gig) {
   return `mbbb_${gig.date}_${fileSafeLabel(gig.name)}_${fileSafeLabel(state.selectedPart)}_${fileSafeLabel(formatLabel())}.zip`;
 }
@@ -352,7 +357,7 @@ function renderPartOptions() {
 }
 
 function displayAssets(work) {
-  return ["PDF", "Audio"];
+  return ["PDF", "MuseScore", "Audio"];
 }
 
 function setActionResult(title, detail) {
@@ -401,6 +406,10 @@ function openMusicAction(label, workTitle) {
     Part: {
       title: `PDF ready: ${state.selectedSong}`,
       detail: `${part} is ready in ${format} format as ${partDownloadFilename(state.selectedSong)}.`
+    },
+    MuseScore: {
+      title: `MuseScore ready: ${state.selectedSong}`,
+      detail: `Full score source is ready as ${museScoreDownloadFilename(state.selectedSong)}.`
     },
     Performance: {
       title: `Score view opened: ${state.selectedSong}`,
@@ -486,6 +495,7 @@ function renderSelectedSong() {
   elements.sheetTitle.textContent = state.selectedSong;
   elements.sheetFooter.textContent = `${state.selectedPart} - ${formatLabel()}`;
   elements.downloadPartButton.textContent = "Download PDF";
+  elements.downloadMuseScoreButton.textContent = "Download MuseScore";
   elements.assetTags.innerHTML = "";
   [...displayAssets(work), "Performance score view"].forEach((asset) => {
     const tag = document.createElement("span");
@@ -841,6 +851,10 @@ elements.gigSelect.addEventListener("change", (event) => {
 
 elements.downloadPartButton.addEventListener("click", () => {
   openMusicAction("Part", state.selectedSong);
+});
+
+elements.downloadMuseScoreButton.addEventListener("click", () => {
+  openMusicAction("MuseScore", state.selectedSong);
 });
 
 elements.downloadGigButton.addEventListener("click", () => {
