@@ -294,6 +294,60 @@ select:focus, input:focus, button:focus-visible {
   gap: 8px;
 }
 
+.embedded-player {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 620px);
+  margin-top: 12px;
+  border: 1px solid rgba(36, 106, 115, 0.24);
+  border-radius: 8px;
+  background: #f7f5ef;
+  padding: 8px;
+}
+
+.embedded-player-main {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.embedded-player-main p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-toggle, .player-beginning {
+  min-height: 34px;
+  border-radius: 6px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.player-toggle {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 14px;
+}
+
+.player-toggle:hover { background: var(--accent-strong); }
+
+.player-beginning {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--accent-strong);
+  padding: 0 10px;
+}
+
+.player-beginning:hover { border-color: rgba(36, 106, 115, 0.48); }
+
 .asset-tags {
   display: flex;
   flex-wrap: wrap;
@@ -749,6 +803,13 @@ dd { margin: 3px 0 0; }
   .attendance-summary { justify-content: flex-start; }
   .viewer-actions { justify-content: stretch; }
   .viewer-actions button { flex: 1; }
+  .embedded-player {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .embedded-player [data-audio-time] {
+    grid-column: 2 / 4;
+    text-align: left;
+  }
   .score-toolbar label { width: 100%; }
   .practice-player { grid-template-columns: 1fr; }
   .media-controls { justify-content: stretch; }

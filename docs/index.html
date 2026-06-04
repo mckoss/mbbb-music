@@ -74,6 +74,17 @@
                 <p class="viewer-kicker">Selected part</p>
                 <h2 id="selectedTitle"></h2>
                 <p id="selectedMeta"></p>
+                <div class="embedded-player" aria-label="Practice audio player">
+                  <button class="player-toggle" type="button" data-audio-toggle>Play</button>
+                  <div class="embedded-player-main">
+                    <p data-audio-track></p>
+                    <div class="audio-progress-bar">
+                      <span data-audio-progress></span>
+                    </div>
+                  </div>
+                  <button class="player-beginning" type="button" data-audio-restart>0:00</button>
+                  <span data-audio-time></span>
+                </div>
               </div>
               <label class="part-field">
                 <span>Part</span>
@@ -85,24 +96,6 @@
               </div>
             </div>
             <div id="assetTags" class="asset-tags" aria-label="Available assets"></div>
-            <section class="practice-player library-player" aria-labelledby="libraryPracticeTitle">
-              <div>
-                <p class="viewer-kicker">Practice audio</p>
-                <h3 id="libraryPracticeTitle">Practice MP3</h3>
-                <p data-audio-track></p>
-              </div>
-              <div class="media-controls" aria-label="Practice audio controls">
-                <button class="secondary-action" type="button" data-audio-restart>Beginning</button>
-                <button class="primary-action" type="button" data-audio-play>Play</button>
-                <button class="secondary-action" type="button" data-audio-pause>Pause</button>
-              </div>
-              <div class="audio-progress" aria-label="Audio progress">
-                <div class="audio-progress-bar">
-                  <span data-audio-progress></span>
-                </div>
-                <span data-audio-time></span>
-              </div>
-            </section>
             <section id="assetResult" class="action-result" aria-live="polite">
               <p class="viewer-kicker">Action</p>
               <h3 id="assetResultTitle">Ready to open music</h3>
@@ -257,6 +250,6 @@
     </main>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260603-21"></script>
+    <script src="app.js?v=20260603-22"></script>
   </body>
 </html>

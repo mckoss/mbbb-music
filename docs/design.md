@@ -407,9 +407,10 @@ detail/result area rather than leaving users to guess which controls are active.
   selected gig set list.
 - See music actions such as score, part, and audio instead of Drive file/folder
   implementation details.
-- Use an embedded practice player in the collection/detail panel. Clicking Audio
-  on a tune tile selects that tune, highlights it, and starts the player in place
-  instead of opening the full score view.
+- Use a compact embedded practice player directly under the selected title in
+  the collection/detail panel. Clicking Audio on a tune tile selects that tune,
+  highlights it, and starts the player in place instead of opening the full
+  score view.
 - Download files with standardized app-generated filenames instead of original
   Drive filenames.
 - Download all current music for that instrument.

@@ -221,6 +221,7 @@ const elements = {
   scoreSheetFooter: document.querySelector("#scoreSheetFooter"),
   practiceTrack: document.querySelector("#practiceTrack"),
   audioTracks: document.querySelectorAll("[data-audio-track], #practiceTrack"),
+  audioToggleButtons: document.querySelectorAll("[data-audio-toggle]"),
   audioPlayButtons: document.querySelectorAll("[data-audio-play]"),
   audioPauseButtons: document.querySelectorAll("[data-audio-pause]"),
   audioRestartButtons: document.querySelectorAll("[data-audio-restart]"),
@@ -639,6 +640,11 @@ function renderAudioPlayer() {
   elements.audioTimes.forEach((time) => {
     time.textContent = `${formatTime(state.audio.position)} / ${formatTime(state.audio.duration)}`;
   });
+  elements.audioToggleButtons.forEach((button) => {
+    const isPlaying = state.audio.status === "playing";
+    button.textContent = isPlaying ? "Pause" : "Play";
+    button.setAttribute("aria-label", isPlaying ? "Pause practice audio" : "Play practice audio");
+  });
   elements.audioPlayButtons.forEach((button) => {
     button.disabled = state.audio.status === "playing";
   });
@@ -692,6 +698,14 @@ function pauseAudio() {
     `Audio paused: ${state.selectedSong}`,
     `Playback is paused at ${formatTime(state.audio.position)}.`
   );
+}
+
+function toggleAudio() {
+  if (state.audio.status === "playing") {
+    pauseAudio();
+  } else {
+    playAudio();
+  }
 }
 
 function restartAudio() {
@@ -848,6 +862,9 @@ elements.audioPlayButtons.forEach((button) => {
 });
 elements.audioPauseButtons.forEach((button) => {
   button.addEventListener("click", pauseAudio);
+});
+elements.audioToggleButtons.forEach((button) => {
+  button.addEventListener("click", toggleAudio);
 });
 elements.audioRestartButtons.forEach((button) => {
   button.addEventListener("click", restartAudio);
