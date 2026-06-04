@@ -47,20 +47,20 @@ const works = [
 const songs = works.map((work) => work.title);
 
 const partOptions = {
-  "Trumpet (B-flat)": ["Trumpet 1 (B-flat)", "Trumpet 2 (B-flat)", "Trumpet 3 (B-flat)", "Trumpet 4 (B-flat)"],
   "Alto saxophone (E-flat)": ["Alto saxophone 1 (E-flat)", "Alto saxophone 2 (E-flat)", "Alto saxophone 3/4 (E-flat)"],
-  "Tenor saxophone (B-flat)": ["Tenor saxophone (B-flat)"],
   "Baritone saxophone (E-flat)": ["Baritone saxophone (E-flat)"],
-  "Soprano saxophone (B-flat)": ["Soprano saxophone (B-flat)"],
   "Clarinet (B-flat)": ["Clarinet 1 (B-flat)", "Clarinet 2 (B-flat)", "Clarinet 3/4 (B-flat)"],
+  "Drums / percussion": ["Drum set", "Snare drum", "Bass drum", "Cymbals", "Congas", "Tenor drums", "All percussion"],
+  "Euphonium / baritone (B-flat)": ["Euphonium (B-flat)", "Euphonium treble clef (B-flat)", "Euphonium bass clef (B-flat)", "Baritone horn (B-flat)"],
+  Flute: ["Flute 1", "Flute 2"],
   "Horn (F)": ["Horn (F)"],
   "Mellophone (F)": ["Mellophone (F)"],
-  "Euphonium / baritone (B-flat)": ["Euphonium (B-flat)", "Euphonium treble clef (B-flat)", "Euphonium bass clef (B-flat)", "Baritone horn (B-flat)"],
-  "Trombone (B-flat)": ["Trombone 1 (B-flat)", "Trombone 2 (B-flat)", "Bass trombone (B-flat)"],
-  "Tuba / sousaphone (B-flat)": ["Tuba (B-flat)", "Sousaphone (B-flat)"],
-  Flute: ["Flute 1", "Flute 2"],
   Melodica: ["Melodica"],
-  "Drums / percussion": ["Drum set", "Snare drum", "Bass drum", "Cymbals", "Congas", "Tenor drums", "All percussion"]
+  "Soprano saxophone (B-flat)": ["Soprano saxophone (B-flat)"],
+  "Tenor saxophone (B-flat)": ["Tenor saxophone (B-flat)"],
+  "Trombone (B-flat)": ["Trombone 1 (B-flat)", "Trombone 2 (B-flat)", "Bass trombone (B-flat)"],
+  "Trumpet (B-flat)": ["Trumpet 1 (B-flat)", "Trumpet 2 (B-flat)", "Trumpet 3 (B-flat)", "Trumpet 4 (B-flat)"],
+  "Tuba / sousaphone (B-flat)": ["Tuba (B-flat)", "Sousaphone (B-flat)"]
 };
 
 const members = [
@@ -186,7 +186,7 @@ const gigs = [
 const state = {
   selectedSong: songs[0],
   selectedGigId: "south-whidbey-pride",
-  selectedPart: partOptions["Trumpet (B-flat)"][0],
+  selectedPart: partOptions["Alto saxophone (E-flat)"][0],
   printFormat: "letter",
   audio: {
     status: "paused",

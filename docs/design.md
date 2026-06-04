@@ -123,20 +123,20 @@ these useful part labels across the PDF filenames:
 
 Initial player-facing instrument options:
 
-- Trumpet (B-flat)
 - Alto saxophone (E-flat)
-- Tenor saxophone (B-flat)
 - Baritone saxophone (E-flat)
-- Soprano saxophone (B-flat)
 - Clarinet (B-flat)
+- Drums / percussion
+- Euphonium / baritone (B-flat)
+- Flute
 - Horn (F)
 - Mellophone (F)
-- Euphonium / baritone (B-flat)
-- Trombone (B-flat)
-- Tuba / sousaphone (B-flat)
-- Flute
 - Melodica
-- Drums / percussion
+- Soprano saxophone (B-flat)
+- Tenor saxophone (B-flat)
+- Trombone (B-flat)
+- Trumpet (B-flat)
+- Tuba / sousaphone (B-flat)
 
 ### Asset
 
