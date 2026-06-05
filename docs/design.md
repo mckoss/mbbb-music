@@ -340,18 +340,23 @@ member profiles, job state — in Postgres rather than round-tripping it through
 
 ### Incremental Drive Sync
 
-A refresh runs on a cron schedule or an admin UI trigger; both invoke the same
-delta-based, cache-retaining import job:
+The first implementation syncs the two configured Google Drive source folders
+into a gitignored local `data/` directory in this repository. The sync logic
+should be packaged as a reusable service that can run from either a command-line
+script or an Express admin action when the app is hosted. A refresh runs on a
+manual CLI command, cron schedule, or admin UI trigger; each path invokes the
+same delta-based, cache-retaining import job:
 
 1. **List (delta).** Use the Google Drive Changes API with a persisted
    `startPageToken`, so each run only sees files changed since the last sync.
-   Drive provides `id`, `modifiedTime`, `md5Checksum`, and `version`.
+   Drive provides `id`, `modifiedTime`, `md5Checksum`, and `version`. Ignore
+   Google Drive shortcut files.
 2. **Diff.** Compare each Drive file against the manifest and classify it as new,
    changed, unchanged, or deleted. Unchanged files are skipped. Deleted files are
    marked archived; local content is never deleted.
-3. **Fetch.** Download only new or changed files into a raw-input cache keyed by
-   `driveFileId + md5Checksum`. A file whose checksum is already present is not
-   re-fetched.
+3. **Fetch.** Download only accepted asset types: score PDFs, MP3 audio files,
+   and MuseScore files. Store them under `data/<song-title-slug>/`. A file whose
+   checksum is already present is not re-fetched.
 4. **Build.** Generate outputs (see MuseScore Automation). Skip any output whose
    inputs and recipe are unchanged; rebuild only what is affected.
 5. **Publish.** Update the manifest with the new outputs, checksums, and Drive
@@ -367,19 +372,20 @@ An **output recipe** is the versioned config for producing one derived artifact 
 the settings, not the file (letter PDF, 7x5 lyre PDF, MP3 at a given bitrate). It
 lives in the private repo with the generator code.
 
-Stored files use readable canonical slug filenames, never hashes, so the directory
-tree and manifest diffs stay inspectable: `mbbb_bad-guy_trumpet-1_lyre.pdf`,
-`mbbb_bad-guy_full_mp3.mp3`. The rebuild decision lives in the manifest instead:
-each row records the slug filename plus `inputChecksum`, `recipeVersion`, and
-`toolVersion`, and the job rebuilds (overwriting in place) when the freshly
-computed values differ. Bumping a `recipeVersion` — say, new lyre margins —
-rebuilds only the matching outputs even though the sources are unchanged. Cache
-freshness uses ETag/Last-Modified or a `?v=<short-hash>` suffix, so on-disk names
-stay stable.
+Stored files use readable lowercase slug filenames, never hashes, so the
+directory tree and manifest diffs stay inspectable. Phase 1 local storage uses
+one folder per song: `data/<song-title-slug>/`. Score PDFs should use
+`<song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf`, for
+example `bad-guy-trumpet-bflat.pdf`, `bad-guy-trumpet-bflat-1.pdf`, and
+`bad-guy-trumpet-bflat-2.pdf`. MuseScore and MP3 files live in the same song
+folder with similarly slugified names.
 
-The manifest lives in Postgres (written every run, queryable for admin review).
-For git-level inspectability the job can export a read-only text snapshot into the
-private repo as a one-way commit.
+The rebuild and refresh decision lives in the manifest instead: each row records
+the Drive source folder, Drive file id, original name, mime type, modified time,
+checksum or size when available, canonical local path, detected song title,
+instrument/key/part metadata, sync status, and sync timestamp. Later production
+versions can move this manifest into Postgres for admin review, but Phase 1 may
+keep it as `data/manifest.json` because `data/` is gitignored.
 
 ### Deployment Notes For Storage
 
@@ -678,18 +684,36 @@ Requirements to explore:
 - Decide how the app will appear from `mutinybaybrassband.com`: members-only
   page, subdomain, link to Railway-hosted app, or reverse proxy.
 
-### Phase 1: Catalog MVP
+### Phase 1: Drive Asset Sync
+
+- Add `data/` to `.gitignore`; treat it as local/private rebuildable storage.
+- Configure two Google Drive source folders.
+- Implement one reusable sync service with both a command-line entry point and
+  an Express-callable entry point for hosted refreshes.
+- Ignore Google Drive shortcut files and non-asset files.
+- Download score PDFs, MP3 files, and MuseScore files.
+- Group files by song in `data/<song-title-slug>/`.
+- Use lowercase slugified filenames.
+- For score PDFs, use
+  `<song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf`, such as
+  `bad-guy-trumpet-bflat.pdf` or `bad-guy-trumpet-bflat-2.pdf`.
+- Maintain `data/manifest.json` with Drive provenance, checksums, local paths,
+  detected song/instrument metadata, and sync status.
+- On later refreshes, classify source files as new, changed, unchanged, deleted,
+  or ignored without re-downloading unchanged assets.
+
+### Phase 2: Catalog MVP
 
 - Google OAuth login with an admin/member role model.
 - Member profiles with name, email, instrument, and default part.
-- Import files into app-managed storage.
+- Import synced files into app-managed catalog records.
 - Detect duplicates.
 - Manually classify tunes, arrangements, parts, and audio.
 - Track missing or incomplete assets without blocking catalog visibility.
 - Browse/search catalog.
 - Download app-stored music assets by instrument and part.
 
-### Phase 2: Packet Builder
+### Phase 3: Packet Builder
 
 - Generate per-instrument zip files.
 - Include PDFs and MP3 practice tracks.
@@ -698,7 +722,7 @@ Requirements to explore:
 - Use a canonical filename recipe for generated downloads, such as app prefix,
   gig or tune identity, instrument/part, and output format.
 
-### Phase 3: Gig Backlog
+### Phase 4: Gig Backlog
 
 - Create/edit gigs with date, venue, address, arrival time, performance time, and
   notes.
@@ -709,14 +733,14 @@ Requirements to explore:
 - Let players view gig music from the site as a filtered, ordered collection with
   per-tune score and audio actions.
 
-### Phase 4: MuseScore Builds
+### Phase 5: MuseScore Builds
 
 - Prototype MuseScore CLI in a worker container.
 - Generate PDFs from `.mscz` files.
 - Generate or attach MP3/MIDI outputs.
 - Evaluate 7x5 lyre formatting quality.
 
-### Phase 5: Practice / Performance UI
+### Phase 6: Practice / Performance UI
 
 - Full score/performance view.
 - Print controls for 8.5x11 and 7x5 lyre output.
@@ -727,7 +751,7 @@ Requirements to explore:
 - Offline/PWA cache.
 - Page-turn and set-list flow.
 
-### Phase 6: Transposition Backlog
+### Phase 7: Transposition Backlog
 
 - Define instrument transposition and playable-range metadata.
 - Prototype MuseScore-based part transposition from clean source scores.

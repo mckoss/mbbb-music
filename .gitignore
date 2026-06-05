@@ -13,3 +13,6 @@ music/
 assets/private/
 generated/
 
+# Phase 1 Drive sync target: local/private rebuildable storage (manifest + assets).
+data/
+

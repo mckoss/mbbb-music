@@ -43,11 +43,17 @@ docs/index.html  - Static interactive design prototype
 docs/app.js      - Prototype data and behavior
 docs/styles.css  - Prototype styling
 docs/assets/     - Public-safe visual assets
+src/sync/        - Phase 1 Drive asset sync core (reusable service)
+src/server/      - Express-callable handler for hosted refreshes
+bin/sync.js      - Phase 1 sync CLI entry point
+test/            - node:test suites (slug, classify, manifest, sync)
+package.json     - Scripts/metadata; ESM, zero runtime dependencies
 ```
 
-There is no build step, package manager, server, or test suite yet. The docs
-surface is plain HTML, CSS, and JavaScript under `docs/`, suitable for GitHub
-Pages.
+The docs surface is plain HTML, CSS, and JavaScript under `docs/`, suitable for
+GitHub Pages. The Phase 1 Drive sync (`src/sync`, `bin/sync.js`) runs on Node
+20+ with no dependencies and uses the built-in `node:test` runner. Synced music
+lands in the gitignored `data/` directory and never enters this public repo.
 
 ## Local Workflow
 
@@ -59,10 +65,15 @@ Useful checks:
 
 ```bash
 git status --short
-python3 -m http.server 8000 --directory docs
+python3 -m http.server 8000 --directory docs   # serve the static prototype
+npm test                                        # Phase 1 sync test suites
+npm run sync:demo                               # sync synthetic fixtures into ./data
+node bin/sync.js --help                         # Phase 1 sync CLI options
 ```
 
-Then visit `http://localhost:8000/`.
+Then visit `http://localhost:8000/` for the prototype. The Phase 1 sync needs no
+`npm install` (zero dependencies); run with `--fixture` to exercise it without
+Google credentials.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
