@@ -55,6 +55,16 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   );
   prepareAssets(assetEntries, logger, config.deprioritize || []);
 
+  // Persist the manifest incrementally so a stopped sync never loses progress:
+  // after every download the manifest on disk records exactly what was fetched
+  // (with its SHA-256), so a resume skips already-downloaded files. The write is
+  // atomic, so an interrupt can't leave a missing or truncated manifest.
+  manifest.generatedAt = timestamp;
+  const persist = async () => {
+    if (!dryRun) await saveManifest(config.manifestPath, manifest);
+  };
+  await persist(); // ensure a valid manifest exists before the first download
+
   for (const entry of entries) {
     if (entry.status === 'ignored') {
       // Record provenance for ignored files too, so refreshes stay stable and
@@ -104,18 +114,16 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       manifest.files[entry.id] = { ...record, status: 'synced', byteLength: bytes.length };
       actions.downloaded.push({ id: entry.id, localPath: parsed.localPath, status: entry.status });
       logger.info(`${entry.status === 'new' ? 'Added' : 'Updated'} ${parsed.localPath}`);
+      await persist(); // durably record this download before fetching the next
     } catch (err) {
       manifest.files[entry.id] = { ...record, status: 'error', error: String(err?.message || err) };
       actions.failed.push({ id: entry.id, localPath: parsed.localPath, error: String(err?.message || err) });
       logger.error(`Failed to download ${file.name}: ${err?.message || err}`);
+      await persist();
     }
   }
 
-  manifest.generatedAt = timestamp;
-
-  if (!dryRun) {
-    await saveManifest(config.manifestPath, manifest);
-  }
+  await persist(); // final write captures any trailing non-download entries
 
   // Report duplicate content (same SHA-256) across the whole library, regardless
   // of song folder or source. Informational only — nothing is removed.

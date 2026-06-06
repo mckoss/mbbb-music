@@ -170,6 +170,38 @@ test('deprioritized folders lose the tie when choosing the canonical copy', asyn
   });
 });
 
+test('manifest is persisted after each download, so a stop is not lost', async () => {
+  await withTempDir(async (dataDir) => {
+    const config = makeConfig(dataDir);
+    const manifestPath = resolve(dataDir, 'manifest.json');
+    const base = createFixtureDriveClient({ files: FIXTURE_FILES });
+
+    let downloads = 0;
+    let syncedBeforeSecond = -1;
+    const client = {
+      listFiles: (f) => base.listFiles(f),
+      downloadFile: async (id) => {
+        downloads += 1;
+        if (downloads === 2) {
+          // The first download must already be durably recorded on disk.
+          const m = JSON.parse(await readFile(manifestPath, 'utf8'));
+          syncedBeforeSecond = Object.values(m.files).filter((e) => e.status === 'synced').length;
+        }
+        return base.downloadFile(id);
+      },
+    };
+
+    await runSync({ driveClient: client, config, now: FIXED_NOW });
+    // At the 2nd download, ≥1 synced file (with its sha256) was already on disk.
+    assert.ok(syncedBeforeSecond >= 1, `expected a synced entry on disk; got ${syncedBeforeSecond}`);
+
+    // Downloaded entries carry their hash, so a resume can skip them.
+    const finalManifest = await loadManifest(manifestPath);
+    const anySynced = Object.values(finalManifest.files).find((e) => e.status === 'synced');
+    assert.ok(anySynced.sha256Checksum, 'downloaded entries record a sha256 for resume');
+  });
+});
+
 test('dry-run plans without downloading or writing the manifest', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);

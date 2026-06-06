@@ -4,7 +4,7 @@
 // later run can classify each source file as new, changed, unchanged, deleted,
 // or ignored without re-downloading unchanged assets.
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const MANIFEST_VERSION = 1;
@@ -41,12 +41,17 @@ export async function loadManifest(manifestPath) {
 /**
  * Write a manifest to disk as pretty-printed JSON (creating parent dirs).
  *
+ * Writes to a temp file and renames into place, so an interrupted write (the
+ * sync persists after every download) can never truncate or remove the manifest.
+ *
  * @param {string} manifestPath
  * @param {object} manifest
  */
 export async function saveManifest(manifestPath, manifest) {
   await mkdir(dirname(manifestPath), { recursive: true });
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+  const tmp = `${manifestPath}.tmp`;
+  await writeFile(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+  await rename(tmp, manifestPath); // atomic on the same filesystem
 }
 
 /**
