@@ -16,6 +16,7 @@ import os from 'node:os';
 
 import { loadConfig } from '../src/sync/config.js';
 import { slugify } from '../src/sync/slugify.js';
+import { DEFAULT_KEY_BY_SLUG } from '../src/sync/instruments.js';
 
 const OPEN_CONFIRM_THRESHOLD = 25;
 
@@ -28,14 +29,17 @@ USAGE
   node bin/library.js list [options]
   node bin/library.js open <prefix> [options]
   npm run library -- list
-  npm run library -- open uptown
+  npm run library -- open uptown-funk-trumpet-bflat
 
 SUBCOMMANDS
   list                For each song (shown as a slug), an indented list of the
                       instrument-key-part of every live asset.
-  open <prefix>       Open every PDF and MP3 whose song slug starts with <prefix>
-                      in the OS default app. The prefix is slugified, so
-                      "Uptown Funk" and "uptown-funk" match the same songs.
+  open <prefix>       Open every PDF and MP3 whose identifier starts with
+                      <prefix> in the OS default app. The identifier is
+                      "<song>-<instrument>-<key>-<part>" (exactly the slugs shown
+                      by \`list\`), so the prefix can target a whole song
+                      (\`uptown-funk\`) or a single part
+                      (\`uptown-funk-trumpet-bflat\`).
 
 OPTIONS
   --data-dir <path>   Data directory holding manifest.json + cas/ (default:
@@ -90,17 +94,30 @@ function liveAssets(manifest) {
 
 /**
  * The instrument-key-part descriptor for one asset. The descriptor is anchored
- * on a detected instrument; a stray key or part number with no instrument is
- * not a real part, so those fall back to the filename/asset type. (Part numbers
- * below 1 are voicing/version artifacts, not parts, and are dropped.)
+ * on a detected instrument, with the instrument's default key folded in when no
+ * explicit key was detected (so a B♭ trumpet reads "trumpet-bflat"). A stray
+ * key or part number with no instrument is not a real part; those fall back to
+ * naming the file so it's identifiable. (Part numbers below 1 are
+ * voicing/version artifacts, not parts, and are dropped.)
  */
 function descriptorOf(entry) {
   if (entry.instrumentSlug) {
     const part = Number.isInteger(entry.partNumber) && entry.partNumber >= 1 ? entry.partNumber : null;
-    return [entry.instrumentSlug, entry.key, part].filter((p) => p != null && p !== '').join('-');
+    const key = entry.key || DEFAULT_KEY_BY_SLUG[entry.instrumentSlug] || null;
+    return [entry.instrumentSlug, key, part].filter((p) => p != null && p !== '').join('-');
   }
-  if (entry.assetType === 'pdf') return `pdf (${entry.originalName || entry.driveFileId})`;
-  return entry.assetType || 'unknown';
+  return `${entry.assetType || 'file'} (${entry.originalName || entry.driveFileId})`;
+}
+
+/**
+ * The slug identifier `open` matches a prefix against:
+ * "<song>-<instrument>-<key>-<part>" for instrument parts, or just "<song>" for
+ * assets with no detected instrument (audio, notes). A prefix can therefore
+ * target a whole song or drill down to a single part.
+ */
+function assetMatchKey(entry) {
+  const songSlug = slugify(entry.songTitle || '') || 'unknown';
+  return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : songSlug;
 }
 
 /**
@@ -173,16 +190,18 @@ function canonicalByContent(manifest, pri) {
  * is listed exactly once, attributed to its canonical (highest-priority) song.
  */
 function buildList(manifest, pri) {
-  const { canonical, liveCount } = canonicalByContent(manifest, pri);
+  const { canonical } = canonicalByContent(manifest, pri);
 
-  // Group the canonical entries by song.
+  // Group the canonical entries by song. Distinct files that share a descriptor
+  // collapse to one line (duplicate source copies aren't worth enumerating).
   const bySong = new Map();
   for (const entry of canonical.values()) {
     const title = entry.songTitle || '(unknown)';
     const slug = slugify(title) || '(unknown)';
-    if (!bySong.has(slug)) bySong.set(slug, { slug, title, descriptors: new Map() });
-    const d = descriptorOf(entry);
-    bySong.get(slug).descriptors.set(d, (bySong.get(slug).descriptors.get(d) || 0) + 1);
+    if (!bySong.has(slug)) bySong.set(slug, { slug, title, fileCount: 0, descriptors: new Set() });
+    const song = bySong.get(slug);
+    song.fileCount += 1;
+    song.descriptors.add(descriptorOf(entry));
   }
 
   const songs = [...bySong.values()]
@@ -190,28 +209,22 @@ function buildList(manifest, pri) {
     .map((song) => ({
       slug: song.slug,
       title: song.title,
-      assets: [...song.descriptors.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([descriptor, count]) => ({ descriptor, count })),
+      fileCount: song.fileCount,
+      assets: [...song.descriptors].sort((a, b) => a.localeCompare(b)),
     }));
 
-  return { songs, uniqueCount: canonical.size, liveCount };
+  return { songs, uniqueCount: canonical.size };
 }
 
-function printList({ songs, uniqueCount, liveCount }) {
+function printList({ songs, uniqueCount }) {
   for (const song of songs) {
     const titleNote = song.title && song.title !== song.slug ? `  (${song.title})` : '';
-    const songAssets = song.assets.reduce((n, a) => n + a.count, 0);
-    console.log(`${song.slug}${titleNote}  — ${songAssets} file${songAssets === 1 ? '' : 's'}`);
-    for (const a of song.assets) {
-      console.log(`    ${a.descriptor}${a.count > 1 ? `  ×${a.count}` : ''}`);
+    console.log(`${song.slug}${titleNote}  — ${song.fileCount} file${song.fileCount === 1 ? '' : 's'}`);
+    for (const d of song.assets) {
+      console.log(`    ${d}`);
     }
   }
-  const collapsed = liveCount - uniqueCount;
-  console.log(
-    `\n${songs.length} song${songs.length === 1 ? '' : 's'}, ${uniqueCount} unique files` +
-      (collapsed > 0 ? ` (${collapsed} duplicate ${collapsed === 1 ? 'copy' : 'copies'} collapsed by content).` : '.'),
-  );
+  console.log(`\n${songs.length} song${songs.length === 1 ? '' : 's'}, ${uniqueCount} unique files.`);
 }
 
 // --- open -------------------------------------------------------------------
@@ -265,13 +278,16 @@ function runOpen(manifest, casDir, prefix, pri, opts) {
 
   // Work from the canonical-by-content view (same as `list`), so each blob is
   // opened once and matched against its canonical song — a file filed under an
-  // index folder still opens when its real song is requested.
+  // index folder still opens when its real song is requested. Match the prefix
+  // against the full "<song>-<instrument>-<key>-<part>" identifier, so the
+  // prefix can target a whole song ("uptown-funk") or one part
+  // ("uptown-funk-trumpet-bflat").
   const { canonical } = canonicalByContent(manifest, pri);
   const matches = [];
   for (const entry of canonical.values()) {
     if (entry.assetType !== 'pdf' && entry.assetType !== 'mp3') continue;
     if (!entry.sha256) continue;
-    if (!slugify(entry.songTitle || '').startsWith(wanted)) continue;
+    if (!assetMatchKey(entry).startsWith(wanted)) continue;
     matches.push(entry);
   }
 

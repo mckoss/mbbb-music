@@ -31,6 +31,13 @@ const INSTRUMENTS = [
 ];
 
 /**
+ * Default written key per instrument slug (null for untransposed instruments
+ * like flute/drums). A trumpet part with no explicit key token is still in B♭,
+ * so consumers can fold this in to get the effective transposition.
+ */
+export const DEFAULT_KEY_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.slug, i.defaultKey]));
+
+/**
  * Detect an instrument from a source filename (extension already stripped is
  * fine; the search is substring based and case-insensitive).
  *

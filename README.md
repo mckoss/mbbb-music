@@ -143,24 +143,30 @@ Once a sync has populated `data/`, `bin/library.js` reads the manifest to inspec
 and open what's in the store. It has two subcommands:
 
 ```bash
-node bin/library.js list                 # catalog grouped by song
-npm run library -- list --json           # same, as JSON
-node bin/library.js open uptown          # open matching scores/tracks
-node bin/library.js --help               # all options
+node bin/library.js list                        # catalog grouped by song
+npm run library -- list --json                  # same, as JSON
+node bin/library.js open uptown-funk            # open a whole song
+node bin/library.js open uptown-funk-trumpet-bflat   # ...or one part
+node bin/library.js --help                      # all options
 ```
 
 `list` prints every live asset grouped by song (shown as a slug), each as an
-indented `instrument-key-part` descriptor (deduped, with `×N` counts), plus a
-song/asset total.
+indented `instrument-key-part` descriptor with the instrument's default key
+folded in (a B♭ trumpet reads `trumpet-bflat`). Each unique content file (CAS
+blob) is counted once: identical bytes appearing in several Drive folders or
+sources are collapsed, and a copy filed under an index folder (e.g. "50 Indexed
+By Instrument") is attributed to the real song that holds the same bytes in a
+higher-priority source.
 
-`open <prefix>` opens every PDF and MP3 whose **song slug starts with `<prefix>`**
-in your OS default app — handy for pulling up a tune's parts and practice tracks
-at once. The prefix is slugified, so `open "Uptown Funk"` and `open uptown-funk`
-match the same songs. CAS blobs are content-addressed with no extension, so each
-match is copied to a throwaway temp location with a readable name and the correct
-`.pdf`/`.mp3` extension before launching (on WSL via `Start-Process`, otherwise
-`open`/`xdg-open`); the blobs in `data/cas/` are never modified. To avoid opening
-a flood of windows, more than 25 matches requires `--yes`.
+`open <prefix>` opens every PDF and MP3 whose identifier
+(`<song>-<instrument>-<key>-<part>`, exactly the slugs `list` shows) **starts
+with `<prefix>`** in your OS default app — so the prefix can target a whole song
+(`uptown-funk`) or drill down to a single part (`uptown-funk-trumpet-bflat`).
+CAS blobs are content-addressed with no extension, so each match is copied to a
+throwaway temp location with a readable name and the correct `.pdf`/`.mp3`
+extension before launching (on WSL via `Start-Process`, otherwise
+`open`/`xdg-open`); the blobs in `data/cas/` are never modified. To avoid
+opening a flood of windows, more than 25 matches requires `--yes`.
 
 ## Open Questions
 
