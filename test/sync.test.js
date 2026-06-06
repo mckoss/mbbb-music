@@ -44,10 +44,10 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     const client = createFixtureDriveClient({ files: FIXTURE_FILES });
     const report = await runSync({ driveClient: client, config: makeConfig(dataDir), now: FIXED_NOW });
 
-    // 8 assets, 3 ignored (shortcut, google doc, jpg).
-    assert.equal(report.summary.new, 8);
-    assert.equal(report.summary.downloaded, 8);
-    assert.equal(report.summary.ignored, 3);
+    // 9 assets (incl. the Google Doc exported to PDF), 2 ignored (shortcut, jpg).
+    assert.equal(report.summary.new, 9);
+    assert.equal(report.summary.downloaded, 9);
+    assert.equal(report.summary.ignored, 2);
     assert.equal(report.summary.failed, 0);
 
     // Each asset's bytes live at data/cas/<sha256-of-content>.
@@ -55,9 +55,9 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     assert.ok(await exists(resolve(dataDir, 'cas', trumpet)));
     assert.equal(await readFile(resolve(dataDir, 'cas', trumpet), 'utf8'), 'SYNTHETIC-PDF: bad guy trumpet part 1');
 
-    // The store holds exactly the 8 unique asset blobs (no nested dirs).
+    // The store holds exactly the 9 unique asset blobs (no nested dirs).
     const blobs = await readdir(resolve(dataDir, 'cas'));
-    assert.equal(blobs.length, 8);
+    assert.equal(blobs.length, 9);
 
     // Manifest records provenance, hash, cas path, metadata, and status.
     const manifest = await loadManifest(resolve(dataDir, 'manifest.json'));
@@ -84,9 +84,9 @@ test('re-running is idempotent: every blob already cached, nothing re-downloaded
     await runSync({ driveClient: client, config, now: FIXED_NOW });
     const second = await runSync({ driveClient: client, config, now: FIXED_NOW });
 
-    assert.equal(second.summary.unchanged, 8);
+    assert.equal(second.summary.unchanged, 9);
     assert.equal(second.summary.downloaded, 0);
-    assert.equal(second.summary.cached, 8);
+    assert.equal(second.summary.cached, 9);
   });
 });
 
@@ -211,7 +211,7 @@ test('a previously built cache skips download entirely (no re-download to rebuil
     const report = await runSync({ driveClient: noDownload, config, now: FIXED_NOW });
 
     assert.equal(report.summary.downloaded, 0);
-    assert.equal(report.summary.cached, 8);
+    assert.equal(report.summary.cached, 9);
     assert.equal(report.summary.failed, 0);
   });
 });
@@ -241,9 +241,9 @@ test('manifest is written first (full metadata) before any blob is fetched', asy
 
     await runSync({ driveClient: client, config, now: FIXED_NOW });
     // Before the first byte was fetched, the manifest held all 11 entries with
-    // the 8 assets queued as pending.
+    // the 9 assets queued as pending.
     assert.equal(entriesAtFirstDownload, FIXTURE_FILES.length);
-    assert.equal(pendingAtFirstDownload, 8);
+    assert.equal(pendingAtFirstDownload, 9);
 
     // After the run, each downloaded entry carries its hash so a resume skips it.
     const finalManifest = await loadManifest(manifestPath);
@@ -262,9 +262,9 @@ test('dry-run plans without fetching blobs or writing the manifest', async () =>
       now: FIXED_NOW,
     });
     assert.equal(report.dryRun, true);
-    assert.equal(report.summary.new, 8);
+    assert.equal(report.summary.new, 9);
     assert.equal(report.summary.downloaded, 0);
-    assert.equal(report.summary.pending, 8);
+    assert.equal(report.summary.pending, 9);
     assert.ok(!(await exists(resolve(dataDir, 'manifest.json'))));
     assert.ok(!(await exists(resolve(dataDir, 'cas'))));
   });

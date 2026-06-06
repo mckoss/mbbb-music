@@ -31,9 +31,12 @@ A reusable Drive asset sync lives under `src/sync/`, with a CLI entry point at
 `bin/sync.js` and an Express-callable handler at `src/server/sync-route.js`. Each
 configured source folder is scanned **recursively** — the band's Drive is laid
 out as `<source>/<song-title>/<asset>` (and may nest deeper), so the top-level
-folder under each source is treated as the song. The sync downloads only real
-asset files (score PDFs, MP3s, MuseScore files) into a **content-addressable
-store**: each blob lives at `data/cas/<sha256>`, named purely by the SHA-256 of
+folder under each source is treated as the song. The sync downloads asset files
+(score PDFs, MP3s, MuseScore files) into a **content-addressable store** — and
+native Google editor files (Docs, Sheets, Slides, Drawings), which have no binary
+form, are exported to PDF and stored the same way so they can be displayed
+alongside the scores. Each blob lives at `data/cas/<sha256>`, named purely by the
+SHA-256 of
 its bytes. There is no song/source directory tree on disk — `data/manifest.json`
 holds all the metadata (provenance, source, original filename, detected
 song/instrument/key/part) and maps each Drive file to its hash.

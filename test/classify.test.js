@@ -4,8 +4,25 @@ import assert from 'node:assert/strict';
 import { classifyDriveFile } from '../src/sync/classify.js';
 
 test('classifies accepted asset types by mime', () => {
-  assert.equal(classifyDriveFile({ name: 'x.pdf', mimeType: 'application/pdf' }).assetType, 'pdf');
+  const pdf = classifyDriveFile({ name: 'x.pdf', mimeType: 'application/pdf' });
+  assert.equal(pdf.assetType, 'pdf');
+  assert.deepEqual(pdf.download, { mode: 'media' });
   assert.equal(classifyDriveFile({ name: 'x.mp3', mimeType: 'audio/mpeg' }).assetType, 'mp3');
+});
+
+test('accepts native Google editor files as PDFs fetched via export', () => {
+  for (const mimeType of [
+    'application/vnd.google-apps.document',
+    'application/vnd.google-apps.spreadsheet',
+    'application/vnd.google-apps.presentation',
+    'application/vnd.google-apps.drawing',
+  ]) {
+    const c = classifyDriveFile({ name: 'Notes', mimeType });
+    assert.equal(c.ignored, false, mimeType);
+    assert.equal(c.assetType, 'pdf', mimeType);
+    assert.equal(c.ext, 'pdf', mimeType);
+    assert.deepEqual(c.download, { mode: 'export', mimeType: 'application/pdf' }, mimeType);
+  }
 });
 
 test('classifies MuseScore files by extension when mime is generic', () => {
@@ -32,10 +49,10 @@ test('ignores shortcuts detected only via shortcutDetails', () => {
   assert.equal(c.ignoreReason, 'google-drive-shortcut');
 });
 
-test('ignores folders and native Google files', () => {
+test('ignores folders and non-exportable native Google files', () => {
   assert.equal(classifyDriveFile({ name: 'Songs', mimeType: 'application/vnd.google-apps.folder' }).ignoreReason, 'folder');
   assert.equal(
-    classifyDriveFile({ name: 'Notes', mimeType: 'application/vnd.google-apps.document' }).ignoreReason,
+    classifyDriveFile({ name: 'Sign-up', mimeType: 'application/vnd.google-apps.form' }).ignoreReason,
     'google-native-file',
   );
 });

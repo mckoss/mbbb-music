@@ -122,8 +122,10 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
           continue;
         }
 
-        const bytes = await driveClient.downloadFile(entry.id);
-        // Trust Drive's checksum as the key when present; otherwise hash the bytes.
+        const bytes = await driveClient.downloadFile(entry.id, entry.classification.download);
+        // Trust Drive's checksum as the key when present; otherwise hash the
+        // bytes. Native files exported to PDF have no Drive checksum, so the CAS
+        // key is always the SHA-256 of the exported bytes computed here.
         const sha = knownSha || createHash('sha256').update(bytes).digest('hex');
         const blobPath = resolve(casDir, sha);
         const newBlob = !existsSync(blobPath);

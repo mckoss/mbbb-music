@@ -5,8 +5,10 @@
 //   interface DriveClient {
 //     // List the asset-relevant files under a configured source folder.
 //     listFiles(folderId): Promise<DriveFile[]>
-//     // Download a file's bytes by id.
-//     downloadFile(id): Promise<Buffer>
+//     // Download a file's bytes by id. `download` selects binary content
+//     // (alt=media, the default) or an export rendering (files.export) for native
+//     // Google editor files; see classify.js DownloadSpec.
+//     downloadFile(id, download?): Promise<Buffer>
 //   }
 //
 // A DriveFile mirrors the fields the Drive API returns and the manifest needs:
@@ -57,7 +59,7 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
       }
       return out;
     },
-    async downloadFile(id) {
+    async downloadFile(id, _download) {
       if (!bytesById.has(id)) {
         throw new Error(`fixture drive client has no content for file id: ${id}`);
       }
@@ -184,10 +186,20 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       return out;
     },
 
-    async downloadFile(fileId) {
+    async downloadFile(fileId, download = { mode: 'media' }) {
       if (!fileId) throw new Error('downloadFile(fileId) requires a Drive file id');
-      const params = new URLSearchParams({ alt: 'media', supportsAllDrives: 'true' });
-      const res = await driveRequest(`${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params.toString()}`);
+      let url;
+      if (download?.mode === 'export') {
+        // Native Google editor files have no binary content; files.export renders
+        // them (here, to PDF) so they store and serve like any other asset. The
+        // export endpoint does not accept supportsAllDrives.
+        const params = new URLSearchParams({ mimeType: download.mimeType });
+        url = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/export?${params.toString()}`;
+      } else {
+        const params = new URLSearchParams({ alt: 'media', supportsAllDrives: 'true' });
+        url = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params.toString()}`;
+      }
+      const res = await driveRequest(url);
       const arrayBuf = await res.arrayBuffer();
       return Buffer.from(arrayBuf);
     },

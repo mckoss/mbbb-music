@@ -73,13 +73,16 @@ export const FIXTURE_FILES = [
     shortcutDetails: { targetId: 'external-thing', targetMimeType: 'application/pdf' },
   },
   {
-    // Native Google Doc — no real bytes, must be ignored.
+    // Native Google Doc — no binary form; fetched via PDF export and stored as
+    // a PDF asset. The fixture's `content` stands in for the exported PDF bytes.
     id: 'bg-doc',
     name: 'Arranging Notes',
     mimeType: 'application/vnd.google-apps.document',
     modifiedTime: '2026-01-02T10:00:00.000Z',
+    version: '1',
     folderId: 'demo-library',
     folderName: 'Bad Guy',
+    content: 'SYNTHETIC-PDF: bad guy arranging notes (exported from Google Doc)',
   },
   {
     // Unsupported asset type — must be ignored.

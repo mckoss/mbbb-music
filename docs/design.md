@@ -700,6 +700,10 @@ Requirements to explore:
 - Download score PDFs, MP3 files, and MuseScore files into a content-addressable
   store at `data/cas/<sha256>`, so identical bytes are stored once and the cache
   persists across rebuilds.
+- Export native Google editor files (Docs, Sheets, Slides, Drawings) to PDF and
+  store them as PDF assets, so they can be displayed alongside the scores. They
+  have no Drive `sha256Checksum`, so the CAS key is the SHA-256 of the exported
+  bytes, and change detection falls back to `modifiedTime`/`version`.
 - Maintain `data/manifest.json` mapping each Drive file to its SHA-256 (its
   `cas/<sha256>` location) plus Drive provenance, detected song/instrument
   metadata, and sync status.

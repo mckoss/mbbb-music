@@ -144,6 +144,22 @@ test('downloadFile requests alt=media and returns a Buffer', async () => {
   assert.equal(parsed.searchParams.get('alt'), 'media');
 });
 
+test('downloadFile in export mode hits files.export with the target mimeType', async () => {
+  const payload = Buffer.from('EXPORTED-PDF-BYTES');
+  const fetchImpl = makeFetch([() => bytesResponse(payload)]);
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('t') });
+
+  const out = await client.downloadFile('doc1', { mode: 'export', mimeType: 'application/pdf' });
+  assert.equal(out.toString(), 'EXPORTED-PDF-BYTES');
+
+  const parsed = new URL(fetchImpl.calls[0].url);
+  assert.equal(parsed.pathname, '/drive/v3/files/doc1/export');
+  assert.equal(parsed.searchParams.get('mimeType'), 'application/pdf');
+  // The export endpoint takes no alt=media / supportsAllDrives params.
+  assert.equal(parsed.searchParams.get('alt'), null);
+  assert.equal(parsed.searchParams.get('supportsAllDrives'), null);
+});
+
 test('service account: builds a JWT client from the inline key with drive.readonly scope', async () => {
   let opts;
   class FakeJWT {

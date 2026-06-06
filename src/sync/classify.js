@@ -1,12 +1,27 @@
 // Classify a raw Google Drive file into an accepted asset type, or mark it
-// ignored. Phase 1 downloads only real asset bytes: score PDFs, MP3 audio, and
-// MuseScore files. Google Drive shortcut files, folders, native Google Docs,
-// and unrelated file types are ignored (recorded, never fetched).
+// ignored. Phase 1 downloads real asset bytes: score PDFs, MP3 audio, and
+// MuseScore files. Native Google editor files (Docs/Sheets/Slides/Drawings)
+// have no binary form, but Drive can export them to PDF — so they are accepted
+// as `pdf` assets and fetched via export rather than ignored. Google Drive
+// shortcuts, folders, and other native/unsupported types are ignored (recorded,
+// never fetched).
 
 /** Drive mime type for shortcut entries (pointers, not real bytes). */
 const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 /** Drive mime type for folders. */
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+// Native Google editor types that have no binary form but export cleanly to PDF.
+// A PDF export drops straight into the existing content-addressable PDF path:
+// the exported bytes are downloaded, hashed, and stored/served like any other
+// PDF asset. Other google-apps types (forms, sites, scripts, …) have no useful
+// PDF export and remain ignored.
+const NATIVE_PDF_EXPORT = new Set([
+  'application/vnd.google-apps.document',
+  'application/vnd.google-apps.spreadsheet',
+  'application/vnd.google-apps.presentation',
+  'application/vnd.google-apps.drawing',
+]);
 
 /**
  * Accepted asset types keyed by canonical name. Each entry knows the file
@@ -40,11 +55,20 @@ function extensionOf(name) {
 }
 
 /**
+ * How the sync should fetch an accepted asset's bytes.
+ *   { mode: 'media' }                            — download binary content (alt=media)
+ *   { mode: 'export', mimeType: 'application/pdf' } — render a native file via files.export
+ *
+ * @typedef {{ mode: 'media' } | { mode: 'export', mimeType: string }} DownloadSpec
+ */
+
+/**
  * @typedef {Object} Classification
  * @property {string|null} assetType  One of 'pdf' | 'mp3' | 'musescore', or null when ignored.
  * @property {string|null} ext        Canonical extension for the asset, or null.
  * @property {boolean} ignored        True when the file should not be downloaded.
  * @property {string|null} ignoreReason  Human-readable reason when ignored.
+ * @property {DownloadSpec|null} download  How to fetch the bytes, or null when ignored.
  */
 
 /**
@@ -65,9 +89,19 @@ export function classifyDriveFile(file) {
   if (mimeType === SHORTCUT_MIME || file?.shortcutDetails) {
     return ignore('google-drive-shortcut');
   }
-  // Native Google editor files (Docs/Sheets/Slides/etc.) have no real binary
-  // asset to download.
+  // Native Google editor files (Docs/Sheets/Slides/Drawings) have no binary
+  // asset, but export to PDF — accept them as PDFs fetched via export. Other
+  // google-apps types have no useful export and stay ignored.
   if (mimeType.startsWith('application/vnd.google-apps')) {
+    if (NATIVE_PDF_EXPORT.has(mimeType)) {
+      return {
+        assetType: 'pdf',
+        ext: 'pdf',
+        ignored: false,
+        ignoreReason: null,
+        download: { mode: 'export', mimeType: 'application/pdf' },
+      };
+    }
     return ignore('google-native-file');
   }
 
@@ -76,7 +110,7 @@ export function classifyDriveFile(file) {
     const mimeMatch = kind.mimes.includes(mimeType);
     const extMatch = kind.exts.includes(ext);
     if (mimeMatch || extMatch) {
-      return { assetType: kind.type, ext: kind.ext, ignored: false, ignoreReason: null };
+      return { assetType: kind.type, ext: kind.ext, ignored: false, ignoreReason: null, download: { mode: 'media' } };
     }
   }
 
@@ -84,5 +118,5 @@ export function classifyDriveFile(file) {
 }
 
 function ignore(reason) {
-  return { assetType: null, ext: null, ignored: true, ignoreReason: reason };
+  return { assetType: null, ext: null, ignored: true, ignoreReason: reason, download: null };
 }
