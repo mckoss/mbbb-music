@@ -358,7 +358,10 @@ same delta-based, cache-retaining import job:
    and MuseScore files. Store them under `data/<source-slug>/<song-title-slug>/`.
    De-duplicate by content (SHA-256): identical bytes are downloaded once; every
    other copy stays in the manifest, flagged a duplicate and redirected to the
-   original — never a second file on disk.
+   original — never a second file on disk. The canonical copy is chosen by source
+   order (the first source listed in config wins, so a later source only adds
+   content with no replica earlier), with an optional `deprioritize` folder-name
+   list as the lowest priority of all.
 4. **Build.** Generate outputs (see MuseScore Automation). Skip any output whose
    inputs and recipe are unchanged; rebuild only what is affected.
 5. **Publish.** Update the manifest with the new outputs, checksums, and Drive

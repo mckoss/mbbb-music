@@ -53,7 +53,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   const assetEntries = entries.filter(
     (e) => e.status === 'new' || e.status === 'changed' || e.status === 'unchanged',
   );
-  prepareAssets(assetEntries, logger, config.deprioritize || []);
+  prepareAssets(assetEntries, logger, config.deprioritize || [], config.sources);
 
   // Persist the manifest incrementally so a stopped sync never loses progress:
   // after every download the manifest on disk records exactly what was fetched
@@ -164,8 +164,11 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
  * @param {object} logger
  * @param {string[]} deprioritize  Folder-name patterns that lose the tie when
  *        choosing the canonical copy of duplicate content (e.g. re-index folders).
+ * @param {Array<{id:string}>} [sources]  Configured sources, in priority order;
+ *        a copy in an earlier-listed source wins the canonical pick.
  */
-function prepareAssets(assetEntries, logger, deprioritize = []) {
+function prepareAssets(assetEntries, logger, deprioritize = [], sources = []) {
+  const sourceOrder = new Map(sources.map((s, i) => [s.id, i]));
   for (const e of assetEntries) {
     const f = e.file;
     const songTitle = f.folderName || f.sourceFolderLabel || 'unknown';
@@ -177,13 +180,16 @@ function prepareAssets(assetEntries, logger, deprioritize = []) {
     });
     e.sha = f.sha256Checksum || null;
     e.deprioritized = isDeprioritized(e, deprioritize);
+    e.sourceIndex = sourceOrder.has(f.sourceFolderId) ? sourceOrder.get(f.sourceFolderId) : Number.MAX_SAFE_INTEGER;
   }
 
   // Content de-duplication: download one copy per unique SHA-256. Within a group
-  // the original is the preferred copy — copies in deprioritized folders (e.g.
-  // by-instrument re-index folders) lose to a normal copy; ties break by smallest
-  // path, then id. The rest are flagged duplicates and redirected to the original.
-  // Files lacking a hash are treated as unique (their own id is the key).
+  // the canonical copy is chosen by, in order: not being in a deprioritized
+  // folder (lowest priority of all), then the earliest-listed source (so a file
+  // in the first source wins and a later source only contributes content with no
+  // replica earlier), then smallest path, then id. The rest are flagged
+  // duplicates and redirected to the original. Files lacking a hash are treated
+  // as unique (their own id is the key).
   const groups = new Map();
   for (const e of assetEntries) {
     const key = e.sha ? `sha:${e.sha}` : `id:${e.id}`;
@@ -191,7 +197,7 @@ function prepareAssets(assetEntries, logger, deprioritize = []) {
     groups.get(key).push(e);
   }
   for (const group of groups.values()) {
-    group.sort(byPreferenceThenPath);
+    group.sort(byCanonicalPreference);
     group.forEach((e, i) => {
       e.isDuplicate = i > 0;
       e.duplicateOf = i > 0 ? group[0].id : null;
@@ -220,9 +226,14 @@ function prepareAssets(assetEntries, logger, deprioritize = []) {
   }
 }
 
-/** Rank a duplicate group's copies: preferred (non-deprioritized) first, then path, then id. */
-function byPreferenceThenPath(a, b) {
+/**
+ * Rank a duplicate group's copies to pick the canonical one (sorts first):
+ * non-deprioritized before deprioritized, then earliest source, then smallest
+ * path, then id.
+ */
+function byCanonicalPreference(a, b) {
   if (a.deprioritized !== b.deprioritized) return a.deprioritized ? 1 : -1;
+  if (a.sourceIndex !== b.sourceIndex) return a.sourceIndex - b.sourceIndex;
   if (a.parsed.localPath !== b.parsed.localPath) return a.parsed.localPath < b.parsed.localPath ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

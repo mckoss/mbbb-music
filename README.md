@@ -40,9 +40,11 @@ is the only place the song title appears. The source prefix keeps two libraries
 from colliding on a same-named song. It **de-duplicates by content** (SHA-256):
 identical bytes are downloaded once; every other copy stays in the manifest,
 flagged a duplicate and redirected to the original — never a second file on disk.
-When the same content sits in several folders, an optional `deprioritize` list in
-config.json (e.g. by-instrument re-index folders) keeps those copies from being
-picked as the canonical download, so the real song-folder copy wins.
+When the same content sits in several folders, the canonical copy is picked by
+**source order**: the first source listed in `config.json` wins, so a later
+source only contributes content that has no replica in an earlier one. An
+optional `deprioritize` list (e.g. by-instrument re-index folders) is the lowest
+priority of all — a copy in a deprioritized folder loses to any other copy.
 Drive shortcuts and non-asset files are ignored, and `data/manifest.json` tracks
 everything for incremental, idempotent refreshes. The end-of-sync report lists
 all duplicate sets. `data/` is gitignored — synced music never enters this repo.

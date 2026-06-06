@@ -170,6 +170,41 @@ test('deprioritized folders lose the tie when choosing the canonical copy', asyn
   });
 });
 
+test('the first-listed source wins the canonical copy; later sources only add new content', async () => {
+  await withTempDir(async (dataDir) => {
+    const files = [
+      // Same content in both sources -> the Arrangements copy is canonical.
+      { id: 'arr-dup', name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf', folderId: 'arr', folderName: 'Bad Guy', content: 'SHARED' },
+      { id: 'lib-dup', name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf', folderId: 'lib', folderName: 'Bad Guy', content: 'SHARED' },
+      // Content unique to the Song Library still downloads.
+      { id: 'lib-only', name: 'Bad Guy - Tuba.pdf', mimeType: 'application/pdf', folderId: 'lib', folderName: 'Bad Guy', content: 'LIB-ONLY' },
+    ];
+    const config = {
+      dataDir,
+      manifestPath: resolve(dataDir, 'manifest.json'),
+      // Order matters: Arrangements first, Song Library second.
+      sources: [{ id: 'arr', label: 'Mutiny Bay Arrangements' }, { id: 'lib', label: 'MBBB Song Library' }],
+    };
+    const report = await runSync({ driveClient: createFixtureDriveClient({ files }), config, now: FIXED_NOW });
+
+    // Shared content downloaded once (from Arrangements) + the lib-only file.
+    assert.equal(report.summary.downloaded, 2);
+    assert.equal(report.summary.duplicatesSkipped, 1);
+
+    const m = await loadManifest(resolve(dataDir, 'manifest.json'));
+    // Arrangements wins even though 'arr' > 'lib' alphabetically and the song
+    // folder/path are identical — source order is the tiebreaker, not the path.
+    assert.equal(m.files['arr-dup'].isDuplicate, false);
+    assert.equal(m.files['lib-dup'].isDuplicate, true);
+    assert.equal(m.files['lib-dup'].duplicateOf, 'arr-dup');
+    assert.equal(m.files['arr-dup'].localPath, 'mutiny-bay-arrangements/bad-guy/bad-guy-trumpet.pdf');
+    assert.equal(m.files['lib-dup'].localPath, m.files['arr-dup'].localPath);
+    // The file with no replica in Arrangements is downloaded into the lib path.
+    assert.equal(m.files['lib-only'].isDuplicate, false);
+    assert.ok(await exists(resolve(dataDir, 'mbbb-song-library/bad-guy/bad-guy-tuba.pdf')));
+  });
+});
+
 test('manifest is persisted after each download, so a stop is not lost', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);

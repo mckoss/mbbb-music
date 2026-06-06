@@ -3,12 +3,13 @@
 
   "dataDir": "data",
 
+  "_comment_sources": "Order sets priority. When the same content (SHA-256) appears in more than one source, the FIRST source listed wins the canonical download; a later source only contributes content with no replica in an earlier one.",
   "sources": [
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_1", "label": "scores" },
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
   ],
 
-  "_comment_deprioritize": "Optional. When the same content appears in more than one folder, the copy in a folder whose name matches one of these (case-insensitive substring) patterns is NOT chosen as the canonical download — a normal song-folder copy wins. Use it for by-instrument re-index folders.",
+  "_comment_deprioritize": "Optional, and the LOWEST priority of all (below source order). When the same content appears in more than one folder, a copy in a folder whose name matches one of these (case-insensitive substring) patterns loses to any other copy. Use it for by-instrument re-index folders.",
   "deprioritize": ["indexed by instrument"],
 
   "google": {
