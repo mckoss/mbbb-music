@@ -214,7 +214,7 @@ export function buildCatalog(manifest, sourceLabels = []) {
     }
   }
   const instruments = [...instLabels.entries()]
-    .map(([slug, label]) => ({ slug, label }))
+    .map(([slug, label]) => ({ slug, label, key: DEFAULT_KEY_BY_SLUG[slug] ?? null }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   return { tunes, instruments, uniqueCount: canonical.size, liveCount };

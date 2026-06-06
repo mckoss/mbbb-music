@@ -81,8 +81,8 @@ test('explicit key and part number survive', () => {
 test('instruments are listed once, sorted by label', () => {
   const { instruments } = buildCatalog(MANIFEST, ['primary', 'secondary']);
   assert.deepEqual(instruments, [
-    { slug: 'alto-sax', label: 'Alto saxophone' },
-    { slug: 'trumpet', label: 'Trumpet' },
+    { slug: 'alto-sax', label: 'Alto saxophone', key: 'eflat' },
+    { slug: 'trumpet', label: 'Trumpet', key: 'bflat' },
   ]);
 });
 
