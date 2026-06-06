@@ -202,10 +202,12 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     size: file.size ?? null,
     assetType: classification.assetType,
     songTitle: meta.songTitle,
-    instrument: meta.instrument,
-    instrumentSlug: meta.instrumentSlug,
-    key: meta.key,
-    partNumber: meta.partNumber,
+    // Detected metadata is included only when present — an undetected field is
+    // omitted rather than stored as null.
+    ...(meta.instrument != null && { instrument: meta.instrument }),
+    ...(meta.instrumentSlug != null && { instrumentSlug: meta.instrumentSlug }),
+    ...(meta.key != null && { key: meta.key }),
+    ...(meta.partNumber != null && { partNumber: meta.partNumber }),
     syncedAt: timestamp,
   };
 }

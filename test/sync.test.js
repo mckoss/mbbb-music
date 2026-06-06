@@ -68,6 +68,12 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     assert.equal(e.sha256, trumpet);
     assert.equal(e.instrument, 'Trumpet');
     assert.equal(e.songTitle, 'Bad Guy');
+
+    // Undetected metadata fields are omitted entirely, not stored as null.
+    const mscz = manifest.files['bg-mscz'];
+    assert.ok(!('instrument' in mscz));
+    assert.ok(!('key' in mscz));
+    assert.ok(!('partNumber' in mscz));
   });
 });
 
