@@ -6,6 +6,7 @@ import { detectAssetMetadata } from '../src/sync/metadata.js';
 test('detects song + instrument + key', () => {
   const m = detectAssetMetadata({ originalName: 'Bad Guy - Trumpet in B-flat.pdf', songTitle: 'Bad Guy' });
   assert.equal(m.songTitle, 'Bad Guy');
+  assert.equal(m.songTitleSlug, 'bad-guy');
   assert.equal(m.instrument, 'Trumpet');
   assert.equal(m.key, 'bflat');
   assert.equal(m.partNumber, null);

@@ -213,6 +213,7 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     size: file.size,
     assetType: classification.assetType,
     songTitle: meta.songTitle,
+    songTitleSlug: meta.songTitleSlug,
     instrument: meta.instrument,
     instrumentSlug: meta.instrumentSlug,
     key: meta.key,

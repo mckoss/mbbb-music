@@ -22,6 +22,7 @@ function stripSongPrefix(stemSlug, songSlug) {
 /**
  * @typedef {Object} AssetMetadata
  * @property {string} songTitle        Display song title (from the song folder).
+ * @property {string} songTitleSlug    Slug of the song title (grouping/lookup key).
  * @property {string|null} instrument  Detected instrument label, or null.
  * @property {string|null} instrumentSlug
  * @property {string|null} key          Detected key slug (e.g. "bflat"), or null.
@@ -44,6 +45,7 @@ export function detectAssetMetadata({ originalName, songTitle }) {
   const inst = detectInstrument(descriptor) ?? detectInstrument(originalName);
   return {
     songTitle,
+    songTitleSlug: songSlug,
     instrument: inst ? inst.label : null,
     instrumentSlug: inst ? inst.slug : null,
     key: detectKey(originalName),

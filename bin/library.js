@@ -97,6 +97,15 @@ function liveAssets(manifest) {
   return Object.values(manifest.files || {}).filter(isLive);
 }
 
+/**
+ * The song slug for an entry. Prefers the slug stored at sync time
+ * (`songTitleSlug`), falling back to slugifying the title for manifests written
+ * before that field existed.
+ */
+function songSlugOf(entry) {
+  return entry.songTitleSlug || slugify(entry.songTitle || '') || '(unknown)';
+}
+
 // --- list -------------------------------------------------------------------
 
 /**
@@ -124,7 +133,7 @@ function descriptorOf(entry) {
  * single part.
  */
 function assetMatchKey(entry) {
-  const songSlug = slugify(entry.songTitle || '') || 'unknown';
+  const songSlug = songSlugOf(entry);
   return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : `${songSlug}-${entry.assetType || 'file'}`;
 }
 
@@ -205,7 +214,7 @@ function buildList(manifest, pri) {
   const bySong = new Map();
   for (const entry of canonical.values()) {
     const title = entry.songTitle || '(unknown)';
-    const slug = slugify(title) || '(unknown)';
+    const slug = songSlugOf(entry);
     if (!bySong.has(slug)) bySong.set(slug, { slug, title, fileCount: 0, descriptors: new Set() });
     const song = bySong.get(slug);
     song.fileCount += 1;
@@ -304,7 +313,7 @@ function runOpen(manifest, casDir, prefix, pri, opts) {
     return;
   }
 
-  const songs = [...new Set(matches.map((e) => slugify(e.songTitle || '') || '(unknown)'))].sort();
+  const songs = [...new Set(matches.map(songSlugOf))].sort();
   console.log(`${matches.length} file(s) match "${wanted}" across ${songs.length} song(s): ${songs.join(', ')}`);
 
   if (matches.length > OPEN_CONFIRM_THRESHOLD && !opts.yes) {
