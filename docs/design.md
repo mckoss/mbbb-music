@@ -355,8 +355,10 @@ same delta-based, cache-retaining import job:
    changed, unchanged, or deleted. Unchanged files are skipped. Deleted files are
    marked archived; local content is never deleted.
 3. **Fetch.** Download only accepted asset types: score PDFs, MP3 audio files,
-   and MuseScore files. Store them under `data/<song-title-slug>/`. A file whose
-   checksum is already present is not re-fetched.
+   and MuseScore files. Store them under `data/<source-slug>/<song-title-slug>/`.
+   De-duplicate by content (SHA-256): identical bytes are downloaded once; every
+   other copy stays in the manifest, flagged a duplicate and redirected to the
+   original — never a second file on disk.
 4. **Build.** Generate outputs (see MuseScore Automation). Skip any output whose
    inputs and recipe are unchanged; rebuild only what is affected.
 5. **Publish.** Update the manifest with the new outputs, checksums, and Drive
@@ -373,8 +375,10 @@ the settings, not the file (letter PDF, 7x5 lyre PDF, MP3 at a given bitrate). I
 lives in the private repo with the generator code.
 
 Stored files use readable lowercase slug filenames, never hashes, so the
-directory tree and manifest diffs stay inspectable. Phase 1 local storage uses
-one folder per song: `data/<song-title-slug>/`. Score PDFs should use
+directory tree and manifest diffs stay inspectable. Phase 1 local storage nests
+one folder per source library, then one per song: `data/<source-slug>/<song-title-slug>/`.
+The source prefix keeps two libraries from colliding on a same-named song folder.
+Score PDFs should use
 `<song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf`, for
 example `bad-guy-trumpet-bflat.pdf`, `bad-guy-trumpet-bflat-1.pdf`, and
 `bad-guy-trumpet-bflat-2.pdf`. MuseScore and MP3 files live in the same song
@@ -382,7 +386,8 @@ folder with similarly slugified names.
 
 The rebuild and refresh decision lives in the manifest instead: each row records
 the Drive source folder, Drive file id, original name, mime type, modified time,
-checksum or size when available, canonical local path, detected song title,
+SHA-256 checksum and size when available, canonical local path, a duplicate flag
+plus the original's id when the content is a duplicate, detected song title,
 instrument/key/part metadata, sync status, and sync timestamp. Later production
 versions can move this manifest into Postgres for admin review, but Phase 1 may
 keep it as `data/manifest.json` because `data/` is gitignored.

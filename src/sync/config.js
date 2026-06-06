@@ -29,6 +29,10 @@ const DEFAULT_CONFIG_PATH = resolve(REPO_ROOT, 'config.json');
  * @property {string} manifestPath         Absolute path to data/manifest.json.
  * @property {SourceFolder[]} sources      Configured Drive source folders.
  * @property {GoogleCredentials} google    Google OAuth credentials.
+ * @property {string[]} deprioritize       Lowercased folder-name patterns whose copies
+ *                                         lose the tie when picking the canonical copy
+ *                                         of duplicate content (e.g. by-instrument
+ *                                         re-index folders).
  */
 
 /**
@@ -85,7 +89,8 @@ function normalizeSources(sources) {
  *   {
  *     "dataDir": "data",
  *     "sources": [ { "id": "<folder-id>", "label": "scores" }, ... ],
- *     "google":  { "serviceAccount": { ...service-account key... } }
+ *     "google":  { "serviceAccount": { ...service-account key... } },
+ *     "deprioritize": [ "indexed by instrument" ]
  *   }
  *
  * @param {Object} [overrides]
@@ -107,5 +112,12 @@ export function loadConfig(overrides = {}, env = process.env) {
     manifestPath: resolve(dataDir, 'manifest.json'),
     sources,
     google: raw.google || {},
+    deprioritize: normalizePatterns(overrides.deprioritize ?? raw.deprioritize),
   };
+}
+
+/** Lowercase, trim, and drop empty entries from a patterns list. */
+function normalizePatterns(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim().toLowerCase());
 }

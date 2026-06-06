@@ -27,26 +27,32 @@ function stripSongPrefix(stemSlug, songSlug) {
 /**
  * @typedef {Object} ParsedAsset
  * @property {string} songTitle       Display song title (from the source folder).
+ * @property {string} sourceSlug      Slug for the source library (path prefix), or ''.
  * @property {string} songSlug        Slug for the song folder.
  * @property {string|null} instrument Detected instrument label, or null.
  * @property {string|null} instrumentSlug
  * @property {string|null} key        Detected key slug (e.g. "bflat"), or null.
  * @property {number|null} partNumber Detected part number, or null.
  * @property {string} canonicalName   Canonical lowercase filename.
- * @property {string} localPath       Relative path: <song-slug>/<canonicalName>.
+ * @property {string} localPath       Relative path: <source-slug>/<song-slug>/<canonicalName>.
  */
 
 /**
  * Derive canonical metadata + local path for an accepted asset.
  *
+ * The local path is prefixed with the source library slug so two sources can
+ * never collide on a same-named song folder: <source-slug>/<song-slug>/<file>.
+ *
  * @param {Object} params
+ * @param {string} [params.sourceLabel] Source library label (becomes the path prefix).
  * @param {string} params.originalName  Original Drive filename.
  * @param {string} params.songTitle     Song title (typically the source folder name).
  * @param {string} params.assetType     'pdf' | 'mp3' | 'musescore'.
  * @param {string} params.ext           Canonical extension from classification.
  * @returns {ParsedAsset}
  */
-export function parseAsset({ originalName, songTitle, assetType, ext }) {
+export function parseAsset({ sourceLabel, originalName, songTitle, assetType, ext }) {
+  const sourceSlug = slugify(sourceLabel || '');
   const songSlug = slugify(songTitle);
   const stemSlug = slugifyStem(originalName);
   const descriptor = stripSongPrefix(stemSlug, songSlug);
@@ -71,14 +77,17 @@ export function parseAsset({ originalName, songTitle, assetType, ext }) {
     canonicalName = `${songSlug}${suffix}.${ext}`;
   }
 
+  const dir = [sourceSlug, songSlug].filter(Boolean).join('/');
+
   return {
     songTitle,
+    sourceSlug,
     songSlug,
     instrument: inst ? inst.label : null,
     instrumentSlug,
     key,
     partNumber,
     canonicalName,
-    localPath: `${songSlug}/${canonicalName}`,
+    localPath: `${dir}/${canonicalName}`,
   };
 }

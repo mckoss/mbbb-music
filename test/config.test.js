@@ -70,6 +70,14 @@ test('overrides win over file values', async () => {
   assert.deepEqual(config.sources, [{ id: 'x', label: 'x' }]);
 });
 
+test('deprioritize patterns are normalized (trimmed, lowercased, non-strings dropped)', () => {
+  const config = loadConfig({ raw: { deprioritize: ['  Indexed By Instrument ', '', 42, 'DRAFT'] } }, {});
+  assert.deepEqual(config.deprioritize, ['indexed by instrument', 'draft']);
+
+  // Absent -> empty list.
+  assert.deepEqual(loadConfig({ raw: {} }, {}).deprioritize, []);
+});
+
 test('invalid MBBB_CONFIG_JSON throws a clear error', async () => {
   const env = { MBBB_CONFIG_JSON: '{not json' };
   assert.throws(() => loadConfig({ configPath: ABSENT }, env), /MBBB_CONFIG_JSON.*valid JSON/);

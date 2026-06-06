@@ -32,11 +32,18 @@ A reusable Drive asset sync lives under `src/sync/`, with a CLI entry point at
 configured source folder is scanned **recursively** — the band's Drive is laid
 out as `<source>/<song-title>/<asset>` (and may nest deeper), so the top-level
 folder under each source is treated as the song. The sync downloads only real
-asset files (score PDFs, MP3s, MuseScore files), groups them by song under
-`data/<song-title-slug>/` with canonical lowercase slug filenames (e.g.
-`bad-guy-trumpet-bflat-2.pdf`), ignores Drive shortcuts and non-asset files, and
-maintains `data/manifest.json` for incremental, idempotent refreshes. `data/` is
-gitignored — synced music never enters this public repo.
+asset files (score PDFs, MP3s, MuseScore files) and groups them under
+`data/<source-slug>/<song-slug>/` with canonical lowercase slug filenames (e.g.
+`bad-guy-trumpet-bflat-2.pdf`). The source prefix keeps two libraries from
+colliding on a same-named song. It **de-duplicates by content** (SHA-256):
+identical bytes are downloaded once; every other copy stays in the manifest,
+flagged a duplicate and redirected to the original — never a second file on disk.
+When the same content sits in several folders, an optional `deprioritize` list in
+config.json (e.g. by-instrument re-index folders) keeps those copies from being
+picked as the canonical download, so the real song-folder copy wins.
+Drive shortcuts and non-asset files are ignored, and `data/manifest.json` tracks
+everything for incremental, idempotent refreshes. The end-of-sync report lists
+all duplicate sets. `data/` is gitignored — synced music never enters this repo.
 
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:

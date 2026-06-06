@@ -62,6 +62,29 @@ test('mp3 and musescore live in the song folder with slug names', () => {
   assert.equal(mscz.localPath, 'bad-guy/bad-guy.mscz');
 });
 
+test('sourceLabel prefixes the local path so two libraries cannot collide', () => {
+  const a = parseAsset({
+    sourceLabel: 'Mutiny Bay Arrangements',
+    originalName: 'Iron Man - Trumpet.pdf',
+    songTitle: 'Iron Man',
+    assetType: 'pdf',
+    ext: 'pdf',
+  });
+  assert.equal(a.sourceSlug, 'mutiny-bay-arrangements');
+  assert.equal(a.localPath, 'mutiny-bay-arrangements/iron-man/iron-man-trumpet.pdf');
+
+  // Same song + file in a different library lands on a distinct path.
+  const b = parseAsset({
+    sourceLabel: "MBBBB's Song Library",
+    originalName: 'Iron Man - Trumpet.pdf',
+    songTitle: 'Iron Man',
+    assetType: 'pdf',
+    ext: 'pdf',
+  });
+  assert.equal(b.localPath, 'mbbbb-s-song-library/iron-man/iron-man-trumpet.pdf');
+  assert.notEqual(a.localPath, b.localPath);
+});
+
 test('baritone saxophone is not misread as euphonium baritone', () => {
   const p = parseAsset({
     originalName: 'Iron Man - Baritone Saxophone.pdf',

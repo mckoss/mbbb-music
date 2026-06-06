@@ -2,10 +2,9 @@
 // band music, no copyrighted bytes — every "asset" is a tiny text placeholder.
 // File names mimic the messy real-world patterns the importer must parse.
 
-export const FIXTURE_FOLDERS = [
-  { id: 'folder-bad-guy', label: 'Bad Guy' },
-  { id: 'folder-track-suit', label: 'Track Suit' },
-];
+// One source library containing per-song subfolders (folderName = song), mirroring
+// the real <library>/<song>/<asset> layout. Local paths become demo-library/<song>/…
+export const FIXTURE_FOLDERS = [{ id: 'demo-library', label: 'Demo Library' }];
 
 /**
  * DriveFile-shaped fixture records. `content` is auto-hashed into sha256/size by
@@ -19,7 +18,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/pdf',
     modifiedTime: '2026-01-02T10:00:00.000Z',
     version: '3',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-PDF: bad guy trumpet part 1',
   },
@@ -29,7 +28,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/pdf',
     modifiedTime: '2026-01-02T10:00:00.000Z',
     version: '3',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-PDF: bad guy trumpet part 2',
   },
@@ -39,7 +38,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/pdf',
     modifiedTime: '2026-01-02T10:00:00.000Z',
     version: '1',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-PDF: bad guy alto sax part',
   },
@@ -49,7 +48,7 @@ export const FIXTURE_FILES = [
     mimeType: 'audio/mpeg',
     modifiedTime: '2026-01-02T10:00:00.000Z',
     version: '2',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-MP3: bad guy practice audio',
   },
@@ -59,7 +58,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/octet-stream',
     modifiedTime: '2026-01-02T10:00:00.000Z',
     version: '5',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-MSCZ: bad guy musescore source',
   },
@@ -69,7 +68,7 @@ export const FIXTURE_FILES = [
     name: 'Reference Performance (YouTube).pdf',
     mimeType: 'application/vnd.google-apps.shortcut',
     modifiedTime: '2026-01-02T10:00:00.000Z',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     shortcutDetails: { targetId: 'external-thing', targetMimeType: 'application/pdf' },
   },
@@ -79,7 +78,7 @@ export const FIXTURE_FILES = [
     name: 'Arranging Notes',
     mimeType: 'application/vnd.google-apps.document',
     modifiedTime: '2026-01-02T10:00:00.000Z',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
   },
   {
@@ -88,7 +87,7 @@ export const FIXTURE_FILES = [
     name: 'cover-art.jpg',
     mimeType: 'image/jpeg',
     modifiedTime: '2026-01-02T10:00:00.000Z',
-    folderId: 'folder-bad-guy',
+    folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-JPG',
   },
@@ -100,7 +99,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/pdf',
     modifiedTime: '2026-01-03T10:00:00.000Z',
     version: '1',
-    folderId: 'folder-track-suit',
+    folderId: 'demo-library',
     folderName: 'Track Suit',
     content: 'SYNTHETIC-PDF: track suit euphonium part',
   },
@@ -110,7 +109,7 @@ export const FIXTURE_FILES = [
     mimeType: 'application/pdf',
     modifiedTime: '2026-01-03T10:00:00.000Z',
     version: '1',
-    folderId: 'folder-track-suit',
+    folderId: 'demo-library',
     folderName: 'Track Suit',
     content: 'SYNTHETIC-PDF: track suit trumpet part',
   },
@@ -120,7 +119,7 @@ export const FIXTURE_FILES = [
     mimeType: 'audio/mpeg',
     modifiedTime: '2026-01-03T10:00:00.000Z',
     version: '1',
-    folderId: 'folder-track-suit',
+    folderId: 'demo-library',
     folderName: 'Track Suit',
     content: 'SYNTHETIC-MP3: track suit audio',
   },

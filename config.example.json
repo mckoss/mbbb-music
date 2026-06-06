@@ -8,6 +8,9 @@
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
   ],
 
+  "_comment_deprioritize": "Optional. When the same content appears in more than one folder, the copy in a folder whose name matches one of these (case-insensitive substring) patterns is NOT chosen as the canonical download — a normal song-folder copy wins. Use it for by-instrument re-index folders.",
+  "deprioritize": ["indexed by instrument"],
+
   "google": {
     "_comment": "Authentication is by Google service account only. The source folders are public, so no folder sharing is needed — the service account just provides Drive API credentials. Paste the JSON key Google Cloud gives you here, inline.",
     "serviceAccount": {

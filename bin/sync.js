@@ -16,10 +16,11 @@ const HELP = `mbbb-sync — Phase 1 Google Drive asset sync
 
 Scans each configured Drive source folder recursively (layout:
 <source>/<song-title>/<asset>) and syncs into the gitignored data/ directory:
-downloads only score PDFs, MP3s, and MuseScore files, groups them by song (the
-top-level folder under each source) under data/<song-title-slug>/ with canonical
-slug filenames, and maintains data/manifest.json for incremental, idempotent
-refreshes.
+downloads only score PDFs, MP3s, and MuseScore files, grouped under
+data/<source-slug>/<song-slug>/ with canonical slug filenames. De-duplicates by
+content (SHA-256) — identical bytes download once, other copies are flagged in
+the manifest and redirected — and maintains data/manifest.json for incremental,
+idempotent refreshes. The summary lists all duplicate sets.
 
 USAGE
   node bin/sync.js [options]
@@ -102,7 +103,8 @@ function printSummary(report) {
   console.log(`  sources  : ${report.sources.map((x) => x.label).join(', ')}`);
   console.log(
     `  seen=${s.seen} new=${s.new} changed=${s.changed} unchanged=${s.unchanged} ` +
-      `deleted=${s.deleted} ignored=${s.ignored} downloaded=${s.downloaded} failed=${s.failed}`,
+      `deleted=${s.deleted} ignored=${s.ignored} downloaded=${s.downloaded} ` +
+      `deduped=${s.duplicatesSkipped} failed=${s.failed}`,
   );
   for (const a of report.actions.downloaded) {
     console.log(`    + ${a.localPath} [${a.status}]`);
