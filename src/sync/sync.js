@@ -71,7 +71,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     }
     if (entry.status === 'deleted') {
       // Archive: mark deleted but never remove the cached blob (it may be shared).
-      manifest.files[entry.id] = { ...entry.prev, status: 'deleted', syncedAt: timestamp };
+      manifest.files[entry.id] = compact({ ...entry.prev, status: 'deleted', syncedAt: timestamp });
       actions.deleted.push({ id: entry.id, name: entry.prev?.originalName });
       continue;
     }
@@ -187,48 +187,54 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   };
 }
 
+/** Drop keys whose value is null or undefined, so manifest entries carry no null props. */
+function compact(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
+
 function buildAssetEntry(entry, meta, classification, sha, timestamp) {
   const { file } = entry;
-  return {
+  return compact({
     driveFileId: entry.id,
     sourceFolderId: file.sourceFolderId,
     sourceFolderLabel: file.sourceFolderLabel,
     originalName: file.name,
-    originalFolder: file.folderName ?? null,
-    mimeType: file.mimeType ?? null,
-    modifiedTime: file.modifiedTime ?? null,
-    version: file.version ?? null,
+    originalFolder: file.folderName,
+    mimeType: file.mimeType,
+    modifiedTime: file.modifiedTime,
+    version: file.version,
     sha256: sha,
-    size: file.size ?? null,
+    size: file.size,
     assetType: classification.assetType,
     songTitle: meta.songTitle,
-    // Detected metadata is included only when present — an undetected field is
-    // omitted rather than stored as null.
-    ...(meta.instrument != null && { instrument: meta.instrument }),
-    ...(meta.instrumentSlug != null && { instrumentSlug: meta.instrumentSlug }),
-    ...(meta.key != null && { key: meta.key }),
-    ...(meta.partNumber != null && { partNumber: meta.partNumber }),
+    instrument: meta.instrument,
+    instrumentSlug: meta.instrumentSlug,
+    key: meta.key,
+    partNumber: meta.partNumber,
     syncedAt: timestamp,
-  };
+  });
 }
 
 function buildIgnoredEntry(entry, timestamp) {
   const { file } = entry;
-  return {
+  // Ignored entries encode the reason in the status itself, e.g.
+  // "ignored|google-drive-shortcut". Recorded for provenance; never fetched.
+  return compact({
     driveFileId: entry.id,
-    sourceFolderId: file.sourceFolderId ?? null,
-    sourceFolderLabel: file.sourceFolderLabel ?? null,
-    originalName: file.name ?? null,
-    originalFolder: file.folderName ?? null,
-    mimeType: file.mimeType ?? null,
-    modifiedTime: file.modifiedTime ?? null,
-    version: file.version ?? null,
-    sha256: file.sha256Checksum ?? null,
-    size: file.size ?? null,
-    assetType: null,
-    // Ignored entries encode the reason in the status itself, e.g.
-    // "ignored|google-drive-shortcut". Recorded for provenance; never fetched.
+    sourceFolderId: file.sourceFolderId,
+    sourceFolderLabel: file.sourceFolderLabel,
+    originalName: file.name,
+    originalFolder: file.folderName,
+    mimeType: file.mimeType,
+    modifiedTime: file.modifiedTime,
+    version: file.version,
+    sha256: file.sha256Checksum,
+    size: file.size,
     status: `ignored|${entry.classification?.ignoreReason ?? 'unknown'}`,
     syncedAt: timestamp,
-  };
+  });
 }
