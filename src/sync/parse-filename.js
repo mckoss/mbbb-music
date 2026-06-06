@@ -1,13 +1,13 @@
 // Turn a classified Drive file plus its source-folder song context into the
 // detected song/instrument metadata and the canonical local path used in
-// data/<song-title-slug>/.
+// data/<source-slug>/<song-title-slug>/.
 //
-// Score PDF naming, per docs/design.md:
-//   <song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf
-//   e.g. bad-guy-trumpet-bflat.pdf, bad-guy-trumpet-bflat-2.pdf
-//
-// MuseScore and MP3 files live in the same song folder with similarly
-// slugified names.
+// The canonical filename is the slugified ORIGINAL Drive filename — never
+// rebuilt from the parent folder. In by-instrument index folders the parent
+// folder is not the song, so the original filename is the only place the song
+// title survives; preserving it keeps those files identifiable. Detected
+// instrument/key/part still populate the catalog metadata, but do not drive the
+// filename.
 
 import { slugify, slugifyStem } from './slugify.js';
 import { detectInstrument, detectKey, detectPartNumber } from './instruments.js';
@@ -47,11 +47,10 @@ function stripSongPrefix(stemSlug, songSlug) {
  * @param {string} [params.sourceLabel] Source library label (becomes the path prefix).
  * @param {string} params.originalName  Original Drive filename.
  * @param {string} params.songTitle     Song title (typically the source folder name).
- * @param {string} params.assetType     'pdf' | 'mp3' | 'musescore'.
  * @param {string} params.ext           Canonical extension from classification.
  * @returns {ParsedAsset}
  */
-export function parseAsset({ sourceLabel, originalName, songTitle, assetType, ext }) {
+export function parseAsset({ sourceLabel, originalName, songTitle, ext }) {
   const sourceSlug = slugify(sourceLabel || '');
   const songSlug = slugify(songTitle);
   const stemSlug = slugifyStem(originalName);
@@ -63,19 +62,10 @@ export function parseAsset({ sourceLabel, originalName, songTitle, assetType, ex
   const key = detectKey(originalName);
   const partNumber = detectPartNumber(originalName);
 
-  let canonicalName;
-  if (assetType === 'pdf') {
-    const parts = [songSlug];
-    parts.push(instrumentSlug ?? (descriptor || 'part'));
-    if (key) parts.push(key);
-    if (partNumber != null) parts.push(String(partNumber));
-    canonicalName = `${parts.filter(Boolean).join('-')}.${ext}`;
-  } else {
-    // MuseScore / MP3: keep the song slug, append any descriptor that isn't just
-    // the song again, so multiple files in one folder stay distinct.
-    const suffix = descriptor && descriptor !== songSlug ? `-${descriptor}` : '';
-    canonicalName = `${songSlug}${suffix}.${ext}`;
-  }
+  // Keep the slugified original filename verbatim (only normalizing the
+  // extension to the classified one). This preserves song titles embedded in
+  // the filename — the sole place they appear for files in index folders.
+  const canonicalName = `${stemSlug || 'part'}.${ext}`;
 
   const dir = [sourceSlug, songSlug].filter(Boolean).join('/');
 

@@ -48,9 +48,9 @@ test('full fixture sync downloads only assets, grouped by song with canonical na
     assert.equal(report.summary.ignored, 3);
     assert.equal(report.summary.failed, 0);
 
-    // Canonical filenames from the design spec exist on disk.
-    assert.ok(await exists(resolve(dataDir, 'demo-library/bad-guy/bad-guy-trumpet-bflat.pdf')));
-    assert.ok(await exists(resolve(dataDir, 'demo-library/bad-guy/bad-guy-trumpet-bflat-2.pdf')));
+    // Canonical filenames are the slugified ORIGINAL Drive names, grouped by song.
+    assert.ok(await exists(resolve(dataDir, 'demo-library/bad-guy/bad-guy-trumpet-in-bflat.pdf')));
+    assert.ok(await exists(resolve(dataDir, 'demo-library/bad-guy/bad-guy-trumpet-in-bflat-2.pdf')));
     assert.ok(await exists(resolve(dataDir, 'demo-library/bad-guy/bad-guy.mscz')));
     assert.ok(await exists(resolve(dataDir, 'demo-library/track-suit/track-suit-euphonium.pdf')));
 
@@ -92,7 +92,7 @@ test('a changed checksum triggers a re-download', async () => {
 
     assert.equal(report.summary.changed, 1);
     assert.equal(report.summary.downloaded, 1);
-    const bytes = await readFile(resolve(dataDir, 'demo-library/bad-guy/bad-guy-alto-sax.pdf'), 'utf8');
+    const bytes = await readFile(resolve(dataDir, 'demo-library/bad-guy/bad-guy-alto-saxophone.pdf'), 'utf8');
     assert.match(bytes, /REVISED/);
   });
 });

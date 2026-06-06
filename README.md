@@ -33,9 +33,11 @@ configured source folder is scanned **recursively** — the band's Drive is laid
 out as `<source>/<song-title>/<asset>` (and may nest deeper), so the top-level
 folder under each source is treated as the song. The sync downloads only real
 asset files (score PDFs, MP3s, MuseScore files) and groups them under
-`data/<source-slug>/<song-slug>/` with canonical lowercase slug filenames (e.g.
-`bad-guy-trumpet-bflat-2.pdf`). The source prefix keeps two libraries from
-colliding on a same-named song. It **de-duplicates by content** (SHA-256):
+`data/<source-slug>/<song-slug>/`. Each file keeps its **original Drive name**,
+slugified to lowercase (e.g. `bad-guy-trumpet-in-bflat-2.pdf`) — the original
+name is preserved verbatim because for files in by-instrument index folders it
+is the only place the song title appears. The source prefix keeps two libraries
+from colliding on a same-named song. It **de-duplicates by content** (SHA-256):
 identical bytes are downloaded once; every other copy stays in the manifest,
 flagged a duplicate and redirected to the original — never a second file on disk.
 When the same content sits in several folders, an optional `deprioritize` list in

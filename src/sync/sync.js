@@ -173,7 +173,6 @@ function prepareAssets(assetEntries, logger, deprioritize = []) {
       sourceLabel: f.sourceFolderLabel,
       originalName: f.name,
       songTitle,
-      assetType: e.classification.assetType,
       ext: e.classification.ext,
     });
     e.sha = f.sha256Checksum || null;

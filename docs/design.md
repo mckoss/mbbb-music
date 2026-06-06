@@ -378,11 +378,12 @@ Stored files use readable lowercase slug filenames, never hashes, so the
 directory tree and manifest diffs stay inspectable. Phase 1 local storage nests
 one folder per source library, then one per song: `data/<source-slug>/<song-title-slug>/`.
 The source prefix keeps two libraries from colliding on a same-named song folder.
-Score PDFs should use
-`<song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf`, for
-example `bad-guy-trumpet-bflat.pdf`, `bad-guy-trumpet-bflat-1.pdf`, and
-`bad-guy-trumpet-bflat-2.pdf`. MuseScore and MP3 files live in the same song
-folder with similarly slugified names.
+Each file keeps its original Drive filename, slugified to lowercase — for example
+`bad-guy-trumpet-in-bflat.pdf` or `bad-guy.mscz`. The original name is preserved
+rather than rebuilt from the folder + detected instrument because for files in
+by-instrument index folders the parent folder is not the song, so the original
+filename is the only place the song title survives. Detected instrument, key, and
+part are still recorded as catalog metadata in the manifest.
 
 The rebuild and refresh decision lives in the manifest instead: each row records
 the Drive source folder, Drive file id, original name, mime type, modified time,
@@ -697,11 +698,10 @@ Requirements to explore:
   an Express-callable entry point for hosted refreshes.
 - Ignore Google Drive shortcut files and non-asset files.
 - Download score PDFs, MP3 files, and MuseScore files.
-- Group files by song in `data/<song-title-slug>/`.
-- Use lowercase slugified filenames.
-- For score PDFs, use
-  `<song-title-slug>-<instrument-slug>[-<key-slug>][-<part-number>].pdf`, such as
-  `bad-guy-trumpet-bflat.pdf` or `bad-guy-trumpet-bflat-2.pdf`.
+- Group files by song in `data/<source-slug>/<song-title-slug>/`.
+- Name each file by slugifying its original Drive filename (lowercase), e.g.
+  `bad-guy-trumpet-in-bflat.pdf` — preserved verbatim so song titles embedded in
+  index-folder filenames are not lost.
 - Maintain `data/manifest.json` with Drive provenance, checksums, local paths,
   detected song/instrument metadata, and sync status.
 - On later refreshes, classify source files as new, changed, unchanged, deleted,
