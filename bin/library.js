@@ -20,6 +20,10 @@ import { DEFAULT_KEY_BY_SLUG } from '../src/sync/instruments.js';
 
 const OPEN_CONFIRM_THRESHOLD = 25;
 
+// Asset types `open` can launch, and the file extension to give the temp copy
+// so the OS picks the right app (a PDF viewer, an audio player, MuseScore).
+const EXT_BY_TYPE = { pdf: '.pdf', mp3: '.mp3', musescore: '.mscz' };
+
 const HELP = `mbbb-library — inspect and open the synced music library
 
 Reads data/manifest.json (the sync manifest) and operates on live assets only
@@ -34,12 +38,15 @@ USAGE
 SUBCOMMANDS
   list                For each song (shown as a slug), an indented list of the
                       instrument-key-part of every live asset.
-  open <prefix>       Open every PDF and MP3 whose identifier starts with
-                      <prefix> in the OS default app. The identifier is
-                      "<song>-<instrument>-<key>-<part>" (exactly the slugs shown
-                      by \`list\`), so the prefix can target a whole song
-                      (\`uptown-funk\`) or a single part
-                      (\`uptown-funk-trumpet-bflat\`).
+  open <prefix>       Open every asset (PDF, MP3, MuseScore) whose identifier
+                      starts with <prefix> in the OS default app. The identifier
+                      is "<song>-<instrument>-<key>-<part>" for parts, or
+                      "<song>-<type>" for instrument-less files. So the prefix
+                      can target a whole song (\`uptown-funk\`), a media type
+                      (\`unholy-musescore\`), or a single part
+                      (\`uptown-funk-trumpet-bflat\`). Opening MuseScore files
+                      needs the MuseScore app installed and associated with
+                      .mscz.
 
 OPTIONS
   --data-dir <path>   Data directory holding manifest.json + cas/ (default:
@@ -111,13 +118,14 @@ function descriptorOf(entry) {
 
 /**
  * The slug identifier `open` matches a prefix against:
- * "<song>-<instrument>-<key>-<part>" for instrument parts, or just "<song>" for
- * assets with no detected instrument (audio, notes). A prefix can therefore
- * target a whole song or drill down to a single part.
+ * "<song>-<instrument>-<key>-<part>" for instrument parts, or "<song>-<type>"
+ * (e.g. "unholy-musescore", "unholy-mp3") for assets with no detected
+ * instrument. A prefix can therefore target a whole song, a media type, or a
+ * single part.
  */
 function assetMatchKey(entry) {
   const songSlug = slugify(entry.songTitle || '') || 'unknown';
-  return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : songSlug;
+  return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : `${songSlug}-${entry.assetType || 'file'}`;
 }
 
 /**
@@ -260,7 +268,7 @@ function makeOpener() {
 
 /** A safe, OS-friendly filename with the extension matching the asset type. */
 function targetName(entry) {
-  const ext = entry.assetType === 'mp3' ? '.mp3' : '.pdf';
+  const ext = EXT_BY_TYPE[entry.assetType] || '.pdf';
   const base = String(entry.originalName || entry.driveFileId)
     .replace(/\.[^.]+$/, '') // drop any existing extension; we set it from assetType
     .replace(/[^A-Za-z0-9._ -]+/g, '_')
@@ -285,14 +293,14 @@ function runOpen(manifest, casDir, prefix, pri, opts) {
   const { canonical } = canonicalByContent(manifest, pri);
   const matches = [];
   for (const entry of canonical.values()) {
-    if (entry.assetType !== 'pdf' && entry.assetType !== 'mp3') continue;
+    if (!EXT_BY_TYPE[entry.assetType]) continue;
     if (!entry.sha256) continue;
     if (!assetMatchKey(entry).startsWith(wanted)) continue;
     matches.push(entry);
   }
 
   if (!matches.length) {
-    console.log(`No PDF or MP3 assets match song prefix "${wanted}".`);
+    console.log(`No assets match identifier prefix "${wanted}".`);
     return;
   }
 
