@@ -137,6 +137,31 @@ and `files.get?alt=media`, built on Node 20's global `fetch`. With no service
 account, a non-`--fixture` run fails fast with guidance. The Changes API +
 persisted `startPageToken` delta listing is a later refinement.
 
+### Inspecting the library (`bin/library.js`)
+
+Once a sync has populated `data/`, `bin/library.js` reads the manifest to inspect
+and open what's in the store. It has two subcommands:
+
+```bash
+node bin/library.js list                 # catalog grouped by song
+npm run library -- list --json           # same, as JSON
+node bin/library.js open uptown          # open matching scores/tracks
+node bin/library.js --help               # all options
+```
+
+`list` prints every live asset grouped by song (shown as a slug), each as an
+indented `instrument-key-part` descriptor (deduped, with `×N` counts), plus a
+song/asset total.
+
+`open <prefix>` opens every PDF and MP3 whose **song slug starts with `<prefix>`**
+in your OS default app — handy for pulling up a tune's parts and practice tracks
+at once. The prefix is slugified, so `open "Uptown Funk"` and `open uptown-funk`
+match the same songs. CAS blobs are content-addressed with no extension, so each
+match is copied to a throwaway temp location with a readable name and the correct
+`.pdf`/`.mp3` extension before launching (on WSL via `Start-Process`, otherwise
+`open`/`xdg-open`); the blobs in `data/cas/` are never modified. To avoid opening
+a flood of windows, more than 25 matches requires `--yes`.
+
 ## Open Questions
 
 - Which Google Drive folders or local paths are current import sources?
