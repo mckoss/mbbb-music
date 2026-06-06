@@ -168,6 +168,42 @@ extension before launching (on WSL via `Start-Process`, otherwise
 `open`/`xdg-open`); the blobs in `data/cas/` are never modified. To avoid
 opening a flood of windows, more than 25 matches requires `--yes`.
 
+## Web interface (SvelteKit)
+
+A SvelteKit app (TypeScript, Svelte 5, `adapter-node` for Railway) serves the
+player-facing library. It reads the same `data/manifest.json` and
+content-addressable store the sync produces — no separate database yet.
+
+```bash
+npm run dev        # dev server (Vite) at http://localhost:5173
+npm run build      # production build (adapter-node)
+npm run preview    # preview the production build
+npm run check      # svelte-check (type-check)
+```
+
+The current slice is the **player core** (catalog browse + scores + audio):
+
+- **Collection** — two-pane browse/detail. Search titles; pick a tune; the
+  detail pane shows the part for the globally selected instrument (with a part
+  selector when an instrument has more than one), a shared audio player, PDF /
+  MuseScore / MP3 downloads with app-generated filenames, and a format-sized PDF
+  preview.
+- **Score / Performance overlay** — full-screen real PDF sized to letter or 7×5
+  lyre, with the same audio transport; closes on Escape or browser Back.
+- A **single shared audio transport** stays continuous between the Collection
+  player and the Score overlay.
+- **Gig Packets** is a placeholder; auth, gigs, and the admin/import UI are
+  deferred (they need decisions and Postgres — see the milestones in
+  [docs/design.md](docs/design.md)).
+
+Architecture: the manifest→catalog model is shared with the CLI in
+`src/sync/catalog.js` (`buildCatalog`); `src/lib/server/library.ts` loads and
+caches it. `GET /api/catalog` returns the tune catalog; `GET /blob/<sha256>`
+streams a CAS blob with the right `Content-Type`, `Range` support (audio
+scrubbing), and immutable caching, serving only manifest-known hashes. `data/`
+stays gitignored; the app needs a populated `data/` (run a sync) to show real
+music.
+
 ## Open Questions
 
 - Which Google Drive folders or local paths are current import sources?
