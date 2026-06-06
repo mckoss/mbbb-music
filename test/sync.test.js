@@ -62,7 +62,7 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     // Manifest records provenance, hash, cas path, metadata, and status.
     const manifest = await loadManifest(resolve(dataDir, 'manifest.json'));
     assert.equal(Object.keys(manifest.files).length, FIXTURE_FILES.length);
-    assert.equal(manifest.files['bg-shortcut'].ignored, true);
+    assert.equal(manifest.files['bg-shortcut'].status, 'ignored|google-drive-shortcut');
     const e = manifest.files['bg-tpt-1'];
     assert.equal(e.status, 'synced');
     assert.equal(e.sha256, trumpet);

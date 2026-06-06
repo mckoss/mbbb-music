@@ -119,7 +119,7 @@ export function diffManifest(manifest, current) {
   // no longer see is a deletion. Local content is retained; we only archive.
   for (const [id, prev] of Object.entries(prevFiles)) {
     if (seen.has(id)) continue;
-    if (prev.status === 'deleted' || prev.status === 'ignored') continue;
+    if (prev.status === 'deleted' || prev.status?.startsWith('ignored')) continue;
     entries.push({ id, status: 'deleted', file: {}, prev });
   }
 
@@ -150,7 +150,7 @@ export function diffManifest(manifest, current) {
 export function findDuplicates(manifest) {
   const byHash = new Map();
   for (const [id, e] of Object.entries(manifest.files || {})) {
-    if (e.ignored || e.status === 'ignored' || e.status === 'deleted') continue;
+    if (e.status === 'deleted' || e.status?.startsWith('ignored')) continue;
     const sha = e.sha256;
     if (!sha) continue;
     if (!byHash.has(sha)) byHash.set(sha, []);

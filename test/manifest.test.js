@@ -74,7 +74,7 @@ test('findDuplicates groups live assets by sha256, regardless of source', () => 
     c: { sha256: 'h1', originalName: 'c.pdf', sourceFolderLabel: 'scores', status: 'unchanged' },
     d: { sha256: 'h2', originalName: 'd.pdf', status: 'synced' }, // unique
     e: { sha256: 'h3', originalName: 'e.pdf', status: 'deleted' }, // excluded
-    f: { sha256: 'h3', ignored: true, status: 'ignored' }, // excluded
+    f: { sha256: 'h3', originalName: 'f.pdf', status: 'ignored|google-native-file' }, // excluded
   };
 
   const groups = findDuplicates(m);

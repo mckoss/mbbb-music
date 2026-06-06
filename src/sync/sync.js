@@ -206,8 +206,6 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     instrumentSlug: meta.instrumentSlug,
     key: meta.key,
     partNumber: meta.partNumber,
-    ignored: false,
-    ignoreReason: null,
     syncedAt: timestamp,
   };
 }
@@ -226,9 +224,9 @@ function buildIgnoredEntry(entry, timestamp) {
     sha256: file.sha256Checksum ?? null,
     size: file.size ?? null,
     assetType: null,
-    ignored: true,
-    ignoreReason: entry.classification?.ignoreReason ?? null,
-    status: 'ignored',
+    // Ignored entries encode the reason in the status itself, e.g.
+    // "ignored|google-drive-shortcut". Recorded for provenance; never fetched.
+    status: `ignored|${entry.classification?.ignoreReason ?? 'unknown'}`,
     syncedAt: timestamp,
   };
 }
