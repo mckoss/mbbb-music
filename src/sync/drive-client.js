@@ -14,7 +14,8 @@
 //     parents?, folderName?, shortcutDetails? }
 
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+
+import { JWT } from 'google-auth-library';
 
 /**
  * Create an in-memory fixture Drive client from a list of files and their
@@ -68,43 +69,37 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
 // --- Real Google Drive v3 client ---------------------------------------------
 
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
-const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+// Read-only Drive access is all the sync needs; the source folders are public.
+const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
 // Fields the manifest/classifier need. files.list returns these per child; a
 // shortcut's shortcutDetails lets the classifier ignore pointer entries.
 const FILE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size,version,parents,shortcutDetails';
 
 /**
- * Create a real, dependency-free Google Drive v3 client backed by Node's global
- * `fetch` (Node 20+). It speaks only the two operations the sync core needs:
+ * Create a real Google Drive v3 client backed by Node's global `fetch` (Node
+ * 20+). It speaks only the two operations the sync core needs:
  * list the direct children of a folder, and download a file's bytes.
  *
- * Authentication (resolved from `options` first, then `env`):
- *   - MBBB_GOOGLE_ACCESS_TOKEN — a ready-to-use OAuth bearer token. Simplest for
- *     short-lived/manual runs; cannot be auto-refreshed.
- *   - MBBB_GOOGLE_CLIENT_ID + MBBB_GOOGLE_CLIENT_SECRET + MBBB_GOOGLE_REFRESH_TOKEN
- *     — a refresh-token grant; the client mints (and re-mints on 401/expiry) an
- *     access token via Google's OAuth token endpoint.
- *   - MBBB_GOOGLE_TOKEN_FILE — optional path to a JSON token object. Loaded only
- *     when the env var is set AND the file exists; never defaulted to a private
- *     path. Its fields (access_token / client_id / client_secret / refresh_token)
- *     fill any gaps left by the above, so an authorized-app credentials file can
- *     supply everything at once.
+ * Authentication is by Google **service account** only. The `google` block of
+ * config.json (or MBBB_CONFIG_JSON) embeds the service-account key inline as
+ * `serviceAccount` (the JSON object Google hands you). The configured source
+ * folders are public, so the service account just provides API credentials — no
+ * folder sharing or user impersonation is required.
  *
- * @param {import('./config.js').SyncConfig} [config]  Unused today; accepted so
- *        callers can pass the same config object they build for the sync.
+ * `google-auth-library`'s JWT client signs the assertion and mints/refreshes the
+ * short-lived access token; this module keeps its own fetch-based Drive REST calls.
+ *
+ * @param {import('./config.js').SyncConfig} [config]  Provides config.google creds.
  * @param {Object} [options]
  * @param {typeof fetch} [options.fetch]  Inject a fetch implementation (tests).
- * @param {NodeJS.ProcessEnv} [options.env]  Override the environment source.
- * @param {string} [options.accessToken]
- * @param {string} [options.clientId]
- * @param {string} [options.clientSecret]
- * @param {string} [options.refreshToken]
- * @param {string} [options.tokenFile]
+ * @param {Object} [options.authClient]   Inject an auth client (tests); must expose
+ *        getAccessToken(). Bypasses service-account loading entirely.
+ * @param {typeof JWT} [options.JWT]      Inject the JWT constructor (tests).
  * @returns {{ listFiles: (folderId: string) => Promise<Object[]>, downloadFile: (fileId: string) => Promise<Buffer> }}
  */
 export function createGoogleDriveClient(config = {}, options = {}) {
-  const env = options.env ?? process.env;
   const fetchImpl = options.fetch ?? globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
     throw new Error(
@@ -112,7 +107,7 @@ export function createGoogleDriveClient(config = {}, options = {}) {
     );
   }
 
-  const auth = createAuthProvider({ options, env, fetchImpl });
+  const auth = createAuthProvider({ config, options });
 
   // Issue an authenticated Drive request, transparently refreshing the access
   // token once on a 401 when refresh credentials are available.
@@ -167,110 +162,64 @@ export function createGoogleDriveClient(config = {}, options = {}) {
 }
 
 /**
- * Resolve and cache an OAuth access token from the configured credentials.
- * Precedence: explicit options > env vars > optional token file (gap-filling).
+ * Resolve and cache a service-account access token via google-auth-library's JWT
+ * client. The client is built lazily on first use (so an absent/invalid key only
+ * fails when a token is actually needed) and caches/refreshes tokens internally.
  */
-function createAuthProvider({ options, env, fetchImpl }) {
-  const tokenFile = options.tokenFile ?? env.MBBB_GOOGLE_TOKEN_FILE ?? null;
-  const creds = {
-    accessToken: options.accessToken ?? env.MBBB_GOOGLE_ACCESS_TOKEN ?? null,
-    clientId: options.clientId ?? env.MBBB_GOOGLE_CLIENT_ID ?? null,
-    clientSecret: options.clientSecret ?? env.MBBB_GOOGLE_CLIENT_SECRET ?? null,
-    refreshToken: options.refreshToken ?? env.MBBB_GOOGLE_REFRESH_TOKEN ?? null,
-  };
+function createAuthProvider({ config, options }) {
+  const JWTCtor = options.JWT ?? JWT;
+  const google = config.google || {};
 
-  let initialized = false;
-  let cachedToken = null;
-  let expiresAtMs = 0;
+  // A pre-built client (tests) bypasses service-account loading entirely.
+  let client = options.authClient ?? null;
+  let initialized = Boolean(options.authClient);
 
-  async function init() {
+  function ensureClient() {
     if (initialized) return;
     initialized = true;
-    if (tokenFile) await mergeTokenFile(creds, tokenFile);
-    if (creds.accessToken) {
-      cachedToken = creds.accessToken;
-      // A pre-supplied token has an unknown lifetime; treat it as valid until a
-      // 401 forces a refresh (only possible if refresh creds were also given).
-      expiresAtMs = Infinity;
-    }
+    client = buildJwtClient(google, JWTCtor);
   }
 
-  function hasRefreshCreds() {
-    return Boolean(creds.clientId && creds.clientSecret && creds.refreshToken);
-  }
-
-  async function refresh() {
-    const body = new URLSearchParams({
-      client_id: creds.clientId,
-      client_secret: creds.clientSecret,
-      refresh_token: creds.refreshToken,
-      grant_type: 'refresh_token',
-    });
-    const res = await fetchImpl(OAUTH_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-    });
-    if (!res.ok) {
-      const detail = await safeText(res);
-      throw new Error(
-        `Google OAuth token refresh failed: ${res.status} ${res.statusText || ''}`.trim() +
-          (detail ? ` — ${detail}` : ''),
-      );
-    }
-    const data = await res.json();
-    if (!data.access_token) {
-      throw new Error('Google OAuth token refresh returned no access_token');
-    }
-    cachedToken = data.access_token;
-    const ttlSec = Number(data.expires_in) || 3600;
-    // Refresh a minute early to avoid racing expiry mid-sync.
-    expiresAtMs = Date.now() + Math.max(0, ttlSec - 60) * 1000;
-    return cachedToken;
+  async function getToken({ forceRefresh = false } = {}) {
+    ensureClient();
+    if (!client) throw missingCredsError();
+    // Force a re-mint by invalidating any cached token (used on a 401 retry).
+    if (forceRefresh && client.credentials) client.credentials.access_token = null;
+    const res = await client.getAccessToken();
+    const token = typeof res === 'string' ? res : res && res.token;
+    if (!token) throw new Error('Service account auth returned no access token');
+    return token;
   }
 
   return {
-    async getToken({ forceRefresh = false } = {}) {
-      await init();
-      if (!forceRefresh && cachedToken && Date.now() < expiresAtMs) return cachedToken;
-      if (hasRefreshCreds()) return refresh();
-      if (cachedToken) return cachedToken; // direct token, not refreshable
-      throw missingCredsError();
-    },
-    async canRefresh() {
-      await init();
-      return hasRefreshCreds();
+    getToken,
+    canRefresh() {
+      ensureClient();
+      return Boolean(client);
     },
   };
 }
 
-/** Merge a JSON token file's fields into `creds`, without overriding what's set. */
-async function mergeTokenFile(creds, tokenFile) {
-  let raw;
-  try {
-    raw = await readFile(tokenFile, 'utf8');
-  } catch (err) {
-    if (err && err.code === 'ENOENT') return; // "if present" — absence is fine
-    throw new Error(`Failed to read MBBB_GOOGLE_TOKEN_FILE (${tokenFile}): ${err.message || err}`);
+/** Build a JWT client from the inline service account, or null if none is configured. */
+function buildJwtClient(google, JWTCtor) {
+  const sa = google.serviceAccount;
+  if (!sa || typeof sa !== 'object') return null;
+  if (!sa.client_email || !sa.private_key) {
+    throw new Error('config.json google.serviceAccount is missing "client_email" or "private_key".');
   }
-  let obj;
-  try {
-    obj = JSON.parse(raw);
-  } catch {
-    throw new Error(`MBBB_GOOGLE_TOKEN_FILE (${tokenFile}) is not valid JSON`);
-  }
-  creds.accessToken = creds.accessToken ?? obj.access_token ?? obj.accessToken ?? null;
-  creds.clientId = creds.clientId ?? obj.client_id ?? obj.clientId ?? null;
-  creds.clientSecret = creds.clientSecret ?? obj.client_secret ?? obj.clientSecret ?? null;
-  creds.refreshToken = creds.refreshToken ?? obj.refresh_token ?? obj.refreshToken ?? null;
+  return new JWTCtor({
+    email: sa.client_email,
+    key: sa.private_key,
+    scopes: DRIVE_SCOPES,
+  });
 }
 
 function missingCredsError() {
   return new Error(
-    'Google Drive credentials are not configured. Set MBBB_GOOGLE_ACCESS_TOKEN, or ' +
-      'MBBB_GOOGLE_CLIENT_ID + MBBB_GOOGLE_CLIENT_SECRET + MBBB_GOOGLE_REFRESH_TOKEN ' +
-      '(optionally via MBBB_GOOGLE_TOKEN_FILE). Or run with --fixture for a ' +
-      'credential-free demo. See docs/design.md → Incremental Drive Sync.',
+    'Google service account is not configured. In config.json (or MBBB_CONFIG_JSON), embed the ' +
+      'service-account key inline as "google": { "serviceAccount": { ... } }. Or run with ' +
+      '--fixture for a credential-free demo. See config.example.json and ' +
+      'docs/design.md → Incremental Drive Sync.',
   );
 }
 

@@ -15,5 +15,8 @@
     "sync:demo": "node bin/sync.js --fixture",
     "test": "node --test"
   },
+  "dependencies": {
+    "google-auth-library": "9.15.1"
+  },
   "license": "UNLICENSED"
 }

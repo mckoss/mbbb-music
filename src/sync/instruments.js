@@ -13,7 +13,7 @@
  * @typedef {{ label: string, slug: string, defaultKey: string|null, match: string[] }} Instrument
  * @type {Instrument[]}
  */
-export const INSTRUMENTS = [
+const INSTRUMENTS = [
   { label: 'Alto saxophone', slug: 'alto-sax', defaultKey: 'eflat', match: ['alto saxophone', 'alto sax', 'altosax', 'alto'] },
   { label: 'Soprano saxophone', slug: 'soprano-sax', defaultKey: 'bflat', match: ['soprano saxophone', 'soprano sax', 'soprano'] },
   { label: 'Tenor saxophone', slug: 'tenor-sax', defaultKey: 'bflat', match: ['tenor saxophone', 'tenor sax', 'tenorsax'] },

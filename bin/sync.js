@@ -25,28 +25,29 @@ USAGE
 OPTIONS
   --fixture           Use the built-in synthetic fixture instead of real Drive.
                       Requires no credentials; safe for offline demos and CI.
-  --data-dir <path>   Override the data directory (default: ./data or MBBB_DATA_DIR).
+  --data-dir <path>   Override the data directory (default: config.json dataDir or ./data).
   --dry-run           Classify and plan only; do not download or write manifest.
   --json              Print the full machine-readable sync report as JSON.
   -h, --help          Show this help.
 
 CONFIGURATION (real Drive — not required for --fixture)
-  MBBB_DATA_DIR              Data directory (default: ./data)
-  MBBB_DRIVE_FOLDER_1_ID     First Drive source folder id
-  MBBB_DRIVE_FOLDER_1_LABEL  Optional label for folder 1
-  MBBB_DRIVE_FOLDER_2_ID     Second Drive source folder id
-  MBBB_DRIVE_FOLDER_2_LABEL  Optional label for folder 2
+  Source folders and the Google service account are read from a git-ignored
+  config.json in the repo root, or — if absent — from the MBBB_CONFIG_JSON
+  environment variable holding the same JSON. See config.example.json:
 
-CREDENTIALS (real Drive — choose one; not required for --fixture)
-  MBBB_GOOGLE_ACCESS_TOKEN   A ready OAuth bearer token (simplest; not refreshed).
-  MBBB_GOOGLE_CLIENT_ID      \\
-  MBBB_GOOGLE_CLIENT_SECRET   > Refresh-token grant; mints/refreshes tokens itself.
-  MBBB_GOOGLE_REFRESH_TOKEN  /
-  MBBB_GOOGLE_TOKEN_FILE     Optional path to a JSON token object; loaded only if
-                             set and the file exists. Fills any gaps above.
+    {
+      "dataDir": "data",
+      "sources": [ { "id": "<drive-folder-id>", "label": "scores" }, ... ],
+      "google":  { "serviceAccount": { ...service-account key... } }
+    }
+
+  Authentication is by Google service account only, embedded inline in the
+  "google.serviceAccount" block (the JSON key Google Cloud gives you). The source
+  folders are public, so no folder sharing is needed — the service account just
+  provides Drive API credentials.
 
   --fixture needs no credentials and is for demos/CI. Without it, a run with no
-  credentials fails fast with guidance.
+  service account fails fast with guidance.
 
 EXAMPLES
   node bin/sync.js --fixture
@@ -137,8 +138,8 @@ async function main() {
   if (!opts.fixture) {
     if (!config.sources.length) {
       console.error(
-        'No Drive source folders configured. Set MBBB_DRIVE_FOLDER_1_ID and ' +
-          'MBBB_DRIVE_FOLDER_2_ID, or run with --fixture for a credential-free demo.',
+        'No Drive source folders configured. Add a "sources" array to config.json ' +
+          '(or MBBB_CONFIG_JSON), or run with --fixture for a credential-free demo.',
       );
       process.exit(2);
     }

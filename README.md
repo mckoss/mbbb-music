@@ -35,29 +35,91 @@ by song under `data/<song-title-slug>/` with canonical lowercase slug filenames
 files, and maintains `data/manifest.json` for incremental, idempotent refreshes.
 `data/` is gitignored — synced music never enters this public repo.
 
-It needs no install (Node 20+, zero dependencies). Try it against built-in
-synthetic fixtures, no Google credentials required:
+Install once (`npm install`), then try it against built-in synthetic fixtures,
+no Google credentials required:
 
 ```bash
+npm install               # one dependency: google-auth-library (service-account JWT)
 npm run sync:demo          # sync synthetic fixture data into ./data
 node bin/sync.js --help    # all options
 npm test                   # slug, classification, and manifest-diff tests
 ```
 
-To run against **real** Google Drive, configure the two source folders via
-`MBBB_DRIVE_FOLDER_1_ID` / `MBBB_DRIVE_FOLDER_2_ID` and provide OAuth
-credentials (the `--fixture` flag is only for credential-free demos/CI):
+To run against **real** Google Drive, configure two things: the Drive **source
+folders** to sync and a Google **service-account key** for API access. The source
+folders are public, so no folder sharing is needed — the service account just
+supplies Drive API credentials. `google-auth-library` signs the JWT and
+mints/refreshes access tokens. (The `--fixture` flag is only for credential-free
+demos/CI.)
 
-| Variable | Purpose |
-| --- | --- |
-| `MBBB_GOOGLE_ACCESS_TOKEN` | A ready OAuth bearer token. Simplest; not auto-refreshed. |
-| `MBBB_GOOGLE_CLIENT_ID` + `MBBB_GOOGLE_CLIENT_SECRET` + `MBBB_GOOGLE_REFRESH_TOKEN` | Refresh-token grant; the client mints and re-mints access tokens itself. |
-| `MBBB_GOOGLE_TOKEN_FILE` | Optional path to a JSON token object, loaded only when set and the file exists; its fields fill any gaps in the above. Never defaulted to a private path. |
+The full config is one JSON document, read from a git-ignored `config.json` in the
+repo root, or — if that file is absent — from the `MBBB_CONFIG_JSON` environment
+variable holding the same JSON. `config.json` is tried first, then
+`MBBB_CONFIG_JSON`. Its shape (`sources` accepts any number of folders):
+
+```json
+{
+  "dataDir": "data",
+  "sources": [
+    { "id": "<drive-folder-id>", "label": "scores" },
+    { "id": "<drive-folder-id>", "label": "recordings" }
+  ],
+  "google": { "serviceAccount": { "client_email": "...", "private_key": "...", "...": "..." } }
+}
+```
+
+### Create a service account
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), create (or
+   pick) a project and enable the **Google Drive API** for it.
+2. Under **APIs & Services → Credentials**, create a **Service Account**.
+3. On that service account, open **Keys → Add key → Create new key → JSON** and
+   download the key file. That downloaded JSON object is exactly what goes in the
+   `google.serviceAccount` field below — `client_email`, `private_key`, and the
+   rest. Treat it as a secret; never commit it.
+
+A Drive folder's id is the last path segment of its URL, e.g.
+`https://drive.google.com/drive/folders/<this-part-is-the-id>`.
+
+### Local setup (config.json)
+
+Copy the example and fill it in:
+
+```bash
+cp config.example.json config.json
+```
+
+Then edit `config.json`: list your folder ids under `sources`, and paste the
+entire downloaded service-account JSON as the value of `google.serviceAccount`.
+`config.json` is git-ignored, so the key stays out of the repo. Verify:
+
+```bash
+node bin/sync.js --dry-run        # lists/classifies real Drive files without downloading
+```
+
+### Railway setup (MBBB_CONFIG_JSON)
+
+Railway has no checked-in `config.json`, so provide the same JSON through the
+`MBBB_CONFIG_JSON` environment variable. In the Railway service's **Variables**
+tab, add a variable named `MBBB_CONFIG_JSON` whose value is the whole config
+document as a single JSON string (folders **and** the `serviceAccount` block). The
+downloaded key already encodes its `private_key` newlines as `\n` inside the JSON
+string, so pasting the JSON verbatim works — no extra escaping needed.
+
+If you already have a working local `config.json`, generate the one-line value to
+paste from it:
+
+```bash
+node -e "process.stdout.write(JSON.stringify(require('./config.json')))"
+```
+
+The sync reads no other environment variables; `MBBB_CONFIG_JSON` carries
+everything.
 
 The client uses Drive v3 `files.list` (folder-scoped, `trashed=false`, paginated)
-and `files.get?alt=media`, built on Node 20's global `fetch` with zero
-dependencies. With no credentials, a non-`--fixture` run fails fast with guidance.
-The Changes API + persisted `startPageToken` delta listing is a later refinement.
+and `files.get?alt=media`, built on Node 20's global `fetch`. With no service
+account, a non-`--fixture` run fails fast with guidance. The Changes API +
+persisted `startPageToken` delta listing is a later refinement.
 
 ## Open Questions
 

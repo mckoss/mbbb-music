@@ -6,14 +6,6 @@ import { loadConfig } from './config.js';
 import { runSync } from './sync.js';
 import { createGoogleDriveClient } from './drive-client.js';
 
-export { loadConfig } from './config.js';
-export { runSync } from './sync.js';
-export { createFixtureDriveClient, createGoogleDriveClient } from './drive-client.js';
-export { classifyDriveFile } from './classify.js';
-export { parseAsset } from './parse-filename.js';
-export { slugify, slugifyStem } from './slugify.js';
-export { diffManifest, loadManifest, saveManifest, emptyManifest } from './manifest.js';
-
 /**
  * High-level convenience: build config, pick a Drive client, and run a sync.
  * Suitable as the body of an Express admin route or a CLI command.

@@ -26,7 +26,7 @@ const noopLogger = { info() {}, warn() {}, error() {} };
  */
 export async function runSync({ driveClient, config, dryRun = false, now = () => new Date(), logger = noopLogger }) {
   if (!config?.sources?.length) {
-    throw new Error('No Drive source folders configured. Set MBBB_DRIVE_FOLDER_1_ID / _2_ID or pass sources.');
+    throw new Error('No Drive source folders configured. Add "sources" to config.json or pass sources.');
   }
 
   const timestamp = now().toISOString();

@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy this file to config.json (git-ignored) and fill in real values. For deployments (Railway, CI) supply the same JSON in the MBBB_CONFIG_JSON env var instead. Sync reads config.json first, then MBBB_CONFIG_JSON.",
+
+  "dataDir": "data",
+
+  "sources": [
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_1", "label": "scores" },
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
+  ],
+
+  "google": {
+    "_comment": "Authentication is by Google service account only. The source folders are public, so no folder sharing is needed — the service account just provides Drive API credentials. Paste the JSON key Google Cloud gives you here, inline.",
+    "serviceAccount": {
+      "type": "service_account",
+      "project_id": "your-project",
+      "private_key_id": "...",
+      "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+      "client_email": "mbbb-sync@your-project.iam.gserviceaccount.com",
+      "client_id": "...",
+      "token_uri": "https://oauth2.googleapis.com/token"
+    }
+  }
+}

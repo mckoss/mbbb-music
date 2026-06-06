@@ -4,9 +4,9 @@
 // and unrelated file types are ignored (recorded, never fetched).
 
 /** Drive mime type for shortcut entries (pointers, not real bytes). */
-export const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
+const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 /** Drive mime type for folders. */
-export const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 /**
  * Accepted asset types keyed by canonical name. Each entry knows the file
@@ -16,7 +16,7 @@ export const FOLDER_MIME = 'application/vnd.google-apps.folder';
  * @typedef {{ type: string, ext: string, mimes: string[], exts: string[] }} AssetKind
  * @type {AssetKind[]}
  */
-export const ASSET_KINDS = [
+const ASSET_KINDS = [
   { type: 'pdf', ext: 'pdf', mimes: ['application/pdf'], exts: ['pdf'] },
   {
     type: 'mp3',

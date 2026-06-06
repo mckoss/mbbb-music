@@ -1,8 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createGoogleDriveClient } from '../src/sync/drive-client.js';
 
@@ -17,6 +14,15 @@ function makeFetch(handlers) {
   };
   fetchImpl.calls = calls;
   return fetchImpl;
+}
+
+// An injected auth client (bypasses service-account loading) that returns a fixed token.
+function fakeAuth(token) {
+  return {
+    async getAccessToken() {
+      return { token };
+    },
+  };
 }
 
 function jsonResponse(obj, status = 200) {
@@ -49,7 +55,7 @@ function bytesResponse(buf, status = 200) {
 
 test('listFiles builds a folder-scoped, non-trashed query with manifest fields', async () => {
   const fetchImpl = makeFetch([() => jsonResponse({ files: [{ id: 'a', name: 'A.pdf' }] })]);
-  const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: { MBBB_GOOGLE_ACCESS_TOKEN: 'tok-123' } });
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('tok-123') });
 
   const files = await client.listFiles('folder-xyz');
   assert.deepEqual(files, [{ id: 'a', name: 'A.pdf' }]);
@@ -73,7 +79,7 @@ test('listFiles follows nextPageToken across pages', async () => {
       return jsonResponse({ files: [{ id: 'p2' }] });
     },
   ]);
-  const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: { MBBB_GOOGLE_ACCESS_TOKEN: 't' } });
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('t') });
 
   const files = await client.listFiles('f');
   assert.deepEqual(files.map((f) => f.id), ['p1', 'p2']);
@@ -83,7 +89,7 @@ test('listFiles follows nextPageToken across pages', async () => {
 test('downloadFile requests alt=media and returns a Buffer', async () => {
   const payload = Buffer.from('SYNTHETIC-PDF-BYTES');
   const fetchImpl = makeFetch([() => bytesResponse(payload)]);
-  const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: { MBBB_GOOGLE_ACCESS_TOKEN: 't' } });
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('t') });
 
   const out = await client.downloadFile('file 1/with?weird');
   assert.ok(Buffer.isBuffer(out));
@@ -94,111 +100,81 @@ test('downloadFile requests alt=media and returns a Buffer', async () => {
   assert.equal(parsed.searchParams.get('alt'), 'media');
 });
 
-test('refresh-token credentials mint an access token, then reuse it', async () => {
+test('service account: builds a JWT client from the inline key with drive.readonly scope', async () => {
+  let opts;
+  class FakeJWT {
+    constructor(o) {
+      opts = o;
+    }
+    async getAccessToken() {
+      return { token: 'svc-token' };
+    }
+  }
   const fetchImpl = makeFetch([
-    ({ url, init }) => {
-      assert.equal(url, 'https://oauth2.googleapis.com/token');
-      assert.equal(init.method, 'POST');
-      const body = new URLSearchParams(init.body);
-      assert.equal(body.get('grant_type'), 'refresh_token');
-      assert.equal(body.get('client_id'), 'cid');
-      assert.equal(body.get('client_secret'), 'csecret');
-      assert.equal(body.get('refresh_token'), 'rtok');
-      return jsonResponse({ access_token: 'fresh-token', expires_in: 3600 });
-    },
     ({ init }) => {
-      assert.equal(init.headers.Authorization, 'Bearer fresh-token');
-      return jsonResponse({ files: [] });
-    },
-    ({ init }) => {
-      // Second list reuses the cached token: no extra token call.
-      assert.equal(init.headers.Authorization, 'Bearer fresh-token');
+      assert.equal(init.headers.Authorization, 'Bearer svc-token');
       return jsonResponse({ files: [] });
     },
   ]);
   const client = createGoogleDriveClient(
-    {},
     {
-      fetch: fetchImpl,
-      env: {
-        MBBB_GOOGLE_CLIENT_ID: 'cid',
-        MBBB_GOOGLE_CLIENT_SECRET: 'csecret',
-        MBBB_GOOGLE_REFRESH_TOKEN: 'rtok',
+      google: {
+        serviceAccount: { client_email: 'svc@proj.iam.gserviceaccount.com', private_key: 'PRIVATE_KEY' },
       },
     },
+    { fetch: fetchImpl, JWT: FakeJWT },
   );
 
   await client.listFiles('f');
-  await client.listFiles('f');
-  assert.equal(fetchImpl.calls.length, 3); // one token + two lists
+  assert.equal(opts.email, 'svc@proj.iam.gserviceaccount.com');
+  assert.equal(opts.key, 'PRIVATE_KEY');
+  assert.deepEqual(opts.scopes, ['https://www.googleapis.com/auth/drive.readonly']);
 });
 
-test('a 401 triggers a one-time refresh and retry', async () => {
+test('a 401 triggers a one-time token re-mint and retry', async () => {
+  // Stub auth client whose token is re-minted once its cached value is cleared.
+  const authClient = {
+    credentials: { access_token: 'first' },
+    async getAccessToken() {
+      if (!this.credentials.access_token) this.credentials.access_token = 'second';
+      return { token: this.credentials.access_token };
+    },
+  };
   const fetchImpl = makeFetch([
-    () => jsonResponse({ access_token: 'first', expires_in: 3600 }),
-    () => jsonResponse({ error: 'unauthorized' }, 401),
-    ({ url }) => {
-      assert.equal(url, 'https://oauth2.googleapis.com/token');
-      return jsonResponse({ access_token: 'second', expires_in: 3600 });
+    ({ init }) => {
+      assert.equal(init.headers.Authorization, 'Bearer first');
+      return jsonResponse({ error: 'unauthorized' }, 401);
     },
     ({ init }) => {
       assert.equal(init.headers.Authorization, 'Bearer second');
       return jsonResponse({ files: [{ id: 'ok' }] });
     },
   ]);
-  const client = createGoogleDriveClient(
-    {},
-    {
-      fetch: fetchImpl,
-      env: {
-        MBBB_GOOGLE_CLIENT_ID: 'cid',
-        MBBB_GOOGLE_CLIENT_SECRET: 'csecret',
-        MBBB_GOOGLE_REFRESH_TOKEN: 'rtok',
-      },
-    },
-  );
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient });
 
   const files = await client.listFiles('f');
   assert.deepEqual(files.map((f) => f.id), ['ok']);
+  assert.equal(fetchImpl.calls.length, 2);
 });
 
-test('missing credentials throw a clear, actionable error', async () => {
+test('missing service account throws a clear, actionable error', async () => {
   const fetchImpl = makeFetch([]);
-  const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: {} });
-  await assert.rejects(() => client.listFiles('f'), /credentials are not configured/i);
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl });
+  await assert.rejects(() => client.listFiles('f'), /service account is not configured/i);
   assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('a service account JSON missing private_key throws', async () => {
+  const fetchImpl = makeFetch([]);
+  const client = createGoogleDriveClient(
+    { google: { serviceAccount: { client_email: 'svc@x' } } },
+    { fetch: fetchImpl },
+  );
+  await assert.rejects(() => client.listFiles('f'), /missing "client_email" or "private_key"/);
 });
 
 test('a non-2xx Drive response throws including status and body', async () => {
   const fetchImpl = makeFetch([() => jsonResponse({ error: { message: 'File not found' } }, 404)]);
-  const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: { MBBB_GOOGLE_ACCESS_TOKEN: 't' } });
+  const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('t') });
   await assert.rejects(() => client.downloadFile('missing'), /404.*File not found/s);
-});
-
-test('MBBB_GOOGLE_TOKEN_FILE supplies credentials when present', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'mbbb-token-'));
-  try {
-    const tokenFile = join(dir, 'token.json');
-    await writeFile(tokenFile, JSON.stringify({ access_token: 'from-file' }));
-    const fetchImpl = makeFetch([
-      ({ init }) => {
-        assert.equal(init.headers.Authorization, 'Bearer from-file');
-        return jsonResponse({ files: [] });
-      },
-    ]);
-    const client = createGoogleDriveClient({}, { fetch: fetchImpl, env: { MBBB_GOOGLE_TOKEN_FILE: tokenFile } });
-    await client.listFiles('f');
-    assert.equal(fetchImpl.calls.length, 1);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test('a configured-but-absent token file is ignored, falling through to missing-creds', async () => {
-  const fetchImpl = makeFetch([]);
-  const client = createGoogleDriveClient(
-    {},
-    { fetch: fetchImpl, env: { MBBB_GOOGLE_TOKEN_FILE: join(tmpdir(), 'definitely-absent-token-xyz.json') } },
-  );
-  await assert.rejects(() => client.listFiles('f'), /credentials are not configured/i);
 });

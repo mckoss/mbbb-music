@@ -47,13 +47,14 @@ src/sync/        - Phase 1 Drive asset sync core (reusable service)
 src/server/      - Express-callable handler for hosted refreshes
 bin/sync.js      - Phase 1 sync CLI entry point
 test/            - node:test suites (slug, classify, manifest, sync)
-package.json     - Scripts/metadata; ESM, zero runtime dependencies
+package.json     - Scripts/metadata; ESM, one runtime dep (google-auth-library)
 ```
 
 The docs surface is plain HTML, CSS, and JavaScript under `docs/`, suitable for
 GitHub Pages. The Phase 1 Drive sync (`src/sync`, `bin/sync.js`) runs on Node
-20+ with no dependencies and uses the built-in `node:test` runner. Synced music
-lands in the gitignored `data/` directory and never enters this public repo.
+20+ with a single dependency (`google-auth-library`, for service-account JWT
+signing) and uses the built-in `node:test` runner. Synced music lands in the
+gitignored `data/` directory and never enters this public repo.
 
 ## Local Workflow
 
@@ -71,12 +72,31 @@ npm run sync:demo                               # sync synthetic fixtures into .
 node bin/sync.js --help                         # Phase 1 sync CLI options
 ```
 
-Then visit `http://localhost:8000/` for the prototype. The Phase 1 sync needs no
-`npm install` (zero dependencies); run with `--fixture` to exercise it without
-Google credentials.
+Then visit `http://localhost:8000/` for the prototype. The Phase 1 sync needs
+`npm install` (one dependency, `google-auth-library`); run with `--fixture` to
+exercise it without Google credentials.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
+
+## Dependencies
+
+There is no blanket "no-dependency" rule for this project. Depending on
+mainstream, well-maintained libraries is fine when a dependency removes real
+hand-rolled complexity. The constraints are about control, not abstinence:
+
+- Declare every runtime dependency explicitly in `package.json`; don't lean on
+  transitive packages.
+- Pin exact versions — no `^`/`~` ranges — so a version only changes when we
+  deliberately bump it. Commit `package-lock.json` so installs are reproducible.
+- Update deliberately: bump a version in its own change, never as a silent side
+  effect of something else.
+- Prefer the Node standard library for small, stable needs; reach for a
+  dependency when it genuinely earns its weight.
+
+The `docs/` prototype is a separate case: it stays buildless (plain HTML/CSS/JS)
+so GitHub Pages serves it directly — a deployment choice for the frontend, not a
+rule for the Node tooling.
 
 ## Product Model
 
@@ -131,8 +151,10 @@ The current prototype is intentionally direct:
 
 When editing the prototype:
 
-- Keep it static and dependency-free unless Mike explicitly asks for a real app
-  scaffold.
+- Keep the prototype buildless — plain HTML/CSS/JS that GitHub Pages serves
+  directly — unless Mike explicitly asks for a real app scaffold. This is a
+  deployment choice for `docs/`, not a project-wide no-dependency rule (see
+  [Dependencies](#dependencies)).
 - Do not add real private data to sample arrays.
 - Make the Collection, Gig Packets, and Performance flows remain usable on both
   desktop and tablet widths.
@@ -174,7 +196,7 @@ and public-safe visual assets. Unsafe contents include:
 - Raw Google Drive exports or filenames if they reveal private library contents
   beyond intentional samples.
 - Member email addresses, phone numbers, attendance details, or private notes.
-- API keys, OAuth client secrets, tokens, cookies, and local `.env` files.
+- API keys, service-account keys, tokens, cookies, and the local `config.json`.
 
 When in doubt, add a tiny synthetic fixture instead of a real file.
 

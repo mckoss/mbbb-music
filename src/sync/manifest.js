@@ -7,7 +7,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-export const MANIFEST_VERSION = 1;
+const MANIFEST_VERSION = 1;
 
 /** A fresh, empty manifest. */
 export function emptyManifest() {
