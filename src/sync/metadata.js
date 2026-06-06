@@ -47,6 +47,8 @@ export function detectAssetMetadata({ originalName, songTitle }) {
     instrument: inst ? inst.label : null,
     instrumentSlug: inst ? inst.slug : null,
     key: detectKey(originalName),
-    partNumber: detectPartNumber(originalName),
+    // A part number is only meaningful for a known instrument ("Trumpet 2"); a
+    // trailing number with no instrument ("MDL Bass Line 5") is not a part.
+    partNumber: inst ? detectPartNumber(originalName) : null,
   };
 }

@@ -42,3 +42,31 @@ test('the song title comes from the folder, so an index-folder file still detect
   const m = detectAssetMetadata({ originalName: 'Bad Guy - Melodica.pdf', songTitle: '50 Indexed By Instrument (INCOMPLETE)' });
   assert.equal(m.instrument, 'Melodica');
 });
+
+test('a trailing number with no instrument is not a part number', () => {
+  // "Freedom-MDL Bass Line 5" — "Bass Line" is not a known instrument, so the
+  // trailing 5 is not a part (it was producing a bare "5" descriptor).
+  const m = detectAssetMetadata({ originalName: 'Freedom-MDL Bass Line 5.pdf', songTitle: 'Beyonce Freedom' });
+  assert.equal(m.instrument, null);
+  assert.equal(m.partNumber, null);
+});
+
+test('a trailing 0 is a voicing/version index, not part 0', () => {
+  const m = detectAssetMetadata({ originalName: 'gnosienne_-_satie-erway_-_alto_sax_0.pdf', songTitle: 'Gnosienne #1' });
+  assert.equal(m.instrumentSlug, 'alto-sax');
+  assert.equal(m.partNumber, null);
+});
+
+test('real instrument part numbers (>= 1) are still captured', () => {
+  const m = detectAssetMetadata({ originalName: 'Freedom-Trumpet 2.pdf', songTitle: 'Beyonce Freedom' });
+  assert.equal(m.instrumentSlug, 'trumpet');
+  assert.equal(m.partNumber, 2);
+});
+
+test('detects the Bb/Eb shorthand key through underscores', () => {
+  const bb = detectAssetMetadata({ originalName: 'gnosienne_-_satie-erway_-_trumpet_in_bb_0.pdf', songTitle: 'Gnosienne #1' });
+  assert.equal(bb.instrumentSlug, 'trumpet');
+  assert.equal(bb.key, 'bflat');
+  const eb = detectAssetMetadata({ originalName: 'Uptown_Funk-Alto_Sax_Eb.pdf', songTitle: 'Uptown Funk' });
+  assert.equal(eb.key, 'eflat');
+});

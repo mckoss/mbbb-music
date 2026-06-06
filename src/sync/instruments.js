@@ -58,23 +58,35 @@ const KEY_PATTERNS = [
 
 /**
  * Detect a written key/transposition token from a source filename. Returns a
- * key slug like "bflat" or null when none is present.
+ * key slug like "bflat" or null when none is present. Underscores (common in
+ * exported filenames like "trumpet_in_bb") are treated as separators, and the
+ * bare "Bb"/"Eb"/"F#" shorthand is recognized as a standalone token.
  *
  * @param {string} text
  * @returns {string | null}
  */
 export function detectKey(text) {
-  const haystack = String(text ?? '');
+  const haystack = String(text ?? '').replace(/_/g, ' ');
   for (const { slug, re } of KEY_PATTERNS) {
     if (re.test(haystack)) return slug;
+  }
+  // Shorthand transposition as a standalone token: "Bb" -> bflat, "Eb" ->
+  // eflat, "F#" -> fsharp, etc. Require a separator before the note letter so
+  // ordinary words ("crab", "Feb") don't match.
+  const m = haystack.match(/(?:^|[\s-])([a-g])\s*(b|flat|#|♭|sharp|♯)(?=[\s.)\-]|$)/i);
+  if (m) {
+    const note = m[1].toLowerCase();
+    const accidental = /#|♯|sharp/i.test(m[2]) ? 'sharp' : 'flat';
+    return note + accidental;
   }
   return null;
 }
 
 /**
  * Detect a trailing part number, e.g. "Trumpet 2" or "Trumpet - 2". Returns the
- * integer part number or null. A leading "1" with no sibling is still recorded
- * so downstream code can decide whether to keep it.
+ * integer part number (>= 1) or null. A trailing "0" is not a valid part number
+ * (it appears in this library as a voicing/version index, e.g. "alto_sax_0"),
+ * so it is rejected.
  *
  * @param {string} text
  * @returns {number | null}
@@ -85,5 +97,5 @@ export function detectPartNumber(text) {
     .match(/(?:^|[\s_-])(\d{1,2})\s*$/);
   if (!m) return null;
   const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
+  return Number.isInteger(n) && n >= 1 ? n : null;
 }
