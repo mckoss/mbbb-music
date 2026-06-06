@@ -12,10 +12,12 @@ import { FIXTURE_FILES, FIXTURE_FOLDERS } from '../src/sync/sample-fixture.js';
 
 const HELP = `mbbb-sync — Phase 1 Google Drive asset sync
 
-Syncs the two configured Drive source folders into the gitignored data/
-directory: downloads only score PDFs, MP3s, and MuseScore files, groups them by
-song under data/<song-title-slug>/ with canonical slug filenames, and maintains
-data/manifest.json for incremental, idempotent refreshes.
+Scans each configured Drive source folder recursively (layout:
+<source>/<song-title>/<asset>) and syncs into the gitignored data/ directory:
+downloads only score PDFs, MP3s, and MuseScore files, groups them by song (the
+top-level folder under each source) under data/<song-title-slug>/ with canonical
+slug filenames, and maintains data/manifest.json for incremental, idempotent
+refreshes.
 
 USAGE
   node bin/sync.js [options]

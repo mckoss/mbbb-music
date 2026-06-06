@@ -28,12 +28,15 @@ see the milestones in [docs/design.md](docs/design.md) for the planned build ord
 ## Phase 1: Drive Asset Sync
 
 A reusable Drive asset sync lives under `src/sync/`, with a CLI entry point at
-`bin/sync.js` and an Express-callable handler at `src/server/sync-route.js`. It
-downloads only real asset files (score PDFs, MP3s, MuseScore files), groups them
-by song under `data/<song-title-slug>/` with canonical lowercase slug filenames
-(e.g. `bad-guy-trumpet-bflat-2.pdf`), ignores Drive shortcuts and non-asset
-files, and maintains `data/manifest.json` for incremental, idempotent refreshes.
-`data/` is gitignored — synced music never enters this public repo.
+`bin/sync.js` and an Express-callable handler at `src/server/sync-route.js`. Each
+configured source folder is scanned **recursively** — the band's Drive is laid
+out as `<source>/<song-title>/<asset>` (and may nest deeper), so the top-level
+folder under each source is treated as the song. The sync downloads only real
+asset files (score PDFs, MP3s, MuseScore files), groups them by song under
+`data/<song-title-slug>/` with canonical lowercase slug filenames (e.g.
+`bad-guy-trumpet-bflat-2.pdf`), ignores Drive shortcuts and non-asset files, and
+maintains `data/manifest.json` for incremental, idempotent refreshes. `data/` is
+gitignored — synced music never enters this public repo.
 
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:

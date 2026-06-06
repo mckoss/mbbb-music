@@ -25,6 +25,22 @@ function fakeAuth(token) {
   };
 }
 
+// A fetch double that answers files.list by parent folder id from a folder tree,
+// so recursive-walk tests don't depend on fetch call ordering. Single page each.
+function driveTreeFetch(childrenByFolder) {
+  return async (url) => {
+    const q = new URL(String(url)).searchParams.get('q') || '';
+    const m = q.match(/'([^']+)' in parents/);
+    const folderId = m ? m[1] : null;
+    return jsonResponse({ files: childrenByFolder[folderId] || [] });
+  };
+}
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const aFolder = (id, name) => ({ id, name, mimeType: FOLDER_MIME });
+const aPdf = (id, name) => ({ id, name, mimeType: 'application/pdf' });
+const anMp3 = (id, name) => ({ id, name, mimeType: 'audio/mpeg' });
+
 function jsonResponse(obj, status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -84,6 +100,34 @@ test('listFiles follows nextPageToken across pages', async () => {
   const files = await client.listFiles('f');
   assert.deepEqual(files.map((f) => f.id), ['p1', 'p2']);
   assert.equal(fetchImpl.calls.length, 2);
+});
+
+test('listFiles recurses into subfolders and tags assets with their top-level song folder', async () => {
+  // root/<song>/... possibly nested deeper. Songs are the top-level folders.
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy'), aFolder('ts', 'Track Suit')],
+    bg: [aPdf('p1', 'Bad Guy - Trumpet.pdf'), aFolder('bgp', 'parts')],
+    bgp: [aPdf('p2', 'Bad Guy - Trumpet 2.pdf'), anMp3('m1', 'practice.mp3')], // a level deeper
+    ts: [anMp3('m2', 'Track Suit.mp3')],
+  };
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
+
+  const files = await client.listFiles('root');
+
+  // Folders are never emitted as files.
+  assert.ok(!files.some((f) => f.mimeType === FOLDER_MIME));
+  // Every asset (incl. the one nested under bg/parts) is tagged with its song.
+  const byId = Object.fromEntries(files.map((f) => [f.id, f.folderName]));
+  assert.deepEqual(byId, { p1: 'Bad Guy', p2: 'Bad Guy', m1: 'Bad Guy', m2: 'Track Suit' });
+});
+
+test('listFiles leaves files placed directly in the root untagged', async () => {
+  const tree = { root: [aPdf('r1', 'loose.pdf')] };
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
+
+  const files = await client.listFiles('root');
+  assert.equal(files.length, 1);
+  assert.equal(files[0].folderName, undefined); // sync falls back to the source label
 });
 
 test('downloadFile requests alt=media and returns a Buffer', async () => {

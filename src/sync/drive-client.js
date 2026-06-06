@@ -73,14 +73,22 @@ const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 // Read-only Drive access is all the sync needs; the source folders are public.
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
+// Drive mime type for folders — the recursive walk descends into these.
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
 // Fields the manifest/classifier need. files.list returns these per child; a
 // shortcut's shortcutDetails lets the classifier ignore pointer entries.
 const FILE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size,version,parents,shortcutDetails';
 
 /**
  * Create a real Google Drive v3 client backed by Node's global `fetch` (Node
- * 20+). It speaks only the two operations the sync core needs:
- * list the direct children of a folder, and download a file's bytes.
+ * 20+). It speaks only the two operations the sync core needs: recursively list
+ * the asset files under a folder, and download a file's bytes.
+ *
+ * Source folders are deep — typically `root/<song-title>/<asset>` — so listFiles
+ * descends into every subfolder and tags each asset with its **top-level folder
+ * under the configured root** (the song folder) as `folderName`, which the sync
+ * uses to group assets by song. Folders are traversed, never returned as files.
  *
  * Authentication is by Google **service account** only. The `google` block of
  * config.json (or MBBB_CONFIG_JSON) embeds the service-account key inline as
@@ -128,27 +136,52 @@ export function createGoogleDriveClient(config = {}, options = {}) {
     return res;
   }
 
+  // List the direct children of one folder, following pagination.
+  async function listChildren(folderId) {
+    const files = [];
+    let pageToken;
+    do {
+      const params = new URLSearchParams({
+        q: `'${folderId}' in parents and trashed=false`,
+        fields: `nextPageToken,files(${FILE_FIELDS})`,
+        pageSize: '1000',
+        // Tolerate source folders that live on a shared drive.
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true',
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+      const res = await driveRequest(`${DRIVE_FILES_URL}?${params.toString()}`);
+      const data = await res.json();
+      if (Array.isArray(data.files)) files.push(...data.files);
+      pageToken = data.nextPageToken || undefined;
+    } while (pageToken);
+    return files;
+  }
+
   return {
     async listFiles(folderId) {
       if (!folderId) throw new Error('listFiles(folderId) requires a Drive folder id');
-      const files = [];
-      let pageToken;
-      do {
-        const params = new URLSearchParams({
-          q: `'${folderId}' in parents and trashed=false`,
-          fields: `nextPageToken,files(${FILE_FIELDS})`,
-          pageSize: '1000',
-          // Tolerate source folders that live on a shared drive.
-          supportsAllDrives: 'true',
-          includeItemsFromAllDrives: 'true',
-        });
-        if (pageToken) params.set('pageToken', pageToken);
-        const res = await driveRequest(`${DRIVE_FILES_URL}?${params.toString()}`);
-        const data = await res.json();
-        if (Array.isArray(data.files)) files.push(...data.files);
-        pageToken = data.nextPageToken || undefined;
-      } while (pageToken);
-      return files;
+      const out = [];
+      const seen = new Set(); // guard against the same folder being reached twice
+      // Breadth-first walk. `song` is the top-level folder under the configured
+      // root that this folder descends from (null while still at the root).
+      const queue = [{ id: folderId, song: null }];
+      while (queue.length) {
+        const { id, song } = queue.shift();
+        if (seen.has(id)) continue;
+        seen.add(id);
+        for (const child of await listChildren(id)) {
+          if (child.mimeType === FOLDER_MIME) {
+            // Descend; the song is fixed at the first folder below the root.
+            queue.push({ id: child.id, song: song ?? child.name });
+          } else {
+            // Asset/leaf (incl. shortcuts/Docs the classifier later ignores).
+            // Tag it with its song folder so the sync groups it correctly.
+            out.push(song ? { ...child, folderName: song } : child);
+          }
+        }
+      }
+      return out;
     },
 
     async downloadFile(fileId) {
