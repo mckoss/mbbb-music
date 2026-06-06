@@ -32,23 +32,21 @@ A reusable Drive asset sync lives under `src/sync/`, with a CLI entry point at
 configured source folder is scanned **recursively** — the band's Drive is laid
 out as `<source>/<song-title>/<asset>` (and may nest deeper), so the top-level
 folder under each source is treated as the song. The sync downloads only real
-asset files (score PDFs, MP3s, MuseScore files) and groups them under
-`data/<source-slug>/<song-slug>/`. Each file keeps its **original Drive name**,
-slugified to lowercase (e.g. `bad-guy-trumpet-in-bflat-2.pdf`) — the original
-name is preserved verbatim because for files in by-instrument index folders it
-is the only place the song title appears. The source prefix keeps two libraries
-from colliding on a same-named song. It **de-duplicates by content** (SHA-256):
-identical bytes are downloaded once; every other copy stays in the manifest,
-flagged a duplicate and redirected to the original — never a second file on disk.
-When the same content sits in several folders, the canonical copy is picked by
-**source order**: the first source listed in `config.json` wins, so a later
-source only contributes content that has no replica in an earlier one. An
-optional `deprioritize` list is the lowest priority of all — a copy whose folder
-name or original filename contains a listed substring (e.g. `indexed by
-instrument`, `copy of`) loses to any other copy.
-Drive shortcuts and non-asset files are ignored, and `data/manifest.json` tracks
-everything for incremental, idempotent refreshes. The end-of-sync report lists
-all duplicate sets. `data/` is gitignored — synced music never enters this repo.
+asset files (score PDFs, MP3s, MuseScore files) into a **content-addressable
+store**: each blob lives at `data/cas/<sha256>`, named purely by the SHA-256 of
+its bytes. There is no song/source directory tree on disk — `data/manifest.json`
+holds all the metadata (provenance, source, original filename, detected
+song/instrument/key/part) and maps each Drive file to its hash.
+
+This makes **de-duplication intrinsic**: identical bytes hash to the same name,
+so the same content in two folders (or two sources) is stored exactly once, with
+no priority rules to configure. The store is also a durable **cache** — once a
+blob is present it is never re-downloaded, so rebuilding the manifest (or adding
+a future source like "generated from MuseScore master") costs no re-fetch. Drive
+shortcuts and non-asset files are ignored; the manifest drives incremental,
+idempotent refreshes and the end-of-sync report lists any content that appears in
+more than one Drive location. `data/` is gitignored — synced music never enters
+this repo.
 
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:

@@ -18,9 +18,9 @@ const pdf = (over = {}) => ({
   ...over,
 });
 
-test('isChanged compares the SHA-256 checksum', () => {
-  assert.equal(isChanged({ sha256Checksum: 'a' }, { sha256Checksum: 'a' }), false);
-  assert.equal(isChanged({ sha256Checksum: 'a' }, { sha256Checksum: 'b' }), true);
+test('isChanged compares the manifest sha256 against the Drive checksum', () => {
+  assert.equal(isChanged({ sha256: 'a' }, { sha256Checksum: 'a' }), false);
+  assert.equal(isChanged({ sha256: 'a' }, { sha256Checksum: 'b' }), true);
 });
 
 test('a never-seen asset is classified new', () => {
@@ -31,7 +31,7 @@ test('a never-seen asset is classified new', () => {
 
 test('same checksum is unchanged; different checksum is changed', () => {
   const manifest = emptyManifest();
-  manifest.files['f1'] = { driveFileId: 'f1', sha256Checksum: 'aaa', version: '1', status: 'synced', localPath: 'bad-guy/x.pdf' };
+  manifest.files['f1'] = { driveFileId: 'f1', sha256: 'aaa', version: '1', status: 'synced', casPath: 'cas/aaa' };
 
   const unchanged = diffManifest(manifest, [classified(pdf({ sha256Checksum: 'aaa' }))]);
   assert.equal(unchanged.counts.unchanged, 1);
@@ -42,7 +42,7 @@ test('same checksum is unchanged; different checksum is changed', () => {
 
 test('a tracked file no longer present is deleted (archived), once', () => {
   const manifest = emptyManifest();
-  manifest.files['gone'] = { driveFileId: 'gone', sha256Checksum: 'x', status: 'synced', localPath: 'bad-guy/gone.pdf' };
+  manifest.files['gone'] = { driveFileId: 'gone', sha256: 'x', status: 'synced', casPath: 'cas/x' };
 
   const first = diffManifest(manifest, []);
   assert.equal(first.counts.deleted, 1);
@@ -54,15 +54,15 @@ test('a tracked file no longer present is deleted (archived), once', () => {
   assert.equal(second.counts.deleted, undefined);
 });
 
-test('findDuplicates groups live assets by sha256, regardless of path or source', () => {
+test('findDuplicates groups live assets by sha256, regardless of source', () => {
   const m = emptyManifest();
   m.files = {
-    a: { sha256Checksum: 'h1', localPath: 'song-a/x.pdf', sourceFolderLabel: 'scores', status: 'synced' },
-    b: { sha256Checksum: 'h1', localPath: 'song-b/y.pdf', sourceFolderLabel: 'recordings', status: 'synced' },
-    c: { sha256Checksum: 'h1', localPath: 'song-c/z.pdf', sourceFolderLabel: 'scores', status: 'unchanged' },
-    d: { sha256Checksum: 'h2', localPath: 'song-d/u.pdf', status: 'synced' }, // unique
-    e: { sha256Checksum: 'h3', localPath: 'song-e/v.pdf', status: 'deleted' }, // excluded
-    f: { sha256Checksum: 'h3', ignored: true, status: 'ignored' }, // excluded
+    a: { sha256: 'h1', originalName: 'a.pdf', sourceFolderLabel: 'scores', status: 'synced' },
+    b: { sha256: 'h1', originalName: 'b.pdf', sourceFolderLabel: 'recordings', status: 'synced' },
+    c: { sha256: 'h1', originalName: 'c.pdf', sourceFolderLabel: 'scores', status: 'unchanged' },
+    d: { sha256: 'h2', originalName: 'd.pdf', status: 'synced' }, // unique
+    e: { sha256: 'h3', originalName: 'e.pdf', status: 'deleted' }, // excluded
+    f: { sha256: 'h3', ignored: true, status: 'ignored' }, // excluded
   };
 
   const groups = findDuplicates(m);

@@ -355,13 +355,12 @@ same delta-based, cache-retaining import job:
    changed, unchanged, or deleted. Unchanged files are skipped. Deleted files are
    marked archived; local content is never deleted.
 3. **Fetch.** Download only accepted asset types: score PDFs, MP3 audio files,
-   and MuseScore files. Store them under `data/<source-slug>/<song-title-slug>/`.
-   De-duplicate by content (SHA-256): identical bytes are downloaded once; every
-   other copy stays in the manifest, flagged a duplicate and redirected to the
-   original — never a second file on disk. The canonical copy is chosen by source
-   order (the first source listed in config wins, so a later source only adds
-   content with no replica earlier), with an optional `deprioritize` folder-name
-   list as the lowest priority of all.
+   and MuseScore files into a content-addressable store at `data/cas/<sha256>`.
+   De-duplication is intrinsic: identical bytes hash to the same name and are
+   stored once, no matter how many Drive locations or sources hold them — no
+   priority rules. The store doubles as a durable cache: a blob already present
+   is never re-fetched, so rebuilds (and future sources like generated MuseScore
+   output) cost no re-download.
 4. **Build.** Generate outputs (see MuseScore Automation). Skip any output whose
    inputs and recipe are unchanged; rebuild only what is affected.
 5. **Publish.** Update the manifest with the new outputs, checksums, and Drive
@@ -377,23 +376,21 @@ An **output recipe** is the versioned config for producing one derived artifact 
 the settings, not the file (letter PDF, 7x5 lyre PDF, MP3 at a given bitrate). It
 lives in the private repo with the generator code.
 
-Stored files use readable lowercase slug filenames, never hashes, so the
-directory tree and manifest diffs stay inspectable. Phase 1 local storage nests
-one folder per source library, then one per song: `data/<source-slug>/<song-title-slug>/`.
-The source prefix keeps two libraries from colliding on a same-named song folder.
-Each file keeps its original Drive filename, slugified to lowercase — for example
-`bad-guy-trumpet-in-bflat.pdf` or `bad-guy.mscz`. The original name is preserved
-rather than rebuilt from the folder + detected instrument because for files in
-by-instrument index folders the parent folder is not the song, so the original
-filename is the only place the song title survives. Detected instrument, key, and
-part are still recorded as catalog metadata in the manifest.
+Phase 1 stores blobs in a flat content-addressable store: `data/cas/<sha256>`,
+each file named by the SHA-256 of its bytes. There is no song/source directory
+tree and no constructed filenames — readability and structure live entirely in
+the manifest, which is what tools and admins inspect. Because the hash is the
+location, de-duplication and a persistent cache come for free, and the same blob
+can back many catalog entries (the same part in several sources, or a Drive
+upload later regenerated from a MuseScore master).
 
-The rebuild and refresh decision lives in the manifest instead: each row records
-the Drive source folder, Drive file id, original name, mime type, modified time,
-SHA-256 checksum and size when available, canonical local path, a duplicate flag
-plus the original's id when the content is a duplicate, detected song title,
-instrument/key/part metadata, sync status, and sync timestamp. Later production
-versions can move this manifest into Postgres for admin review, but Phase 1 may
+The rebuild and refresh decision lives in the manifest: each row records the
+Drive source folder, Drive file id, original name and folder, mime type, modified
+time, SHA-256 (which is also the blob's `cas/<sha256>` path) and size, detected
+song title, instrument/key/part metadata, sync status, and sync timestamp.
+Multiple rows may share one SHA-256 when the same content appears in more than one
+Drive location. Later production versions can move this manifest into Postgres
+for admin review, but Phase 1 may
 keep it as `data/manifest.json` because `data/` is gitignored.
 
 ### Deployment Notes For Storage
@@ -700,13 +697,12 @@ Requirements to explore:
 - Implement one reusable sync service with both a command-line entry point and
   an Express-callable entry point for hosted refreshes.
 - Ignore Google Drive shortcut files and non-asset files.
-- Download score PDFs, MP3 files, and MuseScore files.
-- Group files by song in `data/<source-slug>/<song-title-slug>/`.
-- Name each file by slugifying its original Drive filename (lowercase), e.g.
-  `bad-guy-trumpet-in-bflat.pdf` — preserved verbatim so song titles embedded in
-  index-folder filenames are not lost.
-- Maintain `data/manifest.json` with Drive provenance, checksums, local paths,
-  detected song/instrument metadata, and sync status.
+- Download score PDFs, MP3 files, and MuseScore files into a content-addressable
+  store at `data/cas/<sha256>`, so identical bytes are stored once and the cache
+  persists across rebuilds.
+- Maintain `data/manifest.json` mapping each Drive file to its SHA-256 (its
+  `cas/<sha256>` location) plus Drive provenance, detected song/instrument
+  metadata, and sync status.
 - On later refreshes, classify source files as new, changed, unchanged, deleted,
   or ignored without re-downloading unchanged assets.
 

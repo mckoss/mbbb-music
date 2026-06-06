@@ -16,11 +16,11 @@ const HELP = `mbbb-sync — Phase 1 Google Drive asset sync
 
 Scans each configured Drive source folder recursively (layout:
 <source>/<song-title>/<asset>) and syncs into the gitignored data/ directory:
-downloads only score PDFs, MP3s, and MuseScore files, grouped under
-data/<source-slug>/<song-slug>/ with canonical slug filenames. De-duplicates by
-content (SHA-256) — identical bytes download once, other copies are flagged in
-the manifest and redirected — and maintains data/manifest.json for incremental,
-idempotent refreshes. The summary lists all duplicate sets.
+downloads only score PDFs, MP3s, and MuseScore files into a content-addressable
+store at data/cas/<sha256>. De-duplication is intrinsic — identical bytes share
+one blob — and the cache persists, so rebuilding never re-downloads content
+already stored. data/manifest.json maps each Drive file to its hash, provenance,
+and catalog metadata for incremental, idempotent refreshes.
 
 USAGE
   node bin/sync.js [options]
@@ -34,7 +34,7 @@ OPTIONS
                       so synthetic data never touches your real assets.
   --data-dir <path>   Override the data directory (default: config.json dataDir or
                       ./data; for --fixture, default tmp/fixture-data).
-  --dry-run           Classify and plan only; do not download or write manifest.
+  --dry-run           Classify and plan only; do not fetch blobs or write manifest.
   --json              Print the full machine-readable sync report as JSON.
   -h, --help          Show this help.
 
@@ -99,22 +99,23 @@ function printSummary(report) {
   const mode = report.dryRun ? ' (dry run)' : '';
   console.log(`\nDrive sync complete${mode} @ ${report.timestamp}`);
   console.log(`  data dir : ${report.dataDir}`);
+  console.log(`  store    : ${report.casDir}`);
   console.log(`  manifest : ${report.manifestPath}`);
   console.log(`  sources  : ${report.sources.map((x) => x.label).join(', ')}`);
   console.log(
     `  seen=${s.seen} new=${s.new} changed=${s.changed} unchanged=${s.unchanged} ` +
       `deleted=${s.deleted} ignored=${s.ignored} downloaded=${s.downloaded} ` +
-      `deduped=${s.duplicatesSkipped} failed=${s.failed}`,
+      `cached=${s.cached}${report.dryRun ? ` pending=${s.pending}` : ''} failed=${s.failed}`,
   );
   for (const a of report.actions.downloaded) {
-    console.log(`    + ${a.localPath} [${a.status}]`);
+    console.log(`    + cas/${a.sha256.slice(0, 12)}…`);
   }
   for (const a of report.actions.deleted) {
     console.log(`    - archived ${a.name || a.id}`);
   }
   if (report.actions.failed.length) {
     for (const a of report.actions.failed) {
-      console.log(`    ! FAILED ${a.localPath}: ${a.error}`);
+      console.log(`    ! FAILED ${a.name || a.id}: ${a.error}`);
     }
   }
 
@@ -122,12 +123,12 @@ function printSummary(report) {
   if (dups.length) {
     console.log(
       `\nDuplicate content: ${s.duplicateGroups} group(s), ${s.duplicateFiles} file(s) ` +
-        '(identical bytes, regardless of path/source):',
+        '(identical bytes sharing one blob):',
     );
     for (const g of dups) {
-      console.log(`  [${g.count}×] sha256 ${g.sha256.slice(0, 12)}…`);
+      console.log(`  [${g.count}×] cas/${g.sha256.slice(0, 12)}…`);
       for (const f of g.files) {
-        console.log(`        ${f.localPath || f.id}${f.sourceFolderLabel ? `  (${f.sourceFolderLabel})` : ''}`);
+        console.log(`        ${f.originalName || f.id}${f.sourceFolderLabel ? `  (${f.sourceFolderLabel})` : ''}`);
       }
     }
   }

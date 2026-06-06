@@ -1,8 +1,9 @@
 // The sync manifest (data/manifest.json) is the small, diffable record that
 // drives incremental refreshes. It maps each Drive file id to its provenance,
-// checksum/size, canonical local path, detected metadata, and sync status, so a
-// later run can classify each source file as new, changed, unchanged, deleted,
-// or ignored without re-downloading unchanged assets.
+// SHA-256 (which is also its location in the content-addressable store,
+// data/cas/<sha256>), size, detected metadata, and sync status, so a later run
+// can classify each source file as new, changed, unchanged, deleted, or ignored
+// and fetch only the blobs not already in the store.
 
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -60,12 +61,12 @@ export async function saveManifest(manifestPath, manifest) {
  * sync (PDF/MP3/MuseScore), so the content hash is authoritative — no size,
  * version, or modifiedTime heuristics needed.
  *
- * @param {object} prev  Existing manifest entry.
- * @param {object} file  Current Drive file.
+ * @param {object} prev  Existing manifest entry (stores the hash as `sha256`).
+ * @param {object} file  Current Drive file (provides `sha256Checksum`).
  * @returns {boolean}
  */
 export function isChanged(prev, file) {
-  return prev.sha256Checksum !== file.sha256Checksum;
+  return prev.sha256 !== file.sha256Checksum;
 }
 
 /**
@@ -126,15 +127,16 @@ export function diffManifest(manifest, current) {
 
 /**
  * @typedef {Object} DuplicateGroup
- * @property {string} sha256  The shared content hash.
- * @property {number} count   Number of files with this content.
- * @property {Array<{ id: string, localPath: string|null, sourceFolderLabel: string|null }>} files
+ * @property {string} sha256  The shared content hash (one blob in data/cas/).
+ * @property {number} count   Number of Drive files with this content.
+ * @property {Array<{ id: string, originalName: string|null, sourceFolderLabel: string|null }>} files
  */
 
 /**
- * Find duplicate assets by content — files with the same SHA-256, regardless of
- * path or source folder. Ignored and deleted entries are excluded. Returns only
- * groups of 2+ files, largest groups first.
+ * Find Drive files that share content — the same SHA-256, regardless of source
+ * folder. They already share a single blob in the store; this just surfaces them
+ * for reporting. Ignored and deleted entries are excluded. Returns only groups
+ * of 2+ files, largest groups first.
  *
  * @param {object} manifest
  * @returns {DuplicateGroup[]}
@@ -143,10 +145,10 @@ export function findDuplicates(manifest) {
   const byHash = new Map();
   for (const [id, e] of Object.entries(manifest.files || {})) {
     if (e.ignored || e.status === 'ignored' || e.status === 'deleted') continue;
-    const sha = e.sha256Checksum;
+    const sha = e.sha256;
     if (!sha) continue;
     if (!byHash.has(sha)) byHash.set(sha, []);
-    byHash.get(sha).push({ id, localPath: e.localPath ?? null, sourceFolderLabel: e.sourceFolderLabel ?? null });
+    byHash.get(sha).push({ id, originalName: e.originalName ?? null, sourceFolderLabel: e.sourceFolderLabel ?? null });
   }
 
   const groups = [];

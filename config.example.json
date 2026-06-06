@@ -3,14 +3,11 @@
 
   "dataDir": "data",
 
-  "_comment_sources": "Order sets priority. When the same content (SHA-256) appears in more than one source, the FIRST source listed wins the canonical download; a later source only contributes content with no replica in an earlier one.",
+  "_comment_sources": "Folders to scan, each recursively. Order does not matter: storage is content-addressable (data/cas/<sha256>), so identical bytes in two sources share one blob automatically — no priority needed.",
   "sources": [
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_1", "label": "scores" },
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
   ],
-
-  "_comment_deprioritize": "Optional, and the LOWEST priority of all (below source order). When the same content appears in more than one place, a copy whose folder name OR original filename contains one of these (case-insensitive substring) patterns loses to any other copy. Use it for by-instrument re-index folders ('indexed by instrument') or redundant duplicates ('copy of').",
-  "deprioritize": ["indexed by instrument", "copy of"],
 
   "google": {
     "_comment": "Authentication is by Google service account only. The source folders are public, so no folder sharing is needed — the service account just provides Drive API credentials. Paste the JSON key Google Cloud gives you here, inline.",

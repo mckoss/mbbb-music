@@ -2,24 +2,32 @@
 // injected DriveClient (real or fixture), a config, and an optional clock/logger
 // so it is equally callable from the CLI (bin/sync.js) and a future Express
 // admin route. No process.exit, no console coupling, no credential handling.
+//
+// Storage is content-addressable: every blob lives at data/cas/<sha256> and the
+// manifest maps each Drive file to its hash plus provenance and catalog
+// metadata. De-duplication is therefore intrinsic — identical bytes share one
+// blob — and the cache persists, so rebuilding the manifest never re-downloads a
+// file whose content is already in the store (true also for future sources like
+// "generated from MuseScore master").
 
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 
 import { classifyDriveFile } from './classify.js';
-import { parseAsset } from './parse-filename.js';
+import { detectAssetMetadata } from './metadata.js';
 import { loadManifest, saveManifest, diffManifest, findDuplicates } from './manifest.js';
 
 const noopLogger = { info() {}, warn() {}, error() {} };
 
 /**
- * Run an incremental Drive asset sync.
+ * Run an incremental, content-addressable Drive asset sync.
  *
  * @param {Object} params
  * @param {{ listFiles: Function, downloadFile: Function }} params.driveClient
  * @param {import('./config.js').SyncConfig} params.config
- * @param {boolean} [params.dryRun]  Plan only; do not download or write manifest.
+ * @param {boolean} [params.dryRun]  Plan only; do not fetch blobs or write manifest.
  * @param {() => Date} [params.now]  Clock injection for deterministic tests.
  * @param {{info:Function,warn:Function,error:Function}} [params.logger]
  * @returns {Promise<object>} A structured report (also suitable as a JSON response).
@@ -31,6 +39,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
 
   const timestamp = now().toISOString();
   const manifest = await loadManifest(config.manifestPath);
+  const casDir = resolve(config.dataDir, 'cas');
 
   // 1. List + classify across all configured source folders.
   const current = [];
@@ -46,93 +55,103 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   // 2. Diff against the manifest.
   const { entries, counts } = diffManifest(manifest, current.map(({ file, classification }) => ({ file, classification })));
 
-  const actions = { downloaded: [], skipped: [], ignored: [], deleted: [], failed: [], duplicates: [] };
+  const actions = { downloaded: [], cached: [], ignored: [], deleted: [], failed: [] };
 
-  // Pre-pass over the present asset files: build source-prefixed paths, pick one
-  // original per unique content (SHA-256), and guarantee every path is unique.
-  const assetEntries = entries.filter(
-    (e) => e.status === 'new' || e.status === 'changed' || e.status === 'unchanged',
-  );
-  prepareAssets(assetEntries, logger, config.deprioritize || [], config.sources);
-
-  // Persist the manifest incrementally so a stopped sync never loses progress:
-  // after every download the manifest on disk records exactly what was fetched
-  // (with its SHA-256), so a resume skips already-downloaded files. The write is
-  // atomic, so an interrupt can't leave a missing or truncated manifest.
-  manifest.generatedAt = timestamp;
-  const persist = async () => {
-    if (!dryRun) await saveManifest(config.manifestPath, manifest);
-  };
-  await persist(); // ensure a valid manifest exists before the first download
-
+  // 3. Build the complete manifest up front. Because the SHA-256 IS the storage
+  // location, every entry is fully known before any bytes are fetched, so the
+  // manifest can be written first. An asset whose blob is already in data/cas/
+  // (from this run, a previous run, or a duplicate elsewhere) is recorded synced
+  // with no download; the rest are queued.
+  const pending = [];
   for (const entry of entries) {
     if (entry.status === 'ignored') {
-      // Record provenance for ignored files too, so refreshes stay stable and
-      // an admin can see what was skipped and why.
       manifest.files[entry.id] = buildIgnoredEntry(entry, timestamp);
       actions.ignored.push({ id: entry.id, name: entry.file.name, reason: entry.classification.ignoreReason });
       continue;
     }
-
     if (entry.status === 'deleted') {
-      // Archive: mark deleted but never remove local content.
+      // Archive: mark deleted but never remove the cached blob (it may be shared).
       manifest.files[entry.id] = { ...entry.prev, status: 'deleted', syncedAt: timestamp };
       actions.deleted.push({ id: entry.id, name: entry.prev?.originalName });
       continue;
     }
 
     // new | changed | unchanged asset.
-    const { file, classification, parsed } = entry;
-    const record = buildAssetEntry(entry, parsed, classification, timestamp);
+    const { file, classification } = entry;
+    const songTitle = file.folderName || file.sourceFolderLabel || 'unknown';
+    const meta = detectAssetMetadata({ originalName: file.name, songTitle });
+    const sha = file.sha256Checksum || null;
+    const record = buildAssetEntry(entry, meta, classification, sha, timestamp);
 
-    if (entry.isDuplicate) {
-      // Identical content already lives under the original's path. Keep the
-      // manifest entry — flagged and redirected — but never download a 2nd copy.
-      manifest.files[entry.id] = { ...record, status: 'duplicate' };
-      actions.duplicates.push({ id: entry.id, localPath: parsed.localPath, duplicateOf: entry.duplicateOf });
-      continue;
-    }
-
-    const absLocalPath = resolve(config.dataDir, parsed.localPath);
-
-    if (entry.status === 'unchanged' && existsSync(absLocalPath)) {
-      manifest.files[entry.id] = { ...record, status: 'unchanged' };
-      actions.skipped.push({ id: entry.id, localPath: parsed.localPath, reason: 'unchanged' });
-      continue;
-    }
-
-    if (dryRun) {
-      manifest.files[entry.id] = { ...record, status: entry.status };
-      actions.skipped.push({ id: entry.id, localPath: parsed.localPath, reason: `dry-run:${entry.status}` });
-      continue;
-    }
-
-    try {
-      const bytes = await driveClient.downloadFile(entry.id);
-      await mkdir(dirname(absLocalPath), { recursive: true });
-      await writeFile(absLocalPath, bytes);
-      manifest.files[entry.id] = { ...record, status: 'synced', byteLength: bytes.length };
-      actions.downloaded.push({ id: entry.id, localPath: parsed.localPath, status: entry.status });
-      logger.info(`${entry.status === 'new' ? 'Added' : 'Updated'} ${parsed.localPath}`);
-      await persist(); // durably record this download before fetching the next
-    } catch (err) {
-      manifest.files[entry.id] = { ...record, status: 'error', error: String(err?.message || err) };
-      actions.failed.push({ id: entry.id, localPath: parsed.localPath, error: String(err?.message || err) });
-      logger.error(`Failed to download ${file.name}: ${err?.message || err}`);
-      await persist();
+    if (sha && existsSync(resolve(casDir, sha))) {
+      manifest.files[entry.id] = { ...record, status: 'synced' };
+      actions.cached.push({ id: entry.id, sha256: sha });
+    } else {
+      manifest.files[entry.id] = { ...record, status: 'pending' };
+      pending.push(entry);
     }
   }
 
-  await persist(); // final write captures any trailing non-download entries
+  manifest.generatedAt = timestamp;
+  const persist = async () => {
+    if (!dryRun) await saveManifest(config.manifestPath, manifest);
+  };
+  await persist(); // write the full manifest BEFORE fetching any blob
 
-  // Report duplicate content (same SHA-256) across the whole library, regardless
-  // of song folder or source. Informational only — nothing is removed.
+  // 4. Fetch the missing blobs. Each unique SHA is downloaded once; a blob
+  // already on disk (this run or earlier) is never re-fetched. The store and the
+  // manifest are persisted after every write, so a stop loses no progress.
+  if (!dryRun) {
+    const fetched = new Set(); // SHAs written during this run (intra-run dedup)
+    for (const entry of pending) {
+      const knownSha = entry.file.sha256Checksum || null;
+      try {
+        if (knownSha && (fetched.has(knownSha) || existsSync(resolve(casDir, knownSha)))) {
+          // Another entry already supplied this content during this run.
+          manifest.files[entry.id] = { ...manifest.files[entry.id], status: 'synced' };
+          actions.cached.push({ id: entry.id, sha256: knownSha });
+          continue;
+        }
+
+        const bytes = await driveClient.downloadFile(entry.id);
+        // Trust Drive's checksum as the key when present; otherwise hash the bytes.
+        const sha = knownSha || createHash('sha256').update(bytes).digest('hex');
+        const blobPath = resolve(casDir, sha);
+        if (!existsSync(blobPath)) {
+          await mkdir(casDir, { recursive: true });
+          await writeFile(blobPath, bytes);
+        }
+        fetched.add(sha);
+        manifest.files[entry.id] = {
+          ...manifest.files[entry.id],
+          sha256: sha,
+          casPath: `cas/${sha}`,
+          byteLength: bytes.length,
+          status: 'synced',
+        };
+        actions.downloaded.push({ id: entry.id, sha256: sha });
+        logger.info(`Stored cas/${sha.slice(0, 12)}… (${entry.file.name})`);
+        await persist();
+      } catch (err) {
+        manifest.files[entry.id] = { ...manifest.files[entry.id], status: 'error', error: String(err?.message || err) };
+        actions.failed.push({ id: entry.id, name: entry.file.name, error: String(err?.message || err) });
+        logger.error(`Failed to download ${entry.file.name}: ${err?.message || err}`);
+        await persist();
+      }
+    }
+  }
+
+  await persist(); // final write captures any trailing entries
+
+  // Report files whose content is duplicated (same SHA-256 across Drive
+  // locations). Informational only — they already share one blob in the store.
   const duplicates = findDuplicates(manifest);
 
   return {
     timestamp,
     dryRun,
     dataDir: config.dataDir,
+    casDir,
     manifestPath: config.manifestPath,
     sources: config.sources,
     counts,
@@ -146,7 +165,8 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       deleted: counts.deleted || 0,
       ignored: counts.ignored || 0,
       downloaded: actions.downloaded.length,
-      duplicatesSkipped: actions.duplicates.length,
+      cached: actions.cached.length,
+      pending: dryRun ? pending.length : 0,
       failed: actions.failed.length,
       duplicateGroups: duplicates.length,
       duplicateFiles: duplicates.reduce((n, g) => n + g.count, 0),
@@ -154,111 +174,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   };
 }
 
-/**
- * Prepare the present asset entries for download: build source-prefixed paths,
- * de-duplicate by content, and guarantee unique destination paths.
- *
- * Mutates each entry, adding `parsed`, `isDuplicate`, and `duplicateOf`.
- *
- * @param {object[]} assetEntries
- * @param {object} logger
- * @param {string[]} deprioritize  Folder-name patterns that lose the tie when
- *        choosing the canonical copy of duplicate content (e.g. re-index folders).
- * @param {Array<{id:string}>} [sources]  Configured sources, in priority order;
- *        a copy in an earlier-listed source wins the canonical pick.
- */
-function prepareAssets(assetEntries, logger, deprioritize = [], sources = []) {
-  const sourceOrder = new Map(sources.map((s, i) => [s.id, i]));
-  for (const e of assetEntries) {
-    const f = e.file;
-    const songTitle = f.folderName || f.sourceFolderLabel || 'unknown';
-    e.parsed = parseAsset({
-      sourceLabel: f.sourceFolderLabel,
-      originalName: f.name,
-      songTitle,
-      ext: e.classification.ext,
-    });
-    e.sha = f.sha256Checksum || null;
-    e.deprioritized = isDeprioritized(e, deprioritize);
-    e.sourceIndex = sourceOrder.has(f.sourceFolderId) ? sourceOrder.get(f.sourceFolderId) : Number.MAX_SAFE_INTEGER;
-  }
-
-  // Content de-duplication: download one copy per unique SHA-256. Within a group
-  // the canonical copy is chosen by, in order: not being in a deprioritized
-  // folder (lowest priority of all), then the earliest-listed source (so a file
-  // in the first source wins and a later source only contributes content with no
-  // replica earlier), then smallest path, then id. The rest are flagged
-  // duplicates and redirected to the original. Files lacking a hash are treated
-  // as unique (their own id is the key).
-  const groups = new Map();
-  for (const e of assetEntries) {
-    const key = e.sha ? `sha:${e.sha}` : `id:${e.id}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(e);
-  }
-  for (const group of groups.values()) {
-    group.sort(byCanonicalPreference);
-    group.forEach((e, i) => {
-      e.isDuplicate = i > 0;
-      e.duplicateOf = i > 0 ? group[0].id : null;
-      e.originalRef = group[0];
-    });
-  }
-
-  // Uniqueness guarantee: if two DISTINCT-content originals still resolve to the
-  // same path (even after source-prefixing), disambiguate deterministically.
-  const owner = new Map();
-  for (const e of assetEntries) {
-    if (e.isDuplicate) continue;
-    let lp = e.parsed.localPath;
-    const key = e.sha || e.id;
-    if (owner.has(lp) && owner.get(lp) !== key) {
-      lp = appendBeforeExt(lp, `-${key.slice(0, 8)}`);
-      e.parsed = { ...e.parsed, localPath: lp };
-      logger.warn(`Path collision disambiguated -> ${lp}`);
-    }
-    owner.set(lp, key);
-  }
-
-  // Redirect duplicates to their original's (possibly disambiguated) path.
-  for (const e of assetEntries) {
-    if (e.isDuplicate) e.parsed = { ...e.parsed, localPath: e.originalRef.parsed.localPath };
-  }
-}
-
-/**
- * Rank a duplicate group's copies to pick the canonical one (sorts first):
- * non-deprioritized before deprioritized, then earliest source, then smallest
- * path, then id.
- */
-function byCanonicalPreference(a, b) {
-  if (a.deprioritized !== b.deprioritized) return a.deprioritized ? 1 : -1;
-  if (a.sourceIndex !== b.sourceIndex) return a.sourceIndex - b.sourceIndex;
-  if (a.parsed.localPath !== b.parsed.localPath) return a.parsed.localPath < b.parsed.localPath ? -1 : 1;
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-}
-
-/**
- * True when an asset matches any deprioritize pattern (case-insensitive
- * substring). Patterns are tested against the raw folder name AND the raw
- * original filename, so a pattern can target a folder ("indexed by instrument")
- * or a filename token ("copy of") using natural spacing. The slugified local
- * path is included too, so hyphenated patterns still match.
- */
-function isDeprioritized(entry, patterns) {
-  if (!patterns.length) return false;
-  const hay = `${entry.file.folderName || ''} ${entry.file.name || ''} ${entry.parsed.localPath}`.toLowerCase();
-  return patterns.some((p) => hay.includes(p));
-}
-
-/** Insert `tag` before a path's file extension (e.g. "a/b.pdf" + "-x" -> "a/b-x.pdf"). */
-function appendBeforeExt(p, tag) {
-  const slash = p.lastIndexOf('/');
-  const dot = p.lastIndexOf('.');
-  return dot > slash ? p.slice(0, dot) + tag + p.slice(dot) : p + tag;
-}
-
-function buildAssetEntry(entry, parsed, classification, timestamp) {
+function buildAssetEntry(entry, meta, classification, sha, timestamp) {
   const { file } = entry;
   return {
     driveFileId: entry.id,
@@ -269,18 +185,15 @@ function buildAssetEntry(entry, parsed, classification, timestamp) {
     mimeType: file.mimeType ?? null,
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
-    sha256Checksum: file.sha256Checksum ?? null,
+    sha256: sha,
+    casPath: sha ? `cas/${sha}` : null,
     size: file.size ?? null,
     assetType: classification.assetType,
-    songTitle: parsed.songTitle,
-    songSlug: parsed.songSlug,
-    instrument: parsed.instrument,
-    instrumentSlug: parsed.instrumentSlug,
-    key: parsed.key,
-    partNumber: parsed.partNumber,
-    localPath: parsed.localPath,
-    isDuplicate: Boolean(entry.isDuplicate),
-    duplicateOf: entry.duplicateOf ?? null,
+    songTitle: meta.songTitle,
+    instrument: meta.instrument,
+    instrumentSlug: meta.instrumentSlug,
+    key: meta.key,
+    partNumber: meta.partNumber,
     ignored: false,
     ignoreReason: null,
     syncedAt: timestamp,
@@ -298,10 +211,10 @@ function buildIgnoredEntry(entry, timestamp) {
     mimeType: file.mimeType ?? null,
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
-    sha256Checksum: file.sha256Checksum ?? null,
+    sha256: file.sha256Checksum ?? null,
+    casPath: null,
     size: file.size ?? null,
     assetType: null,
-    localPath: null,
     ignored: true,
     ignoreReason: entry.classification?.ignoreReason ?? null,
     status: 'ignored',
