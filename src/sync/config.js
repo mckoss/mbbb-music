@@ -29,10 +29,11 @@ const DEFAULT_CONFIG_PATH = resolve(REPO_ROOT, 'config.json');
  * @property {string} manifestPath         Absolute path to data/manifest.json.
  * @property {SourceFolder[]} sources      Configured Drive source folders.
  * @property {GoogleCredentials} google    Google OAuth credentials.
- * @property {string[]} deprioritize       Lowercased folder-name patterns whose copies
- *                                         lose the tie when picking the canonical copy
- *                                         of duplicate content (e.g. by-instrument
- *                                         re-index folders).
+ * @property {string[]} deprioritize       Lowercased substring patterns matched against
+ *                                         each asset's folder name and original filename;
+ *                                         a matching copy loses the tie when picking the
+ *                                         canonical copy of duplicate content (e.g.
+ *                                         by-instrument re-index folders, "copy of" files).
  */
 
 /**

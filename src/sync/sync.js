@@ -238,10 +238,16 @@ function byCanonicalPreference(a, b) {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** True when an asset's source/song folder matches any deprioritize pattern. */
+/**
+ * True when an asset matches any deprioritize pattern (case-insensitive
+ * substring). Patterns are tested against the raw folder name AND the raw
+ * original filename, so a pattern can target a folder ("indexed by instrument")
+ * or a filename token ("copy of") using natural spacing. The slugified local
+ * path is included too, so hyphenated patterns still match.
+ */
 function isDeprioritized(entry, patterns) {
   if (!patterns.length) return false;
-  const hay = `${entry.file.folderName || ''} ${entry.parsed.localPath}`.toLowerCase();
+  const hay = `${entry.file.folderName || ''} ${entry.file.name || ''} ${entry.parsed.localPath}`.toLowerCase();
   return patterns.some((p) => hay.includes(p));
 }
 

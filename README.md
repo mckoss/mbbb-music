@@ -43,8 +43,9 @@ flagged a duplicate and redirected to the original — never a second file on di
 When the same content sits in several folders, the canonical copy is picked by
 **source order**: the first source listed in `config.json` wins, so a later
 source only contributes content that has no replica in an earlier one. An
-optional `deprioritize` list (e.g. by-instrument re-index folders) is the lowest
-priority of all — a copy in a deprioritized folder loses to any other copy.
+optional `deprioritize` list is the lowest priority of all — a copy whose folder
+name or original filename contains a listed substring (e.g. `indexed by
+instrument`, `copy of`) loses to any other copy.
 Drive shortcuts and non-asset files are ignored, and `data/manifest.json` tracks
 everything for incremental, idempotent refreshes. The end-of-sync report lists
 all duplicate sets. `data/` is gitignored — synced music never enters this repo.

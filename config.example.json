@@ -9,8 +9,8 @@
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
   ],
 
-  "_comment_deprioritize": "Optional, and the LOWEST priority of all (below source order). When the same content appears in more than one folder, a copy in a folder whose name matches one of these (case-insensitive substring) patterns loses to any other copy. Use it for by-instrument re-index folders.",
-  "deprioritize": ["indexed by instrument"],
+  "_comment_deprioritize": "Optional, and the LOWEST priority of all (below source order). When the same content appears in more than one place, a copy whose folder name OR original filename contains one of these (case-insensitive substring) patterns loses to any other copy. Use it for by-instrument re-index folders ('indexed by instrument') or redundant duplicates ('copy of').",
+  "deprioritize": ["indexed by instrument", "copy of"],
 
   "google": {
     "_comment": "Authentication is by Google service account only. The source folders are public, so no folder sharing is needed — the service account just provides Drive API credentials. Paste the JSON key Google Cloud gives you here, inline.",

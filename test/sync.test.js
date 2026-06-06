@@ -170,6 +170,32 @@ test('deprioritized folders lose the tie when choosing the canonical copy', asyn
   });
 });
 
+test('deprioritize patterns match the original filename, so "copy of" loses', async () => {
+  await withTempDir(async (dataDir) => {
+    const files = [
+      { id: 'orig', name: 'Trumpet.pdf', mimeType: 'application/pdf', folderId: 'lib', folderName: 'Bad Guy', content: 'DUP' },
+      { id: 'copy', name: 'Copy of Trumpet.pdf', mimeType: 'application/pdf', folderId: 'lib', folderName: 'Bad Guy', content: 'DUP' },
+    ];
+    const config = {
+      dataDir,
+      manifestPath: resolve(dataDir, 'manifest.json'),
+      sources: [{ id: 'lib', label: 'Demo Library' }],
+      // A filename token, written with natural spacing.
+      deprioritize: ['copy of'],
+    };
+    const report = await runSync({ driveClient: createFixtureDriveClient({ files }), config, now: FIXED_NOW });
+
+    assert.equal(report.summary.downloaded, 1);
+    const m = await loadManifest(resolve(dataDir, 'manifest.json'));
+    // 'copy-of-trumpet' sorts BEFORE 'trumpet' by path, so without the rule the
+    // copy would win. The deprioritize match on the filename forces it to lose.
+    assert.equal(m.files['orig'].isDuplicate, false);
+    assert.equal(m.files['orig'].localPath, 'demo-library/bad-guy/trumpet.pdf');
+    assert.equal(m.files['copy'].isDuplicate, true);
+    assert.equal(m.files['copy'].duplicateOf, 'orig');
+  });
+});
+
 test('the first-listed source wins the canonical copy; later sources only add new content', async () => {
   await withTempDir(async (dataDir) => {
     const files = [
