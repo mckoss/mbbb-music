@@ -43,7 +43,7 @@ test('a never-seen asset is classified new', () => {
 
 test('same checksum is unchanged; different checksum is changed', () => {
   const manifest = emptyManifest();
-  manifest.files['f1'] = { driveFileId: 'f1', sha256: 'aaa', version: '1', status: 'synced', casPath: 'cas/aaa' };
+  manifest.files['f1'] = { driveFileId: 'f1', sha256: 'aaa', version: '1', status: 'synced' };
 
   const unchanged = diffManifest(manifest, [classified(pdf({ sha256Checksum: 'aaa' }))]);
   assert.equal(unchanged.counts.unchanged, 1);
@@ -54,7 +54,7 @@ test('same checksum is unchanged; different checksum is changed', () => {
 
 test('a tracked file no longer present is deleted (archived), once', () => {
   const manifest = emptyManifest();
-  manifest.files['gone'] = { driveFileId: 'gone', sha256: 'x', status: 'synced', casPath: 'cas/x' };
+  manifest.files['gone'] = { driveFileId: 'gone', sha256: 'x', status: 'synced' };
 
   const first = diffManifest(manifest, []);
   assert.equal(first.counts.deleted, 1);

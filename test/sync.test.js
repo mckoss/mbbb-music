@@ -66,7 +66,6 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     const e = manifest.files['bg-tpt-1'];
     assert.equal(e.status, 'synced');
     assert.equal(e.sha256, trumpet);
-    assert.equal(e.casPath, `cas/${trumpet}`);
     assert.equal(e.instrument, 'Trumpet');
     assert.equal(e.songTitle, 'Bad Guy');
   });
@@ -142,7 +141,6 @@ test('duplicate content is stored once; both Drive files point at the same blob'
     const shared = sha256('SAME-BYTES');
     assert.equal(m.files['orig'].sha256, shared);
     assert.equal(m.files['copy'].sha256, shared);
-    assert.equal(m.files['orig'].casPath, m.files['copy'].casPath);
 
     // Both are reported as one duplicate group of 2.
     assert.equal(report.summary.duplicateGroups, 1);

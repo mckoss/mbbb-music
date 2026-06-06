@@ -135,7 +135,6 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
         manifest.files[entry.id] = {
           ...manifest.files[entry.id],
           sha256: sha,
-          casPath: `cas/${sha}`,
           byteLength: bytes.length,
           status: 'synced',
         };
@@ -200,7 +199,6 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
     sha256: sha,
-    casPath: sha ? `cas/${sha}` : null,
     size: file.size ?? null,
     assetType: classification.assetType,
     songTitle: meta.songTitle,
@@ -226,7 +224,6 @@ function buildIgnoredEntry(entry, timestamp) {
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
     sha256: file.sha256Checksum ?? null,
-    casPath: null,
     size: file.size ?? null,
     assetType: null,
     ignored: true,
