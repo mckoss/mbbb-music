@@ -36,6 +36,9 @@ OPTIONS
                       ./data; for --fixture, default tmp/fixture-data).
   --dry-run           Classify and plan only; do not fetch blobs or write manifest.
   --json              Print the full machine-readable sync report as JSON.
+  --show-all-dups     List every duplicate-content group at the end. By default
+                      only the duplicate counts are shown (the full list can be
+                      long). The --json report always includes the full list.
   -h, --help          Show this help.
 
 CONFIGURATION (real Drive — not required for --fixture)
@@ -63,7 +66,7 @@ EXAMPLES
 `;
 
 function parseArgs(argv) {
-  const opts = { help: false, fixture: false, dryRun: false, json: false, dataDir: undefined };
+  const opts = { help: false, fixture: false, dryRun: false, json: false, showAllDups: false, dataDir: undefined };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
@@ -80,6 +83,9 @@ function parseArgs(argv) {
       case '--json':
         opts.json = true;
         break;
+      case '--show-all-dups':
+        opts.showAllDups = true;
+        break;
       case '--data-dir':
         opts.dataDir = argv[++i];
         break;
@@ -94,7 +100,7 @@ function parseArgs(argv) {
   return opts;
 }
 
-function printSummary(report) {
+function printSummary(report, { showAllDups = false } = {}) {
   const s = report.summary;
   const mode = report.dryRun ? ' (dry run)' : '';
   console.log(`\nDrive sync complete${mode} @ ${report.timestamp}`);
@@ -121,10 +127,14 @@ function printSummary(report) {
 
   const dups = report.duplicates || [];
   if (dups.length) {
-    console.log(
-      `\nDuplicate content: ${s.duplicateGroups} group(s), ${s.duplicateFiles} file(s) ` +
-        '(identical bytes sharing one blob):',
-    );
+    const summary = `\nDuplicate content: ${s.duplicateGroups} group(s), ${s.duplicateFiles} file(s) ` +
+      '(identical bytes sharing one blob)';
+    if (!showAllDups) {
+      // The full list can be very long; show it only on request.
+      console.log(`${summary}. Use --show-all-dups to list them.`);
+      return;
+    }
+    console.log(`${summary}:`);
     for (const g of dups) {
       console.log(`  [${g.count}×] cas/${g.sha256.slice(0, 12)}…`);
       for (const f of g.files) {
@@ -191,7 +201,7 @@ async function main() {
   if (opts.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
-    printSummary(report);
+    printSummary(report, { showAllDups: opts.showAllDups });
   }
 }
 
