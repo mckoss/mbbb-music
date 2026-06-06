@@ -16,7 +16,14 @@ import os from 'node:os';
 
 import { loadConfig } from '../src/sync/config.js';
 import { slugify } from '../src/sync/slugify.js';
-import { DEFAULT_KEY_BY_SLUG } from '../src/sync/instruments.js';
+import {
+  liveAssets,
+  songSlugOf,
+  descriptorOf,
+  assetMatchKey,
+  sourcePriority,
+  canonicalByContent,
+} from '../src/sync/catalog.js';
 
 const OPEN_CONFIRM_THRESHOLD = 25;
 
@@ -87,120 +94,22 @@ function parseArgs(argv) {
   return opts;
 }
 
-/** True for a manifest entry that still represents a present, downloaded asset. */
-function isLive(entry) {
-  const status = entry.status || '';
-  return status !== 'deleted' && !status.startsWith('ignored');
-}
-
-function liveAssets(manifest) {
-  return Object.values(manifest.files || {}).filter(isLive);
-}
-
 /**
- * The song slug for an entry. Prefers the slug stored at sync time
- * (`songTitleSlug`), falling back to slugifying the title for manifests written
- * before that field existed.
+ * Build a source-priority lookup from the configured source order (label ->
+ * rank, lower = higher priority). Reads the config when available; falls back to
+ * manifest first-seen order (e.g. a `--manifest`-only run with no config).
  */
-function songSlugOf(entry) {
-  return entry.songTitleSlug || slugify(entry.songTitle || '') || '(unknown)';
+function buildPriority(manifest, opts) {
+  let labels = [];
+  try {
+    labels = (loadConfig({ dataDir: opts.dataDir }).sources || []).map((s) => s.label).filter(Boolean);
+  } catch {
+    // No config — sourcePriority falls back to manifest first-seen order.
+  }
+  return sourcePriority(labels, manifest);
 }
 
 // --- list -------------------------------------------------------------------
-
-/**
- * The instrument-key-part descriptor for one asset. The descriptor is anchored
- * on a detected instrument, with the instrument's default key folded in when no
- * explicit key was detected (so a B♭ trumpet reads "trumpet-bflat"). A stray
- * key or part number with no instrument is not a real part; those fall back to
- * naming the file so it's identifiable. (Part numbers below 1 are
- * voicing/version artifacts, not parts, and are dropped.)
- */
-function descriptorOf(entry) {
-  if (entry.instrumentSlug) {
-    const part = Number.isInteger(entry.partNumber) && entry.partNumber >= 1 ? entry.partNumber : null;
-    const key = entry.key || DEFAULT_KEY_BY_SLUG[entry.instrumentSlug] || null;
-    return [entry.instrumentSlug, key, part].filter((p) => p != null && p !== '').join('-');
-  }
-  return `${entry.assetType || 'file'} (${entry.originalName || entry.driveFileId})`;
-}
-
-/**
- * The slug identifier `open` matches a prefix against:
- * "<song>-<instrument>-<key>-<part>" for instrument parts, or "<song>-<type>"
- * (e.g. "unholy-musescore", "unholy-mp3") for assets with no detected
- * instrument. A prefix can therefore target a whole song, a media type, or a
- * single part.
- */
-function assetMatchKey(entry) {
-  const songSlug = songSlugOf(entry);
-  return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : `${songSlug}-${entry.assetType || 'file'}`;
-}
-
-/**
- * Index/admin folders that hold copies organized by something other than song
- * (by instrument, by file type, notes). Their top-level folder name is NOT a
- * song, so when the same content also lives under a real song folder that copy
- * wins. Detected by the band's numbered-bucket naming and the "indexed by
- * instrument" container.
- */
-function isContainerFolder(name) {
-  const n = String(name || '');
-  return /indexed by instrument/i.test(n) || /^\d+\s+(notes|audio|full scores|musescore|indexed)/i.test(n);
-}
-
-/**
- * Build a source-priority lookup (label -> rank, lower = higher priority) from
- * the configured source order, appending any manifest-only labels after it.
- */
-function buildPriority(manifest, opts) {
-  const pri = new Map();
-  let next = 0;
-  try {
-    for (const s of loadConfig({ dataDir: opts.dataDir }).sources || []) {
-      if (s.label && !pri.has(s.label)) pri.set(s.label, next++);
-    }
-  } catch {
-    // No config (e.g. --manifest only) — fall back to first-seen order below.
-  }
-  for (const e of Object.values(manifest.files || {})) {
-    if (e.sourceFolderLabel && !pri.has(e.sourceFolderLabel)) pri.set(e.sourceFolderLabel, next++);
-  }
-  return pri;
-}
-
-/**
- * Pick the canonical location for one content blob: the copy in the
- * highest-priority source wins; within a source, a real song folder beats an
- * index/admin container; otherwise keep the first seen.
- */
-function isMoreCanonical(candidate, current, pri) {
-  const rank = (e) => (pri.has(e.sourceFolderLabel) ? pri.get(e.sourceFolderLabel) : Number.MAX_SAFE_INTEGER);
-  if (rank(candidate) !== rank(current)) return rank(candidate) < rank(current);
-  const container = (e) => (isContainerFolder(e.originalFolder) ? 1 : 0);
-  if (container(candidate) !== container(current)) return container(candidate) < container(current);
-  return false;
-}
-
-/**
- * Collapse the live manifest to one canonical entry per unique content blob
- * (CAS sha256), choosing the highest-priority location for each. This is the
- * shared basis for both `list` and `open`, so a file is attributed to the same
- * song regardless of which subcommand surfaces it.
- *
- * @returns {{ canonical: Map<string, object>, liveCount: number }}
- */
-function canonicalByContent(manifest, pri) {
-  const canonical = new Map(); // sha (or id fallback) -> entry
-  let liveCount = 0;
-  for (const entry of liveAssets(manifest)) {
-    liveCount += 1;
-    const key = entry.sha256 || `id:${entry.driveFileId}`;
-    const cur = canonical.get(key);
-    if (!cur || isMoreCanonical(entry, cur, pri)) canonical.set(key, entry);
-  }
-  return { canonical, liveCount };
-}
 
 /**
  * Build the grouped, sorted list model. Each unique content blob (CAS sha256)
