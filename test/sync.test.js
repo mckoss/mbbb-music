@@ -150,6 +150,43 @@ test('duplicate content is stored once; both Drive files point at the same blob'
   });
 });
 
+test('when Drive omits sha256Checksum, the recorded hash is reused so the file is not re-downloaded', async () => {
+  await withTempDir(async (dataDir) => {
+    const config = makeConfig(dataDir);
+    // A file Drive would later serve without a checksum (e.g. a "Make a copy").
+    const file = {
+      id: 'copy1',
+      name: 'Copy of Tuba.pdf',
+      mimeType: 'application/pdf',
+      folderId: 'demo-library',
+      folderName: 'Some Song',
+      modifiedTime: '2026-01-01T00:00:00.000Z',
+      version: '1',
+      content: 'COPY-BYTES',
+    };
+
+    // First run: Drive provides the checksum (the fixture derives it) -> fetched.
+    const first = await runSync({ driveClient: createFixtureDriveClient({ files: [file] }), config, now: FIXED_NOW });
+    assert.equal(first.summary.downloaded, 1);
+    assert.ok(await exists(resolve(dataDir, 'cas', sha256('COPY-BYTES'))));
+
+    // Second run: Drive now omits sha256Checksum, but modifiedTime is unchanged.
+    // The hash recorded last time is reused; the blob is recognized and the
+    // download client (which throws) is never called.
+    const base = createFixtureDriveClient({ files: [file] });
+    const noChecksum = {
+      listFiles: async (f) => (await base.listFiles(f)).map(({ sha256Checksum, ...rest }) => rest),
+      downloadFile: async () => {
+        throw new Error('must not re-download a file already in the store');
+      },
+    };
+    const second = await runSync({ driveClient: noChecksum, config, now: FIXED_NOW });
+    assert.equal(second.summary.downloaded, 0);
+    assert.equal(second.summary.cached, 1);
+    assert.equal(second.summary.unchanged, 1);
+  });
+});
+
 test('a previously built cache skips download entirely (no re-download to rebuild)', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);

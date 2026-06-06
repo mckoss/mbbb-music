@@ -23,6 +23,18 @@ test('isChanged compares the manifest sha256 against the Drive checksum', () => 
   assert.equal(isChanged({ sha256: 'a' }, { sha256Checksum: 'b' }), true);
 });
 
+test('isChanged falls back to modifiedTime/version when Drive omits the checksum', () => {
+  const prev = { sha256: 'h', modifiedTime: 't1', version: '1' };
+  // No checksum, but the modified time has not moved -> unchanged.
+  assert.equal(isChanged(prev, { modifiedTime: 't1' }), false);
+  assert.equal(isChanged(prev, { modifiedTime: 't2' }), true);
+  // No checksum, no modifiedTime -> compare version.
+  assert.equal(isChanged({ sha256: 'h', version: '1' }, { version: '1' }), false);
+  assert.equal(isChanged({ sha256: 'h', version: '1' }, { version: '2' }), true);
+  // No basis to compare -> assume changed and re-fetch.
+  assert.equal(isChanged({ sha256: 'h' }, {}), true);
+});
+
 test('a never-seen asset is classified new', () => {
   const { entries, counts } = diffManifest(emptyManifest(), [classified(pdf())]);
   assert.equal(counts.new, 1);

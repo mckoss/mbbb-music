@@ -56,17 +56,23 @@ export async function saveManifest(manifestPath, manifest) {
 }
 
 /**
- * Decide whether a Drive file differs from its manifest entry, by SHA-256
- * checksum alone. Drive supplies sha256Checksum for every binary asset type we
- * sync (PDF/MP3/MuseScore), so the content hash is authoritative — no size,
- * version, or modifiedTime heuristics needed.
+ * Decide whether a Drive file differs from its manifest entry. The content hash
+ * is authoritative when available, but Drive omits `sha256Checksum` for some
+ * files (notably Drive-side "Make a copy" duplicates). When it does, fall back to
+ * mutation signals — an unmoved modifiedTime (or version) means the content is
+ * unchanged and the recorded hash is still valid, so the sync can reuse it
+ * instead of re-downloading just to recompute the same hash.
  *
  * @param {object} prev  Existing manifest entry (stores the hash as `sha256`).
  * @param {object} file  Current Drive file (provides `sha256Checksum`).
  * @returns {boolean}
  */
 export function isChanged(prev, file) {
-  return prev.sha256 !== file.sha256Checksum;
+  if (file.sha256Checksum) return prev.sha256 !== file.sha256Checksum;
+  if (prev.modifiedTime && file.modifiedTime) return prev.modifiedTime !== file.modifiedTime;
+  if (prev.version && file.version) return prev.version !== file.version;
+  // No checksum and no comparable mutation signal — re-fetch to be safe.
+  return true;
 }
 
 /**

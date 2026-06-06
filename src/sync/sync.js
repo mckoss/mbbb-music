@@ -80,7 +80,16 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     const { file, classification } = entry;
     const songTitle = file.folderName || file.sourceFolderLabel || 'unknown';
     const meta = detectAssetMetadata({ originalName: file.name, songTitle });
-    const sha = file.sha256Checksum || null;
+
+    // Prefer the hash Drive reports. Drive omits sha256Checksum for some files
+    // (e.g. "Make a copy" duplicates); when it does and the diff judged the file
+    // unchanged (by modifiedTime/version — see manifest.isChanged), reuse the
+    // hash recorded last time so its blob is recognized in the store instead of
+    // being needlessly re-downloaded.
+    let sha = file.sha256Checksum || null;
+    if (!sha && entry.status === 'unchanged' && entry.prev?.sha256) {
+      sha = entry.prev.sha256;
+    }
     const record = buildAssetEntry(entry, meta, classification, sha, timestamp);
 
     if (sha && existsSync(resolve(casDir, sha))) {
@@ -117,7 +126,8 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
         // Trust Drive's checksum as the key when present; otherwise hash the bytes.
         const sha = knownSha || createHash('sha256').update(bytes).digest('hex');
         const blobPath = resolve(casDir, sha);
-        if (!existsSync(blobPath)) {
+        const newBlob = !existsSync(blobPath);
+        if (newBlob) {
           await mkdir(casDir, { recursive: true });
           await writeFile(blobPath, bytes);
         }
@@ -129,8 +139,12 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
           byteLength: bytes.length,
           status: 'synced',
         };
-        actions.downloaded.push({ id: entry.id, sha256: sha });
-        logger.info(`Stored cas/${sha.slice(0, 12)}… (${entry.file.name})`);
+        actions.downloaded.push({ id: entry.id, sha256: sha, newBlob });
+        // The blob may already exist (e.g. Drive gave no checksum up front, so we
+        // had to fetch to learn the hash) — say so rather than claiming a write.
+        logger.info(
+          `${newBlob ? 'Stored' : 'Fetched (already in store)'} cas/${sha.slice(0, 12)}… (${entry.file.name})`,
+        );
         await persist();
       } catch (err) {
         manifest.files[entry.id] = { ...manifest.files[entry.id], status: 'error', error: String(err?.message || err) };
