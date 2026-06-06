@@ -50,24 +50,17 @@ export async function saveManifest(manifestPath, manifest) {
 }
 
 /**
- * Decide whether a Drive file differs from its manifest entry. Prefers the
- * md5 checksum, then version, then modifiedTime+size as fallbacks (Drive does
- * not always supply a checksum).
+ * Decide whether a Drive file differs from its manifest entry, by SHA-256
+ * checksum alone. Drive supplies sha256Checksum for every binary asset type we
+ * sync (PDF/MP3/MuseScore), so the content hash is authoritative — no size,
+ * version, or modifiedTime heuristics needed.
  *
  * @param {object} prev  Existing manifest entry.
  * @param {object} file  Current Drive file.
  * @returns {boolean}
  */
 export function isChanged(prev, file) {
-  if (prev.md5Checksum && file.md5Checksum) {
-    return prev.md5Checksum !== file.md5Checksum;
-  }
-  if (prev.version != null && file.version != null) {
-    return String(prev.version) !== String(file.version);
-  }
-  const sameTime = prev.modifiedTime === file.modifiedTime;
-  const sameSize = String(prev.size ?? '') === String(file.size ?? '');
-  return !(sameTime && sameSize);
+  return prev.sha256Checksum !== file.sha256Checksum;
 }
 
 /**
@@ -124,4 +117,37 @@ export function diffManifest(manifest, current) {
   }, {});
 
   return { entries, counts };
+}
+
+/**
+ * @typedef {Object} DuplicateGroup
+ * @property {string} sha256  The shared content hash.
+ * @property {number} count   Number of files with this content.
+ * @property {Array<{ id: string, localPath: string|null, sourceFolderLabel: string|null }>} files
+ */
+
+/**
+ * Find duplicate assets by content — files with the same SHA-256, regardless of
+ * path or source folder. Ignored and deleted entries are excluded. Returns only
+ * groups of 2+ files, largest groups first.
+ *
+ * @param {object} manifest
+ * @returns {DuplicateGroup[]}
+ */
+export function findDuplicates(manifest) {
+  const byHash = new Map();
+  for (const [id, e] of Object.entries(manifest.files || {})) {
+    if (e.ignored || e.status === 'ignored' || e.status === 'deleted') continue;
+    const sha = e.sha256Checksum;
+    if (!sha) continue;
+    if (!byHash.has(sha)) byHash.set(sha, []);
+    byHash.get(sha).push({ id, localPath: e.localPath ?? null, sourceFolderLabel: e.sourceFolderLabel ?? null });
+  }
+
+  const groups = [];
+  for (const [sha256, files] of byHash) {
+    if (files.length > 1) groups.push({ sha256, count: files.length, files });
+  }
+  groups.sort((a, b) => b.count - a.count);
+  return groups;
 }

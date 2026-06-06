@@ -13,3 +13,6 @@ generated/
 # Phase 1 Drive sync target: local/private rebuildable storage (manifest + assets).
 data/
 
+# Throwaway sandbox for --fixture demo runs (kept away from real data/).
+tmp/
+

@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 
 import { classifyDriveFile } from './classify.js';
 import { parseAsset } from './parse-filename.js';
-import { loadManifest, saveManifest, diffManifest } from './manifest.js';
+import { loadManifest, saveManifest, diffManifest, findDuplicates } from './manifest.js';
 
 const noopLogger = { info() {}, warn() {}, error() {} };
 
@@ -109,6 +109,10 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     await saveManifest(config.manifestPath, manifest);
   }
 
+  // Report duplicate content (same SHA-256) across the whole library, regardless
+  // of song folder or source. Informational only — nothing is removed.
+  const duplicates = findDuplicates(manifest);
+
   return {
     timestamp,
     dryRun,
@@ -117,6 +121,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     sources: config.sources,
     counts,
     actions,
+    duplicates,
     summary: {
       seen: current.length,
       new: counts.new || 0,
@@ -126,6 +131,8 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       ignored: counts.ignored || 0,
       downloaded: actions.downloaded.length,
       failed: actions.failed.length,
+      duplicateGroups: duplicates.length,
+      duplicateFiles: duplicates.reduce((n, g) => n + g.count, 0),
     },
   };
 }
@@ -141,7 +148,7 @@ function buildAssetEntry(entry, parsed, classification, timestamp) {
     mimeType: file.mimeType ?? null,
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
-    md5Checksum: file.md5Checksum ?? null,
+    sha256Checksum: file.sha256Checksum ?? null,
     size: file.size ?? null,
     assetType: classification.assetType,
     songTitle: parsed.songTitle,
@@ -168,7 +175,7 @@ function buildIgnoredEntry(entry, timestamp) {
     mimeType: file.mimeType ?? null,
     modifiedTime: file.modifiedTime ?? null,
     version: file.version ?? null,
-    md5Checksum: file.md5Checksum ?? null,
+    sha256Checksum: file.sha256Checksum ?? null,
     size: file.size ?? null,
     assetType: null,
     localPath: null,

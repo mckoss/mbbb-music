@@ -10,7 +10,7 @@
 //   }
 //
 // A DriveFile mirrors the fields the Drive API returns and the manifest needs:
-//   { id, name, mimeType, modifiedTime, md5Checksum?, size?, version?,
+//   { id, name, mimeType, modifiedTime, sha256Checksum?, size?, version?,
 //     parents?, folderName?, shortcutDetails? }
 
 import { createHash } from 'node:crypto';
@@ -24,7 +24,7 @@ import { JWT } from 'google-auth-library';
  *
  * @param {Object} options
  * @param {Array<Object>} options.files  DriveFile-shaped records. Each may carry
- *        a `content` string/Buffer; if present its md5/size are auto-filled.
+ *        a `content` string/Buffer; if present its sha256/size are auto-filled.
  * @param {Record<string, string|Buffer>} [options.contents]  Optional id -> bytes map.
  * @returns {{ listFiles: Function, downloadFile: Function }}
  */
@@ -34,16 +34,16 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
 
   for (const f of files) {
     const content = f.content ?? contents[f.id];
-    let md5Checksum = f.md5Checksum;
+    let sha256Checksum = f.sha256Checksum;
     let size = f.size;
     if (content != null) {
       const buf = Buffer.isBuffer(content) ? content : Buffer.from(String(content));
       bytesById.set(f.id, buf);
-      md5Checksum = md5Checksum ?? createHash('md5').update(buf).digest('hex');
+      sha256Checksum = sha256Checksum ?? createHash('sha256').update(buf).digest('hex');
       size = size ?? buf.length;
     }
     const { content: _omit, ...rest } = f;
-    byId.set(f.id, { ...rest, md5Checksum, size });
+    byId.set(f.id, { ...rest, sha256Checksum, size });
   }
 
   return {
@@ -78,7 +78,7 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 // Fields the manifest/classifier need. files.list returns these per child; a
 // shortcut's shortcutDetails lets the classifier ignore pointer entries.
-const FILE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size,version,parents,shortcutDetails';
+const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,parents,shortcutDetails';
 
 /**
  * Create a real Google Drive v3 client backed by Node's global `fetch` (Node

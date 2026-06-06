@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { emptyManifest, diffManifest, isChanged } from '../src/sync/manifest.js';
+import { emptyManifest, diffManifest, isChanged, findDuplicates } from '../src/sync/manifest.js';
 import { classifyDriveFile } from '../src/sync/classify.js';
 
 function classified(file) {
@@ -13,18 +13,14 @@ const pdf = (over = {}) => ({
   name: 'Bad Guy - Trumpet.pdf',
   mimeType: 'application/pdf',
   modifiedTime: '2026-01-01T00:00:00.000Z',
-  md5Checksum: 'aaa',
+  sha256Checksum: 'aaa',
   version: '1',
   ...over,
 });
 
-test('isChanged prefers checksum, then version, then time+size', () => {
-  assert.equal(isChanged({ md5Checksum: 'a' }, { md5Checksum: 'a' }), false);
-  assert.equal(isChanged({ md5Checksum: 'a' }, { md5Checksum: 'b' }), true);
-  assert.equal(isChanged({ version: '1' }, { version: '1' }), false);
-  assert.equal(isChanged({ version: '1' }, { version: '2' }), true);
-  assert.equal(isChanged({ modifiedTime: 't', size: 5 }, { modifiedTime: 't', size: 5 }), false);
-  assert.equal(isChanged({ modifiedTime: 't', size: 5 }, { modifiedTime: 't', size: 9 }), true);
+test('isChanged compares the SHA-256 checksum', () => {
+  assert.equal(isChanged({ sha256Checksum: 'a' }, { sha256Checksum: 'a' }), false);
+  assert.equal(isChanged({ sha256Checksum: 'a' }, { sha256Checksum: 'b' }), true);
 });
 
 test('a never-seen asset is classified new', () => {
@@ -35,18 +31,18 @@ test('a never-seen asset is classified new', () => {
 
 test('same checksum is unchanged; different checksum is changed', () => {
   const manifest = emptyManifest();
-  manifest.files['f1'] = { driveFileId: 'f1', md5Checksum: 'aaa', version: '1', status: 'synced', localPath: 'bad-guy/x.pdf' };
+  manifest.files['f1'] = { driveFileId: 'f1', sha256Checksum: 'aaa', version: '1', status: 'synced', localPath: 'bad-guy/x.pdf' };
 
-  const unchanged = diffManifest(manifest, [classified(pdf({ md5Checksum: 'aaa' }))]);
+  const unchanged = diffManifest(manifest, [classified(pdf({ sha256Checksum: 'aaa' }))]);
   assert.equal(unchanged.counts.unchanged, 1);
 
-  const changed = diffManifest(manifest, [classified(pdf({ md5Checksum: 'zzz', version: '2' }))]);
+  const changed = diffManifest(manifest, [classified(pdf({ sha256Checksum: 'zzz', version: '2' }))]);
   assert.equal(changed.counts.changed, 1);
 });
 
 test('a tracked file no longer present is deleted (archived), once', () => {
   const manifest = emptyManifest();
-  manifest.files['gone'] = { driveFileId: 'gone', md5Checksum: 'x', status: 'synced', localPath: 'bad-guy/gone.pdf' };
+  manifest.files['gone'] = { driveFileId: 'gone', sha256Checksum: 'x', status: 'synced', localPath: 'bad-guy/gone.pdf' };
 
   const first = diffManifest(manifest, []);
   assert.equal(first.counts.deleted, 1);
@@ -56,6 +52,24 @@ test('a tracked file no longer present is deleted (archived), once', () => {
   manifest.files['gone'].status = 'deleted';
   const second = diffManifest(manifest, []);
   assert.equal(second.counts.deleted, undefined);
+});
+
+test('findDuplicates groups live assets by sha256, regardless of path or source', () => {
+  const m = emptyManifest();
+  m.files = {
+    a: { sha256Checksum: 'h1', localPath: 'song-a/x.pdf', sourceFolderLabel: 'scores', status: 'synced' },
+    b: { sha256Checksum: 'h1', localPath: 'song-b/y.pdf', sourceFolderLabel: 'recordings', status: 'synced' },
+    c: { sha256Checksum: 'h1', localPath: 'song-c/z.pdf', sourceFolderLabel: 'scores', status: 'unchanged' },
+    d: { sha256Checksum: 'h2', localPath: 'song-d/u.pdf', status: 'synced' }, // unique
+    e: { sha256Checksum: 'h3', localPath: 'song-e/v.pdf', status: 'deleted' }, // excluded
+    f: { sha256Checksum: 'h3', ignored: true, status: 'ignored' }, // excluded
+  };
+
+  const groups = findDuplicates(m);
+  assert.equal(groups.length, 1); // only h1 has 2+ live files; deleted/ignored excluded
+  assert.equal(groups[0].sha256, 'h1');
+  assert.equal(groups[0].count, 3);
+  assert.deepEqual(groups[0].files.map((f) => f.id).sort(), ['a', 'b', 'c']);
 });
 
 test('shortcuts and unsupported files are classified ignored, never new', () => {

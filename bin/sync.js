@@ -5,6 +5,8 @@
 // Drive client (real or built-in synthetic fixture), runs the sync, and prints
 // a human-readable summary. The same core powers the Express admin route.
 
+import { resolve } from 'node:path';
+
 import { loadConfig } from '../src/sync/config.js';
 import { runSync } from '../src/sync/sync.js';
 import { createGoogleDriveClient, createFixtureDriveClient } from '../src/sync/drive-client.js';
@@ -27,7 +29,10 @@ USAGE
 OPTIONS
   --fixture           Use the built-in synthetic fixture instead of real Drive.
                       Requires no credentials; safe for offline demos and CI.
-  --data-dir <path>   Override the data directory (default: config.json dataDir or ./data).
+                      Writes to tmp/fixture-data and refuses the real data dir,
+                      so synthetic data never touches your real assets.
+  --data-dir <path>   Override the data directory (default: config.json dataDir or
+                      ./data; for --fixture, default tmp/fixture-data).
   --dry-run           Classify and plan only; do not download or write manifest.
   --json              Print the full machine-readable sync report as JSON.
   -h, --help          Show this help.
@@ -110,6 +115,20 @@ function printSummary(report) {
       console.log(`    ! FAILED ${a.localPath}: ${a.error}`);
     }
   }
+
+  const dups = report.duplicates || [];
+  if (dups.length) {
+    console.log(
+      `\nDuplicate content: ${s.duplicateGroups} group(s), ${s.duplicateFiles} file(s) ` +
+        '(identical bytes, regardless of path/source):',
+    );
+    for (const g of dups) {
+      console.log(`  [${g.count}×] sha256 ${g.sha256.slice(0, 12)}…`);
+      for (const f of g.files) {
+        console.log(`        ${f.localPath || f.id}${f.sourceFolderLabel ? `  (${f.sourceFolderLabel})` : ''}`);
+      }
+    }
+  }
 }
 
 async function main() {
@@ -131,6 +150,18 @@ async function main() {
 
   let driveClient;
   if (opts.fixture) {
+    // Synthetic fixture runs must NEVER write into the real data directory.
+    // Default them to a throwaway sandbox and hard-refuse the real data dir.
+    const realDataDir = loadConfig().dataDir;
+    overrides.dataDir = resolve(opts.dataDir || 'tmp/fixture-data');
+    if (overrides.dataDir === realDataDir) {
+      console.error(
+        `Refusing to run --fixture against the real data directory (${realDataDir}). ` +
+          'Synthetic fixture data must not co-mingle with real assets. Omit --data-dir ' +
+          '(defaults to tmp/fixture-data) or point it at a throwaway directory.',
+      );
+      process.exit(2);
+    }
     overrides.sources = FIXTURE_FOLDERS;
     driveClient = createFixtureDriveClient({ files: FIXTURE_FILES });
   }

@@ -98,6 +98,18 @@ The `docs/` prototype is a separate case: it stays buildless (plain HTML/CSS/JS)
 so GitHub Pages serves it directly — a deployment choice for the frontend, not a
 rule for the Node tooling.
 
+## Test & Demo Safety
+
+Tests and demos must NEVER read or write the real, co-located data in the repo
+(the gitignored `data/` directory holds the rebuilt music library):
+
+- Tests write only to OS temp dirs (`mkdtemp(os.tmpdir())`), never `./data`.
+- The `--fixture` demo writes to a throwaway sandbox (`tmp/fixture-data`) and
+  hard-refuses to run against the real data directory, so synthetic fixture data
+  can never co-mingle with or clobber real assets.
+- When invoking the CLI by hand to try something, pass `--data-dir <throwaway>`
+  unless you specifically intend to touch the real library.
+
 ## Product Model
 
 The main design source of truth is `docs/design.md`. Important concepts:

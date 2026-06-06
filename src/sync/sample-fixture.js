@@ -8,7 +8,7 @@ export const FIXTURE_FOLDERS = [
 ];
 
 /**
- * DriveFile-shaped fixture records. `content` is auto-hashed into md5/size by
+ * DriveFile-shaped fixture records. `content` is auto-hashed into sha256/size by
  * the fixture Drive client.
  */
 export const FIXTURE_FILES = [

@@ -81,7 +81,7 @@ test('listFiles builds a folder-scoped, non-trashed query with manifest fields',
   assert.equal(parsed.origin + parsed.pathname, 'https://www.googleapis.com/drive/v3/files');
   assert.equal(parsed.searchParams.get('q'), "'folder-xyz' in parents and trashed=false");
   const fields = parsed.searchParams.get('fields');
-  for (const f of ['id', 'name', 'mimeType', 'modifiedTime', 'md5Checksum', 'size', 'version', 'parents', 'shortcutDetails']) {
+  for (const f of ['id', 'name', 'mimeType', 'modifiedTime', 'sha256Checksum', 'size', 'version', 'parents', 'shortcutDetails']) {
     assert.ok(fields.includes(f), `fields should include ${f}`);
   }
   assert.equal(init.headers.Authorization, 'Bearer tok-123');
