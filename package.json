@@ -8,11 +8,13 @@
     "node": ">=20"
   },
   "bin": {
-    "mbbb-sync": "bin/sync.js"
+    "mbbb-sync": "bin/sync.js",
+    "mbbb-library": "bin/library.js"
   },
   "scripts": {
     "sync": "node bin/sync.js",
     "sync:demo": "node bin/sync.js --fixture",
+    "library": "node bin/library.js",
     "test": "node --test"
   },
   "dependencies": {
