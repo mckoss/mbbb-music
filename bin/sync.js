@@ -5,6 +5,10 @@
 // Drive client (real or built-in synthetic fixture), runs the sync, and prints
 // a human-readable summary. The same core powers the Express admin route.
 
+// Must be first: installs a filter for the transitive punycode deprecation
+// before google-auth-library (imported below) loads and triggers it.
+import './quiet-deprecations.js';
+
 import { resolve } from 'node:path';
 
 import { loadConfig } from '../src/sync/config.js';
