@@ -89,31 +89,103 @@ function liveAssets(manifest) {
 // --- list -------------------------------------------------------------------
 
 /**
- * The instrument-key-part descriptor for one asset. When no instrument was
- * detected (audio, MuseScore source, exported notes), fall back to the asset
- * type so the line still says what the file is.
+ * The instrument-key-part descriptor for one asset. The descriptor is anchored
+ * on a detected instrument; a stray key or part number with no instrument is
+ * not a real part, so those fall back to the filename/asset type. (Part numbers
+ * below 1 are voicing/version artifacts, not parts, and are dropped.)
  */
 function descriptorOf(entry) {
-  const parts = [entry.instrumentSlug, entry.key, entry.partNumber].filter((p) => p != null && p !== '');
-  if (parts.length) return parts.join('-');
+  if (entry.instrumentSlug) {
+    const part = Number.isInteger(entry.partNumber) && entry.partNumber >= 1 ? entry.partNumber : null;
+    return [entry.instrumentSlug, entry.key, part].filter((p) => p != null && p !== '').join('-');
+  }
   if (entry.assetType === 'pdf') return `pdf (${entry.originalName || entry.driveFileId})`;
   return entry.assetType || 'unknown';
 }
 
-/** Build the grouped, sorted list model from a manifest. */
-function buildList(manifest) {
-  const bySong = new Map(); // slug -> { slug, title, descriptors: Map<string, count> }
+/**
+ * Index/admin folders that hold copies organized by something other than song
+ * (by instrument, by file type, notes). Their top-level folder name is NOT a
+ * song, so when the same content also lives under a real song folder that copy
+ * wins. Detected by the band's numbered-bucket naming and the "indexed by
+ * instrument" container.
+ */
+function isContainerFolder(name) {
+  const n = String(name || '');
+  return /indexed by instrument/i.test(n) || /^\d+\s+(notes|audio|full scores|musescore|indexed)/i.test(n);
+}
 
+/**
+ * Build a source-priority lookup (label -> rank, lower = higher priority) from
+ * the configured source order, appending any manifest-only labels after it.
+ */
+function buildPriority(manifest, opts) {
+  const pri = new Map();
+  let next = 0;
+  try {
+    for (const s of loadConfig({ dataDir: opts.dataDir }).sources || []) {
+      if (s.label && !pri.has(s.label)) pri.set(s.label, next++);
+    }
+  } catch {
+    // No config (e.g. --manifest only) — fall back to first-seen order below.
+  }
+  for (const e of Object.values(manifest.files || {})) {
+    if (e.sourceFolderLabel && !pri.has(e.sourceFolderLabel)) pri.set(e.sourceFolderLabel, next++);
+  }
+  return pri;
+}
+
+/**
+ * Pick the canonical location for one content blob: the copy in the
+ * highest-priority source wins; within a source, a real song folder beats an
+ * index/admin container; otherwise keep the first seen.
+ */
+function isMoreCanonical(candidate, current, pri) {
+  const rank = (e) => (pri.has(e.sourceFolderLabel) ? pri.get(e.sourceFolderLabel) : Number.MAX_SAFE_INTEGER);
+  if (rank(candidate) !== rank(current)) return rank(candidate) < rank(current);
+  const container = (e) => (isContainerFolder(e.originalFolder) ? 1 : 0);
+  if (container(candidate) !== container(current)) return container(candidate) < container(current);
+  return false;
+}
+
+/**
+ * Collapse the live manifest to one canonical entry per unique content blob
+ * (CAS sha256), choosing the highest-priority location for each. This is the
+ * shared basis for both `list` and `open`, so a file is attributed to the same
+ * song regardless of which subcommand surfaces it.
+ *
+ * @returns {{ canonical: Map<string, object>, liveCount: number }}
+ */
+function canonicalByContent(manifest, pri) {
+  const canonical = new Map(); // sha (or id fallback) -> entry
+  let liveCount = 0;
   for (const entry of liveAssets(manifest)) {
+    liveCount += 1;
+    const key = entry.sha256 || `id:${entry.driveFileId}`;
+    const cur = canonical.get(key);
+    if (!cur || isMoreCanonical(entry, cur, pri)) canonical.set(key, entry);
+  }
+  return { canonical, liveCount };
+}
+
+/**
+ * Build the grouped, sorted list model. Each unique content blob (CAS sha256)
+ * is listed exactly once, attributed to its canonical (highest-priority) song.
+ */
+function buildList(manifest, pri) {
+  const { canonical, liveCount } = canonicalByContent(manifest, pri);
+
+  // Group the canonical entries by song.
+  const bySong = new Map();
+  for (const entry of canonical.values()) {
     const title = entry.songTitle || '(unknown)';
     const slug = slugify(title) || '(unknown)';
     if (!bySong.has(slug)) bySong.set(slug, { slug, title, descriptors: new Map() });
-    const song = bySong.get(slug);
     const d = descriptorOf(entry);
-    song.descriptors.set(d, (song.descriptors.get(d) || 0) + 1);
+    bySong.get(slug).descriptors.set(d, (bySong.get(slug).descriptors.get(d) || 0) + 1);
   }
 
-  return [...bySong.values()]
+  const songs = [...bySong.values()]
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((song) => ({
       slug: song.slug,
@@ -122,22 +194,24 @@ function buildList(manifest) {
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([descriptor, count]) => ({ descriptor, count })),
     }));
+
+  return { songs, uniqueCount: canonical.size, liveCount };
 }
 
-function printList(report) {
-  let songCount = 0;
-  let assetCount = 0;
-  for (const song of report) {
-    songCount += 1;
+function printList({ songs, uniqueCount, liveCount }) {
+  for (const song of songs) {
     const titleNote = song.title && song.title !== song.slug ? `  (${song.title})` : '';
     const songAssets = song.assets.reduce((n, a) => n + a.count, 0);
-    assetCount += songAssets;
-    console.log(`${song.slug}${titleNote}  — ${songAssets} asset${songAssets === 1 ? '' : 's'}`);
+    console.log(`${song.slug}${titleNote}  — ${songAssets} file${songAssets === 1 ? '' : 's'}`);
     for (const a of song.assets) {
       console.log(`    ${a.descriptor}${a.count > 1 ? `  ×${a.count}` : ''}`);
     }
   }
-  console.log(`\n${songCount} song${songCount === 1 ? '' : 's'}, ${assetCount} live assets.`);
+  const collapsed = liveCount - uniqueCount;
+  console.log(
+    `\n${songs.length} song${songs.length === 1 ? '' : 's'}, ${uniqueCount} unique files` +
+      (collapsed > 0 ? ` (${collapsed} duplicate ${collapsed === 1 ? 'copy' : 'copies'} collapsed by content).` : '.'),
+  );
 }
 
 // --- open -------------------------------------------------------------------
@@ -182,22 +256,22 @@ function targetName(entry) {
   return `${base || 'asset'}-${entry.sha256.slice(0, 8)}${ext}`;
 }
 
-function runOpen(manifest, casDir, prefix, opts) {
+function runOpen(manifest, casDir, prefix, pri, opts) {
   const wanted = slugify(prefix);
   if (!wanted) {
     console.error('open requires a non-empty <prefix>, e.g. `library open uptown`.');
     process.exit(2);
   }
 
-  // PDFs and MP3s whose song slug starts with the prefix; dedup identical bytes.
-  const seen = new Set();
+  // Work from the canonical-by-content view (same as `list`), so each blob is
+  // opened once and matched against its canonical song — a file filed under an
+  // index folder still opens when its real song is requested.
+  const { canonical } = canonicalByContent(manifest, pri);
   const matches = [];
-  for (const entry of liveAssets(manifest)) {
+  for (const entry of canonical.values()) {
     if (entry.assetType !== 'pdf' && entry.assetType !== 'mp3') continue;
     if (!entry.sha256) continue;
     if (!slugify(entry.songTitle || '').startsWith(wanted)) continue;
-    if (seen.has(entry.sha256)) continue;
-    seen.add(entry.sha256);
     matches.push(entry);
   }
 
@@ -266,7 +340,7 @@ function main() {
 
   if (opts.command === 'list') {
     const { manifest } = loadManifest(opts);
-    const report = buildList(manifest);
+    const report = buildList(manifest, buildPriority(manifest, opts));
     if (opts.json) console.log(JSON.stringify(report, null, 2));
     else printList(report);
     return;
@@ -275,7 +349,7 @@ function main() {
   if (opts.command === 'open') {
     const { manifest, manifestPath } = loadManifest(opts);
     const casDir = resolve(dirname(manifestPath), 'cas');
-    runOpen(manifest, casDir, opts.prefix ?? '', opts);
+    runOpen(manifest, casDir, opts.prefix ?? '', buildPriority(manifest, opts), opts);
     return;
   }
 
