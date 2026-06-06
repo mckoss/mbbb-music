@@ -15,10 +15,24 @@
     "sync": "node bin/sync.js",
     "sync:demo": "node bin/sync.js --fixture",
     "library": "node bin/library.js",
-    "test": "node --test"
+    "test": "node --test test/*.test.js",
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "google-auth-library": "9.15.1"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@sveltejs/adapter-node": "5.5.4",
+    "@sveltejs/kit": "2.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@types/node": "25.9.2",
+    "svelte": "5.56.2",
+    "svelte-check": "4.6.0",
+    "typescript": "6.0.3",
+    "vite": "8.0.16"
+  }
 }
