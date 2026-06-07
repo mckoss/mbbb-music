@@ -84,6 +84,9 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
 
 const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
 
+// Used when no logger is injected — the client stays silent by default.
+const noopLogger = { info() {}, warn() {}, error() {} };
+
 // Read-only Drive access is all the sync needs; the source folders are public.
 const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
@@ -112,9 +115,11 @@ const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,p
  * and a shortcut-to-file is resolved (via files.get) to stand its target in at
  * the shortcut's location — same id/checksum/bytes as the real file, attributed
  * to the song folder the shortcut sits in. A shortcut whose target can't be read
- * (deleted/inaccessible) degrades to the pointer entry, which the classifier
- * ignores. (Targets are assumed reachable with the same credentials; resource
- * keys for link-shared targets are not currently supplied.)
+ * (deleted/inaccessible) is logged as a warning (via options.logger) and skipped:
+ * a file shortcut degrades to the pointer entry the classifier ignores, and a
+ * folder shortcut's subtree is skipped without aborting the rest of the sync.
+ * (Targets are assumed reachable with the same credentials; resource keys for
+ * link-shared targets are not currently supplied.)
  *
  * Authentication is by Google **service account** only. The `google` block of
  * config.json (or MBBB_CONFIG_JSON) embeds the service-account key inline as
@@ -131,6 +136,8 @@ const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,p
  * @param {Object} [options.authClient]   Inject an auth client (tests); must expose
  *        getAccessToken(). Bypasses service-account loading entirely.
  * @param {typeof JWT} [options.JWT]      Inject the JWT constructor (tests).
+ * @param {{info:Function,warn:Function,error:Function}} [options.logger]  Surfaces
+ *        warnings for shortcuts whose target can't be read (else silent/noop).
  * @returns {{ listFiles: (folderId: string) => Promise<Object[]>, downloadFile: (fileId: string) => Promise<Buffer> }}
  */
 export function createGoogleDriveClient(config = {}, options = {}) {
@@ -140,6 +147,7 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       'No fetch implementation available. Use Node 20+ (global fetch) or inject options.fetch.',
     );
   }
+  const logger = options.logger ?? noopLogger;
 
   const auth = createAuthProvider({ config, options });
 
@@ -199,13 +207,19 @@ export function createGoogleDriveClient(config = {}, options = {}) {
   // song folder the shortcut lives in. If the target can't be read or is itself a
   // pointer, fall back to the shortcut entry (the classifier ignores it).
   async function resolveFileShortcut(shortcut, song) {
+    const targetId = shortcut.shortcutDetails.targetId;
     let meta = null;
     try {
-      meta = await getFileMeta(shortcut.shortcutDetails.targetId);
+      meta = await getFileMeta(targetId);
     } catch {
       meta = null;
     }
     if (!meta || !meta.id || meta.mimeType === SHORTCUT_MIME || meta.shortcutDetails) {
+      logger.warn(
+        `Shortcut "${shortcut.name}"${song ? ` in "${song}"` : ''} points at a file the sync ` +
+          `can't read (target ${targetId}); skipping it. Share the target with the service ` +
+          `account, or place the file directly in a source folder.`,
+      );
       return song ? { ...shortcut, folderName: song } : shortcut;
     }
     return song ? { ...meta, folderName: song } : meta;
@@ -218,19 +232,33 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       const seen = new Set(); // guard against the same folder being reached twice
       // Breadth-first walk. `song` is the top-level folder under the configured
       // root that this folder descends from (null while still at the root).
-      const queue = [{ id: folderId, song: null }];
+      const queue = [{ id: folderId, song: null, viaShortcut: false, label: null }];
       while (queue.length) {
-        const { id, song } = queue.shift();
+        const { id, song, viaShortcut, label } = queue.shift();
         if (seen.has(id)) continue;
         seen.add(id);
-        for (const child of await listChildren(id)) {
+        let children;
+        try {
+          children = await listChildren(id);
+        } catch (err) {
+          // A real source/sub-folder failing is a hard error; but a folder reached
+          // only through a shortcut may be outside the service account's reach —
+          // warn and skip that subtree rather than aborting the whole sync.
+          if (!viaShortcut) throw err;
+          logger.warn(
+            `Shortcut "${label}" points at a folder the sync can't read (target ${id}); ` +
+              `skipping it. Share the folder with the service account. (${err?.message || err})`,
+          );
+          continue;
+        }
+        for (const child of children) {
           const target = child.shortcutDetails;
           if (child.mimeType === FOLDER_MIME) {
             // Descend; the song is fixed at the first folder below the root.
-            queue.push({ id: child.id, song: song ?? child.name });
+            queue.push({ id: child.id, song: song ?? child.name, viaShortcut: false, label: null });
           } else if (target?.targetMimeType === FOLDER_MIME && target.targetId) {
             // Shortcut to a folder: descend into the target as if it lived here.
-            queue.push({ id: target.targetId, song: song ?? child.name });
+            queue.push({ id: target.targetId, song: song ?? child.name, viaShortcut: true, label: child.name });
           } else if (target?.targetId) {
             // Shortcut to a file: stand its target in at this location.
             out.push(await resolveFileShortcut(child, song));

@@ -29,20 +29,28 @@ function fakeAuth(token) {
 // so recursive-walk tests don't depend on fetch call ordering. Single page each.
 // It also answers files.get (no `q` param) by id from an optional `filesById`
 // map, so shortcut-target resolution can be exercised.
-function driveTreeFetch(childrenByFolder, filesById = {}) {
+function driveTreeFetch(childrenByFolder, filesById = {}, forbidden = new Set()) {
   return async (url) => {
     const parsed = new URL(String(url));
     const q = parsed.searchParams.get('q');
     if (!q) {
       // files.get/{id}?fields=... — the last path segment is the (encoded) id.
       const id = decodeURIComponent(parsed.pathname.split('/').pop());
+      if (forbidden.has(id)) return jsonResponse({ error: { message: 'forbidden' } }, 403);
       const meta = filesById[id];
       return meta ? jsonResponse(meta) : jsonResponse({ error: { message: 'not found' } }, 404);
     }
     const m = q.match(/'([^']+)' in parents/);
     const folderId = m ? m[1] : null;
+    if (forbidden.has(folderId)) return jsonResponse({ error: { message: 'forbidden' } }, 403);
     return jsonResponse({ files: childrenByFolder[folderId] || [] });
   };
+}
+
+// A logger that records what it was told, for asserting warnings.
+function captureLogger() {
+  const warns = [];
+  return { warns, info() {}, warn: (m) => warns.push(String(m)), error() {} };
 }
 
 const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
@@ -204,6 +212,52 @@ test('listFiles degrades a shortcut whose target is unreadable to the (ignored) 
   assert.equal(files[0].id, 'sc3'); // still the pointer
   assert.equal(files[0].mimeType, SHORTCUT_MIME); // classifier will ignore it
   assert.equal(files[0].folderName, 'Bad Guy');
+});
+
+test('an unreadable file-shortcut target warns (naming the shortcut) and is skipped', async () => {
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy')],
+    bg: [aFileShortcut('sc4', 'Protected Part.pdf', 'locked-file')],
+  };
+  const logger = captureLogger();
+  const client = createGoogleDriveClient(
+    {},
+    { fetch: driveTreeFetch(tree, {}, new Set(['locked-file'])), authClient: fakeAuth('t'), logger },
+  );
+
+  const files = await client.listFiles('root');
+  assert.equal(files[0].mimeType, SHORTCUT_MIME); // degraded to the pointer (ignored downstream)
+  assert.equal(logger.warns.length, 1);
+  assert.match(logger.warns[0], /Protected Part\.pdf/);
+  assert.match(logger.warns[0], /can't read/);
+});
+
+test('an unreadable folder-shortcut target warns and skips, without aborting the walk', async () => {
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy'), aFolderShortcut('sc5', 'Locked Folder', 'locked-folder')],
+    bg: [aPdf('p1', 'Bad Guy - Trumpet.pdf')],
+    // 'locked-folder' returns 403 when listed.
+  };
+  const logger = captureLogger();
+  const client = createGoogleDriveClient(
+    {},
+    { fetch: driveTreeFetch(tree, {}, new Set(['locked-folder'])), authClient: fakeAuth('t'), logger },
+  );
+
+  const files = await client.listFiles('root');
+  assert.deepEqual(files.map((f) => f.id), ['p1']); // the rest of the walk still completed
+  assert.equal(logger.warns.length, 1);
+  assert.match(logger.warns[0], /Locked Folder/);
+});
+
+test('a real (non-shortcut) folder failing still aborts the walk', async () => {
+  // A genuine error in a configured source/sub-folder must not be swallowed.
+  const tree = { root: [aFolder('bg', 'Bad Guy')] }; // 'bg' itself is forbidden
+  const client = createGoogleDriveClient(
+    {},
+    { fetch: driveTreeFetch(tree, {}, new Set(['bg'])), authClient: fakeAuth('t') },
+  );
+  await assert.rejects(() => client.listFiles('root'), /403/);
 });
 
 test('listFiles leaves files placed directly in the root untagged', async () => {

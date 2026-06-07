@@ -165,6 +165,11 @@ async function main() {
   const overrides = {};
   if (opts.dataDir) overrides.dataDir = opts.dataDir;
 
+  // In --json mode keep stdout clean for the report; route logs to stderr.
+  const logger = opts.json
+    ? { info() {}, warn: (m) => console.error(m), error: (m) => console.error(m) }
+    : { info: (m) => console.log(m), warn: (m) => console.warn(m), error: (m) => console.error(m) };
+
   let driveClient;
   if (opts.fixture) {
     // Synthetic fixture runs must NEVER write into the real data directory.
@@ -193,12 +198,8 @@ async function main() {
       );
       process.exit(2);
     }
-    driveClient = createGoogleDriveClient(config);
+    driveClient = createGoogleDriveClient(config, { logger });
   }
-
-  const logger = opts.json
-    ? { info() {}, warn: (m) => console.error(m), error: (m) => console.error(m) }
-    : { info: (m) => console.log(m), warn: (m) => console.warn(m), error: (m) => console.error(m) };
 
   const report = await runSync({ driveClient, config, dryRun: opts.dryRun, logger });
 
