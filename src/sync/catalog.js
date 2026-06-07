@@ -10,7 +10,7 @@
 // Instrument"). On top of that it groups by song into tunes with parts, scores,
 // audio, and MuseScore sources.
 
-import { slugify } from './slugify.js';
+import { slugify, slugifyStem } from './slugify.js';
 import { DEFAULT_KEY_BY_SLUG } from './instruments.js';
 
 /** True for a manifest entry that still represents a present, downloaded asset. */
@@ -70,6 +70,23 @@ export function descriptorOf(entry) {
 export function assetMatchKey(entry) {
   const songSlug = songSlugOf(entry);
   return entry.instrumentSlug ? `${songSlug}-${descriptorOf(entry)}` : `${songSlug}-${entry.assetType || 'file'}`;
+}
+
+/**
+ * Every identifier a CLI prefix may match for an asset: the song/instrument (or
+ * song/type) key from {@link assetMatchKey}, plus the file's own name with and
+ * without its extension. This lets instrument-less files — especially loose
+ * "misc" items like a logo image — be opened by name (e.g. "mutiny-bay-logo"),
+ * not only by the coarse "<song>-<type>" key (e.g. "misc-image").
+ */
+export function matchIdentifiers(entry) {
+  const ids = new Set([assetMatchKey(entry)]);
+  const name = entry.originalName || '';
+  const stem = slugifyStem(name); // filename without extension
+  const full = slugify(name); // filename including extension
+  if (stem) ids.add(stem);
+  if (full) ids.add(full);
+  return [...ids].filter(Boolean);
 }
 
 /**

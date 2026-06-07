@@ -20,7 +20,7 @@ import {
   liveAssets,
   songSlugOf,
   descriptorOf,
-  assetMatchKey,
+  matchIdentifiers,
   sourcePriority,
   canonicalByContent,
 } from '../src/sync/catalog.js';
@@ -28,8 +28,9 @@ import {
 const OPEN_CONFIRM_THRESHOLD = 25;
 
 // Asset types `open` can launch, and the file extension to give the temp copy
-// so the OS picks the right app (a PDF viewer, an audio player, MuseScore).
-const EXT_BY_TYPE = { pdf: '.pdf', mp3: '.mp3', musescore: '.mscz' };
+// so the OS picks the right app (PDF viewer, audio player, MuseScore, image
+// viewer, Word, archive tool).
+const EXT_BY_TYPE = { pdf: '.pdf', mp3: '.mp3', musescore: '.mscz', image: '.jpg', doc: '.docx', archive: '.zip' };
 
 const HELP = `mbbb-library — inspect and open the synced music library
 
@@ -45,15 +46,18 @@ USAGE
 SUBCOMMANDS
   list                For each song (shown as a slug), an indented list of the
                       instrument-key-part of every live asset.
-  open <prefix>       Open every asset (PDF, MP3, MuseScore) whose identifier
-                      starts with <prefix> in the OS default app. The identifier
-                      is "<song>-<instrument>-<key>-<part>" for parts, or
+  open <prefix>       Open every asset (PDF, MP3, MuseScore, image, doc, zip)
+                      whose identifier OR filename starts with <prefix>, in the
+                      OS default app. The identifier is
+                      "<song>-<instrument>-<key>-<part>" for parts, or
                       "<song>-<type>" for instrument-less files. So the prefix
                       can target a whole song (\`uptown-funk\`), a media type
-                      (\`unholy-musescore\`), or a single part
-                      (\`uptown-funk-trumpet-bflat\`). Opening MuseScore files
-                      needs the MuseScore app installed and associated with
-                      .mscz.
+                      (\`unholy-musescore\`), a single part
+                      (\`uptown-funk-trumpet-bflat\`), or a file by name
+                      (\`mutiny-bay-logo\`). Loose files not in a song folder are
+                      grouped under \`misc\` (e.g. \`misc-image\`). Opening
+                      MuseScore files needs the MuseScore app installed and
+                      associated with .mscz.
 
 OPTIONS
   --data-dir <path>   Data directory holding manifest.json + cas/ (default:
@@ -213,7 +217,9 @@ function runOpen(manifest, casDir, prefix, pri, opts) {
   for (const entry of canonical.values()) {
     if (!EXT_BY_TYPE[entry.assetType]) continue;
     if (!entry.sha256) continue;
-    if (!assetMatchKey(entry).startsWith(wanted)) continue;
+    // Match the prefix against the song/type key OR the file's own name, so a
+    // loose image like "mutiny-bay-logo.jpg" opens by name as well as "misc-image".
+    if (!matchIdentifiers(entry).some((id) => id.startsWith(wanted))) continue;
     matches.push(entry);
   }
 

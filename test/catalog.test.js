@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf } from '../src/sync/catalog.js';
+import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers } from '../src/sync/catalog.js';
 
 // A small synthetic manifest exercising dedup, source priority, and bucketing.
 const MANIFEST = {
@@ -92,6 +92,22 @@ test('partDownloadName builds a standardized filename', () => {
     'mbbb-iron-man-alto-sax-eflat-part2.pdf',
   );
   assert.equal(descriptorOf(MANIFEST.files.g), 'alto-sax-eflat-2');
+});
+
+test('matchIdentifiers lets an asset be opened by its song/type key or by filename', () => {
+  // A loose logo image in the Misc bucket — the case `open mutiny-bay-logo.jpg`
+  // must work, not only the coarse `misc-image` key.
+  const logo = { assetType: 'image', songTitle: 'Misc', songTitleSlug: 'misc', originalName: 'mutiny-bay-logo.jpg' };
+  const ids = matchIdentifiers(logo);
+  assert.ok(ids.includes('misc-image'), 'song/type key');
+  assert.ok(ids.includes('mutiny-bay-logo'), 'filename stem (no extension)');
+  assert.ok(ids.includes('mutiny-bay-logo-jpg'), 'full filename slug');
+  // The user-typed `mutiny-bay-logo.jpg` slugifies to a value covered above.
+  assert.ok(ids.some((id) => id.startsWith('mutiny-bay-logo')));
+
+  // Instrument parts still expose their descriptor key.
+  const part = { assetType: 'pdf', songTitleSlug: 'iron-man', instrumentSlug: 'trumpet', key: 'bflat', originalName: 'Iron Man - Trumpet.pdf' };
+  assert.ok(matchIdentifiers(part).includes('iron-man-trumpet-bflat'));
 });
 
 test('images bucket inline, other files (docx/zip) bucket as downloads, song-less files go to Misc', () => {
