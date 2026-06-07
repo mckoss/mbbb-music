@@ -2,9 +2,10 @@
 // ignored. Phase 1 downloads real asset bytes: score PDFs, MP3 audio, and
 // MuseScore files. Native Google editor files (Docs/Sheets/Slides/Drawings)
 // have no binary form, but Drive can export them to PDF — so they are accepted
-// as `pdf` assets and fetched via export rather than ignored. Google Drive
-// shortcuts, folders, and other native/unsupported types are ignored (recorded,
-// never fetched).
+// as `pdf` assets and fetched via export rather than ignored. Folders and other
+// native/unsupported types are ignored (recorded, never fetched). The Drive
+// client resolves shortcuts to their targets before classification, so a
+// shortcut reaching here is one whose target was unreadable — also ignored.
 
 /** Drive mime type for shortcut entries (pointers, not real bytes). */
 const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';

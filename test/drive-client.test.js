@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createGoogleDriveClient } from '../src/sync/drive-client.js';
+import { createGoogleDriveClient, createFixtureDriveClient } from '../src/sync/drive-client.js';
 
 // A tiny fetch double that records requests and replays scripted responses.
 function makeFetch(handlers) {
@@ -27,14 +27,37 @@ function fakeAuth(token) {
 
 // A fetch double that answers files.list by parent folder id from a folder tree,
 // so recursive-walk tests don't depend on fetch call ordering. Single page each.
-function driveTreeFetch(childrenByFolder) {
+// It also answers files.get (no `q` param) by id from an optional `filesById`
+// map, so shortcut-target resolution can be exercised.
+function driveTreeFetch(childrenByFolder, filesById = {}) {
   return async (url) => {
-    const q = new URL(String(url)).searchParams.get('q') || '';
+    const parsed = new URL(String(url));
+    const q = parsed.searchParams.get('q');
+    if (!q) {
+      // files.get/{id}?fields=... — the last path segment is the (encoded) id.
+      const id = decodeURIComponent(parsed.pathname.split('/').pop());
+      const meta = filesById[id];
+      return meta ? jsonResponse(meta) : jsonResponse({ error: { message: 'not found' } }, 404);
+    }
     const m = q.match(/'([^']+)' in parents/);
     const folderId = m ? m[1] : null;
     return jsonResponse({ files: childrenByFolder[folderId] || [] });
   };
 }
+
+const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
+const aFolderShortcut = (id, name, targetId) => ({
+  id,
+  name,
+  mimeType: SHORTCUT_MIME,
+  shortcutDetails: { targetId, targetMimeType: FOLDER_MIME },
+});
+const aFileShortcut = (id, name, targetId, targetMimeType = 'application/pdf') => ({
+  id,
+  name,
+  mimeType: SHORTCUT_MIME,
+  shortcutDetails: { targetId, targetMimeType },
+});
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 const aFolder = (id, name) => ({ id, name, mimeType: FOLDER_MIME });
@@ -121,6 +144,68 @@ test('listFiles recurses into subfolders and tags assets with their top-level so
   assert.deepEqual(byId, { p1: 'Bad Guy', p2: 'Bad Guy', m1: 'Bad Guy', m2: 'Track Suit' });
 });
 
+test('listFiles descends into a shortcut-to-folder, attributing its subtree to a song', async () => {
+  // A song folder reached only via a shortcut placed at the root.
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy'), aFolderShortcut('sc1', 'Encore', 'encore-real')],
+    bg: [aPdf('p1', 'Bad Guy - Trumpet.pdf')],
+    'encore-real': [aPdf('p9', 'Encore - Tuba.pdf')],
+  };
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
+
+  const files = await client.listFiles('root');
+  const byId = Object.fromEntries(files.map((f) => [f.id, f.folderName]));
+  // The shortcut's own name becomes the song for everything behind it.
+  assert.deepEqual(byId, { p1: 'Bad Guy', p9: 'Encore' });
+  assert.ok(!files.some((f) => f.mimeType === SHORTCUT_MIME)); // shortcut never emitted as a file
+});
+
+test('listFiles resolves a shortcut-to-file, standing the target in at the shortcut location', async () => {
+  // A trumpet PDF that physically lives elsewhere, dropped into the song folder
+  // as a shortcut. Its real metadata (id, checksum, mime) must stand in.
+  const target = {
+    id: 'real-tpt',
+    name: 'Bad Guy - Trumpet.pdf',
+    mimeType: 'application/pdf',
+    sha256Checksum: 'deadbeef',
+    size: '123',
+    modifiedTime: '2026-01-02T10:00:00.000Z',
+    version: '4',
+  };
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy')],
+    bg: [aFileShortcut('sc2', 'Trumpet (shortcut).pdf', 'real-tpt')],
+  };
+  const client = createGoogleDriveClient(
+    {},
+    { fetch: driveTreeFetch(tree, { 'real-tpt': target }), authClient: fakeAuth('t') },
+  );
+
+  const files = await client.listFiles('root');
+  assert.equal(files.length, 1);
+  const f = files[0];
+  assert.equal(f.id, 'real-tpt'); // downloads/keys by the target, not the pointer
+  assert.equal(f.sha256Checksum, 'deadbeef'); // cheap change-detection preserved
+  assert.equal(f.mimeType, 'application/pdf');
+  assert.equal(f.folderName, 'Bad Guy'); // attributed to the song the shortcut sits in
+  assert.equal(f.shortcutDetails, undefined); // resolved away
+});
+
+test('listFiles degrades a shortcut whose target is unreadable to the (ignored) pointer', async () => {
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy')],
+    bg: [aFileShortcut('sc3', 'Dangling.pdf', 'missing-target')],
+  };
+  // No entry for 'missing-target' → files.get answers 404.
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
+
+  const files = await client.listFiles('root');
+  assert.equal(files.length, 1);
+  assert.equal(files[0].id, 'sc3'); // still the pointer
+  assert.equal(files[0].mimeType, SHORTCUT_MIME); // classifier will ignore it
+  assert.equal(files[0].folderName, 'Bad Guy');
+});
+
 test('listFiles leaves files placed directly in the root untagged', async () => {
   const tree = { root: [aPdf('r1', 'loose.pdf')] };
   const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
@@ -128,6 +213,44 @@ test('listFiles leaves files placed directly in the root untagged', async () => 
   const files = await client.listFiles('root');
   assert.equal(files.length, 1);
   assert.equal(files[0].folderName, undefined); // sync falls back to the source label
+});
+
+test('fixture client resolves an in-fixture shortcut and ignores an external one', async () => {
+  const client = createFixtureDriveClient({
+    files: [
+      { id: 'real', name: 'Song - Trumpet.pdf', mimeType: 'application/pdf', folderId: 'lib', folderName: 'Real Home', content: 'PDF' },
+      {
+        id: 'sc-in',
+        name: 'Trumpet (shortcut).pdf',
+        mimeType: SHORTCUT_MIME,
+        folderId: 'lib',
+        folderName: 'Song',
+        shortcutDetails: { targetId: 'real', targetMimeType: 'application/pdf' },
+      },
+      {
+        id: 'sc-ext',
+        name: 'External.pdf',
+        mimeType: SHORTCUT_MIME,
+        folderId: 'lib',
+        folderName: 'Song',
+        shortcutDetails: { targetId: 'not-in-fixture', targetMimeType: 'application/pdf' },
+      },
+    ],
+  });
+
+  const files = await client.listFiles('lib');
+  const byId = Object.fromEntries(files.map((f) => [f.id, f]));
+  // The in-fixture shortcut resolved to its target, re-attributed to 'Song'.
+  assert.ok(byId.real, 'target stands in for the shortcut');
+  assert.equal(files.filter((f) => f.id === 'real').length, 2); // real entry + resolved shortcut
+  const resolved = files.find((f) => f.id === 'real' && f.folderName === 'Song');
+  assert.ok(resolved, 'resolved shortcut carries the shortcut’s folder placement');
+  assert.equal(resolved.mimeType, 'application/pdf');
+  // The external shortcut (no in-fixture target) is left as a pointer to ignore.
+  assert.ok(byId['sc-ext']);
+  assert.equal(byId['sc-ext'].mimeType, SHORTCUT_MIME);
+  // Downloading the resolved target works (bytes come from the real file).
+  assert.equal((await client.downloadFile('real')).toString(), 'PDF');
 });
 
 test('downloadFile requests alt=media and returns a Buffer', async () => {

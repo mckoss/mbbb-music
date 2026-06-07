@@ -48,13 +48,25 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
     byId.set(f.id, { ...rest, sha256Checksum, size });
   }
 
+  // Resolve a shortcut-to-file to its in-fixture target, standing it in at the
+  // shortcut's folder placement (mirrors the real client). A shortcut whose
+  // target is absent from the fixture (an "external" pointer) is left as-is, so
+  // the classifier ignores it.
+  function resolveFixtureFile(file) {
+    const sc = file.shortcutDetails;
+    if (!sc?.targetId) return { ...file };
+    const target = byId.get(sc.targetId);
+    if (!target || target.mimeType === SHORTCUT_MIME || target.shortcutDetails) return { ...file };
+    return file.folderName != null ? { ...target, folderName: file.folderName } : { ...target };
+  }
+
   return {
     async listFiles(folderId) {
       const out = [];
       for (const file of byId.values()) {
         const parents = file.parents || [];
         if (file.folderId === folderId || parents.includes(folderId)) {
-          out.push({ ...file });
+          out.push(resolveFixtureFile(file));
         }
       }
       return out;
@@ -77,9 +89,12 @@ const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
 // Drive mime type for folders — the recursive walk descends into these.
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
+// Drive mime type for shortcut entries (pointers to a real file/folder).
+const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 
-// Fields the manifest/classifier need. files.list returns these per child; a
-// shortcut's shortcutDetails lets the classifier ignore pointer entries.
+// Fields the manifest/classifier need. files.list returns these per child;
+// `shortcutDetails` carries the target's id/mimeType so the walk can resolve a
+// shortcut to the file (or folder) it points at.
 const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,parents,shortcutDetails';
 
 /**
@@ -91,6 +106,15 @@ const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,p
  * descends into every subfolder and tags each asset with its **top-level folder
  * under the configured root** (the song folder) as `folderName`, which the sync
  * uses to group assets by song. Folders are traversed, never returned as files.
+ *
+ * Shortcuts are followed so a member can drop a needed file into a song folder as
+ * a Drive shortcut: a shortcut-to-folder is descended into like a real folder,
+ * and a shortcut-to-file is resolved (via files.get) to stand its target in at
+ * the shortcut's location — same id/checksum/bytes as the real file, attributed
+ * to the song folder the shortcut sits in. A shortcut whose target can't be read
+ * (deleted/inaccessible) degrades to the pointer entry, which the classifier
+ * ignores. (Targets are assumed reachable with the same credentials; resource
+ * keys for link-shared targets are not currently supplied.)
  *
  * Authentication is by Google **service account** only. The `google` block of
  * config.json (or MBBB_CONFIG_JSON) embeds the service-account key inline as
@@ -160,6 +184,33 @@ export function createGoogleDriveClient(config = {}, options = {}) {
     return files;
   }
 
+  // Fetch one file's metadata by id — used to resolve a shortcut to its target.
+  async function getFileMeta(fileId) {
+    const params = new URLSearchParams({
+      fields: FILE_FIELDS,
+      supportsAllDrives: 'true',
+    });
+    const res = await driveRequest(`${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params.toString()}`);
+    return res.json();
+  }
+
+  // Resolve a shortcut-to-file to a DriveFile standing in for its target at the
+  // shortcut's location: the target's id/mime/checksum/bytes, but tagged with the
+  // song folder the shortcut lives in. If the target can't be read or is itself a
+  // pointer, fall back to the shortcut entry (the classifier ignores it).
+  async function resolveFileShortcut(shortcut, song) {
+    let meta = null;
+    try {
+      meta = await getFileMeta(shortcut.shortcutDetails.targetId);
+    } catch {
+      meta = null;
+    }
+    if (!meta || !meta.id || meta.mimeType === SHORTCUT_MIME || meta.shortcutDetails) {
+      return song ? { ...shortcut, folderName: song } : shortcut;
+    }
+    return song ? { ...meta, folderName: song } : meta;
+  }
+
   return {
     async listFiles(folderId) {
       if (!folderId) throw new Error('listFiles(folderId) requires a Drive folder id');
@@ -173,11 +224,18 @@ export function createGoogleDriveClient(config = {}, options = {}) {
         if (seen.has(id)) continue;
         seen.add(id);
         for (const child of await listChildren(id)) {
+          const target = child.shortcutDetails;
           if (child.mimeType === FOLDER_MIME) {
             // Descend; the song is fixed at the first folder below the root.
             queue.push({ id: child.id, song: song ?? child.name });
+          } else if (target?.targetMimeType === FOLDER_MIME && target.targetId) {
+            // Shortcut to a folder: descend into the target as if it lived here.
+            queue.push({ id: target.targetId, song: song ?? child.name });
+          } else if (target?.targetId) {
+            // Shortcut to a file: stand its target in at this location.
+            out.push(await resolveFileShortcut(child, song));
           } else {
-            // Asset/leaf (incl. shortcuts/Docs the classifier later ignores).
+            // Asset/leaf (Docs the classifier exports, others it ignores).
             // Tag it with its song folder so the sync groups it correctly.
             out.push(song ? { ...child, folderName: song } : child);
           }
