@@ -61,7 +61,9 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
   }
 
   return {
-    async listFiles(folderId) {
+    // The fixture is a flat model (no real folder recursion), so it has nothing
+    // to re-scan; it accepts `options` only to match the real client's signature.
+    async listFiles(folderId, _options = {}) {
       const out = [];
       for (const file of byId.values()) {
         const parents = file.parents || [];
@@ -138,7 +140,7 @@ const FILE_FIELDS = 'id,name,mimeType,modifiedTime,sha256Checksum,size,version,p
  * @param {typeof JWT} [options.JWT]      Inject the JWT constructor (tests).
  * @param {{info:Function,warn:Function,error:Function}} [options.logger]  Surfaces
  *        warnings for shortcuts whose target can't be read (else silent/noop).
- * @returns {{ listFiles: (folderId: string) => Promise<Object[]>, downloadFile: (fileId: string) => Promise<Buffer> }}
+ * @returns {{ listFiles: (folderId: string, options?: { visited?: Set<string> }) => Promise<Object[]>, downloadFile: (fileId: string) => Promise<Buffer> }}
  */
 export function createGoogleDriveClient(config = {}, options = {}) {
   const fetchImpl = options.fetch ?? globalThis.fetch;
@@ -226,10 +228,15 @@ export function createGoogleDriveClient(config = {}, options = {}) {
   }
 
   return {
-    async listFiles(folderId) {
+    async listFiles(folderId, options = {}) {
       if (!folderId) throw new Error('listFiles(folderId) requires a Drive folder id');
       const out = [];
-      const seen = new Set(); // guard against the same folder being reached twice
+      // Set of folder ids already walked. A caller (the sync) can pass a shared
+      // set so this set spans every source in a run — then a folder reached again
+      // through a shortcut from another source (e.g. an index folder that links to
+      // the real song folders) is listed only once, not re-scanned per source.
+      // Without one it falls back to a per-call set (still guards cycles).
+      const seen = options.visited ?? new Set();
       // Breadth-first walk. `song` is the top-level folder under the configured
       // root that this folder descends from (null while still at the root).
       const queue = [{ id: folderId, song: null, viaShortcut: false, label: null }];

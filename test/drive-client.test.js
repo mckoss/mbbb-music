@@ -260,6 +260,43 @@ test('a real (non-shortcut) folder failing still aborts the walk', async () => {
   await assert.rejects(() => client.listFiles('root'), /403/);
 });
 
+test('a shared visited set stops a folder being re-scanned across sources', async () => {
+  // Source A is a real song folder; source C is an index that shortcuts to A and
+  // also has its own file. Walking A then C with one shared set must not re-walk A.
+  const tree = {
+    A: [aFolder('bg', 'Bad Guy')],
+    bg: [aPdf('a1', 'Bad Guy - Trumpet.pdf')],
+    C: [aFolderShortcut('sc', 'Bad Guy (link)', 'bg'), aPdf('c1', 'Honk - Tuba.pdf')],
+  };
+  let listCalls = 0;
+  const fetch = (url) => {
+    const q = new URL(String(url)).searchParams.get('q');
+    if (q && /'bg' in parents/.test(q)) listCalls += 1; // count times 'bg' is listed
+    return driveTreeFetch(tree)(url);
+  };
+  const client = createGoogleDriveClient({}, { fetch, authClient: fakeAuth('t') });
+
+  const visited = new Set();
+  const a = await client.listFiles('A', { visited });
+  const c = await client.listFiles('C', { visited });
+
+  assert.deepEqual(a.map((f) => f.id), ['a1']);
+  assert.deepEqual(c.map((f) => f.id), ['c1']); // A's file is NOT re-emitted via the shortcut
+  assert.equal(listCalls, 1); // 'bg' was listed exactly once across both walks
+});
+
+test('without a shared set, each call re-scans (per-call guard only)', async () => {
+  // Contrast: separate calls each carry their own guard, so the shortcut re-walks.
+  const tree = {
+    A: [aFolder('bg', 'Bad Guy')],
+    bg: [aPdf('a1', 'Bad Guy - Trumpet.pdf')],
+    C: [aFolderShortcut('sc', 'Bad Guy (link)', 'bg'), aPdf('c1', 'Honk - Tuba.pdf')],
+  };
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });
+  const c = await client.listFiles('C'); // no shared set
+  assert.deepEqual(c.map((f) => f.id).sort(), ['a1', 'c1']); // re-walked A via the shortcut
+});
+
 test('listFiles leaves files placed directly in the root untagged', async () => {
   const tree = { root: [aPdf('r1', 'loose.pdf')] };
   const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree), authClient: fakeAuth('t') });

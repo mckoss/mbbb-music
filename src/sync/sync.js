@@ -41,16 +41,29 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   const manifest = await loadManifest(config.manifestPath);
   const casDir = resolve(config.dataDir, 'cas');
 
-  // 1. List + classify across all configured source folders.
+  // 1. List + classify across all configured source folders. One shared
+  // visited-folder set spans every source, so a folder reached again through a
+  // shortcut from a later source (e.g. an index folder linking to the real song
+  // folders) is walked only once for the whole run, not re-scanned per source.
   const current = [];
   const warnings = [];
+  const visited = new Set();
   for (const source of config.sources) {
     logger.info(`Listing Drive folder: ${source.label} (${source.id})`);
-    const files = await driveClient.listFiles(source.id);
+    // If this source's own root was already walked via a higher-priority source
+    // (an index/shortcut that linked here), its 0-file result is expected dedup,
+    // not an access problem — don't mistake it for an unshared folder below.
+    const rootAlreadyCovered = visited.has(source.id);
+    const files = await driveClient.listFiles(source.id, { visited });
     // Drive returns an *empty* listing — not an error — for a parent the caller
     // can't see, so an unshared/mistyped source folder otherwise syncs nothing
     // silently. Surface it loudly with an actionable fix.
-    if (files.length === 0) {
+    if (files.length === 0 && rootAlreadyCovered) {
+      logger.info(
+        `Source folder "${source.label}" (${source.id}) was already covered by a ` +
+          `higher-priority source (reached via a shortcut); nothing new to add.`,
+      );
+    } else if (files.length === 0) {
       const sa = config.google?.serviceAccount?.client_email;
       const message =
         `Source folder "${source.label}" (${source.id}) returned no files. Drive returns an ` +

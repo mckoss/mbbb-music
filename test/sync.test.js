@@ -322,6 +322,44 @@ test('a file reachable from two sources is attributed to the higher-priority (ea
   });
 });
 
+test('sync shares one visited set across sources; a folder covered earlier is not warned as unshared', async () => {
+  await withTempDir(async (dataDir) => {
+    const received = [];
+    // Fake client: the primary source "A" walks and (via a shortcut) also reaches
+    // the index source "C"'s root, marking it visited. C then lists nothing new.
+    const client = {
+      listFiles: async (id, opts = {}) => {
+        received.push(opts.visited);
+        if (id === 'A') {
+          opts.visited?.add('C'); // A's walk already covered C's root folder
+          return [{ id: 'a1', name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf', folderName: 'Bad Guy' }];
+        }
+        return []; // C: real client would see its root already visited -> empty
+      },
+      downloadFile: async () => Buffer.from('SYNTHETIC'),
+    };
+    const warns = [];
+    const infos = [];
+    const logger = { info: (m) => infos.push(String(m)), warn: (m) => warns.push(String(m)), error() {} };
+
+    const config = {
+      dataDir,
+      manifestPath: resolve(dataDir, 'manifest.json'),
+      sources: [{ id: 'A', label: 'primary' }, { id: 'C', label: 'index' }],
+    };
+    const report = await runSync({ driveClient: client, config, now: FIXED_NOW, logger });
+
+    // The SAME visited Set instance reaches every source listing.
+    assert.equal(received.length, 2);
+    assert.ok(received[0] instanceof Set);
+    assert.strictEqual(received[0], received[1]);
+    // C produced nothing because it was already covered — info, not a warning.
+    assert.equal(report.summary.warnings, 0);
+    assert.equal(warns.length, 0);
+    assert.ok(infos.some((m) => /already covered by a/.test(m)), 'logs the already-covered note');
+  });
+});
+
 test('dry-run plans without fetching blobs or writing the manifest', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);
