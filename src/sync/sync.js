@@ -21,6 +21,9 @@ import { loadManifest, saveManifest, diffManifest, findDuplicates } from './mani
 
 const noopLogger = { info() {}, warn() {}, error() {} };
 
+// Song bucket for assets not inside a song folder (e.g. files at a source root).
+const MISC_SONG = 'Misc';
+
 /**
  * Run an incremental, content-addressable Drive asset sync.
  *
@@ -133,7 +136,10 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
 
     // new | changed | unchanged asset.
     const { file, classification } = entry;
-    const songTitle = file.folderName || file.sourceFolderLabel || 'unknown';
+    // A file inside a song folder is attributed to that song; one sitting at a
+    // source root (no song folder) isn't tied to a song, so it lands in a shared
+    // "Misc" bucket rather than being mislabeled with the source name.
+    const songTitle = file.folderName || MISC_SONG;
     const meta = detectAssetMetadata({ originalName: file.name, songTitle });
 
     // Prefer the hash Drive reports. Drive omits sha256Checksum for some files

@@ -85,7 +85,7 @@ export const FIXTURE_FILES = [
     content: 'SYNTHETIC-PDF: bad guy arranging notes (exported from Google Doc)',
   },
   {
-    // Unsupported asset type — must be ignored.
+    // Image — embeddable in the web view, attributed to its song.
     id: 'bg-cover',
     name: 'cover-art.jpg',
     mimeType: 'image/jpeg',
@@ -93,6 +93,16 @@ export const FIXTURE_FILES = [
     folderId: 'demo-library',
     folderName: 'Bad Guy',
     content: 'SYNTHETIC-JPG',
+  },
+  {
+    // Uploaded Word doc — download-only, shown under the song's files.
+    id: 'bg-notes-docx',
+    name: 'Bad Guy - Arranger Notes.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    modifiedTime: '2026-01-02T10:00:00.000Z',
+    folderId: 'demo-library',
+    folderName: 'Bad Guy',
+    content: 'SYNTHETIC-DOCX',
   },
 
   // --- Track Suit folder ---
@@ -125,5 +135,17 @@ export const FIXTURE_FILES = [
     folderId: 'demo-library',
     folderName: 'Track Suit',
     content: 'SYNTHETIC-MP3: track suit audio',
+  },
+
+  // --- Loose files at the source root (no song folder) -> Misc bucket ---
+  {
+    // A zip not tied to any song; downloadable, filed under "Misc".
+    id: 'misc-zip',
+    name: 'Stage Plot.zip',
+    mimeType: 'application/zip',
+    modifiedTime: '2026-01-04T10:00:00.000Z',
+    folderId: 'demo-library',
+    // No folderName: it sits at the source root, so it is not a song asset.
+    content: 'SYNTHETIC-ZIP',
   },
 ];

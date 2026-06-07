@@ -2,8 +2,11 @@
 // ignored. Phase 1 downloads real asset bytes: score PDFs, MP3 audio, and
 // MuseScore files. Native Google editor files (Docs/Sheets/Slides/Drawings)
 // have no binary form, but Drive can export them to PDF — so they are accepted
-// as `pdf` assets and fetched via export rather than ignored. Folders and other
-// native/unsupported types are ignored (recorded, never fetched). The Drive
+// as `pdf` assets and fetched via export rather than ignored. Images (JPEG) are
+// accepted as `image` (embeddable in the web view); uploaded Office documents
+// (.docx) as `doc` and zip archives as `archive` — both download-only, since
+// Drive can only export *native* Google files, not uploaded binaries. Folders
+// and other unsupported types are ignored (recorded, never fetched). The Drive
 // client resolves shortcuts to their targets before classification, so a
 // shortcut reaching here is one whose target was unreadable — also ignored.
 
@@ -48,6 +51,19 @@ const ASSET_KINDS = [
     mimes: ['application/x-musescore', 'application/vnd.musescore'],
     exts: ['mscz', 'mscx'],
   },
+  // Images embed directly in the web view (cover art, photos of charts, …).
+  { type: 'image', ext: 'jpg', mimes: ['image/jpeg'], exts: ['jpg', 'jpeg'] },
+  // Uploaded Word documents — NOT native Google Docs (those export to PDF in
+  // NATIVE_PDF_EXPORT above). Drive cannot export an uploaded .docx, so it is
+  // served for download rather than rendered.
+  {
+    type: 'doc',
+    ext: 'docx',
+    mimes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    exts: ['docx'],
+  },
+  // Zip archives — download-only.
+  { type: 'archive', ext: 'zip', mimes: ['application/zip', 'application/x-zip-compressed'], exts: ['zip'] },
 ];
 
 function extensionOf(name) {

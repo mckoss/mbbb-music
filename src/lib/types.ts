@@ -13,6 +13,7 @@ export interface CatalogPart {
 export interface CatalogAsset {
   sha256: string;
   originalName: string | null;
+  assetType?: string;
 }
 
 export interface Tune {
@@ -23,6 +24,8 @@ export interface Tune {
   scores: CatalogAsset[];
   audio: CatalogAsset[];
   musescore: CatalogAsset[];
+  images: CatalogAsset[];
+  files: CatalogAsset[];
 }
 
 export interface Instrument {

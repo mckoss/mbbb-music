@@ -9,7 +9,21 @@ const CONTENT_TYPE: Record<string, string> = {
   pdf: 'application/pdf',
   mp3: 'audio/mpeg',
   musescore: 'application/octet-stream',
+  image: 'image/jpeg',
+  doc: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  archive: 'application/zip',
 };
+
+/**
+ * The Content-Type to serve. For images we trust the Drive-reported mime so a
+ * non-JPEG isn't mislabeled; otherwise the per-asset-type default applies.
+ */
+function contentTypeOf(meta: { assetType: string; mimeType: string | null }): string {
+  if (meta.assetType === 'image' && meta.mimeType && /^image\//.test(meta.mimeType)) {
+    return meta.mimeType;
+  }
+  return CONTENT_TYPE[meta.assetType] ?? 'application/octet-stream';
+}
 
 const SHA_RE = /^[a-f0-9]{64}$/;
 
@@ -36,7 +50,7 @@ export async function GET({ params, request, url }) {
 
   const total = stat.size;
   const headers = new Headers({
-    'content-type': CONTENT_TYPE[meta.assetType] ?? 'application/octet-stream',
+    'content-type': contentTypeOf(meta),
     'accept-ranges': 'bytes',
     'cache-control': 'public, max-age=31536000, immutable',
   });

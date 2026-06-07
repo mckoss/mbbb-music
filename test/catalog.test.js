@@ -93,3 +93,39 @@ test('partDownloadName builds a standardized filename', () => {
   );
   assert.equal(descriptorOf(MANIFEST.files.g), 'alto-sax-eflat-2');
 });
+
+test('images bucket inline, other files (docx/zip) bucket as downloads, song-less files go to Misc', () => {
+  const manifest = {
+    files: {
+      img: {
+        status: 'synced', sha256: 'i1', assetType: 'image',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'primary', originalFolder: 'Bad Guy', originalName: 'cover.jpg',
+      },
+      doc: {
+        status: 'synced', sha256: 'd1', assetType: 'doc',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'primary', originalFolder: 'Bad Guy', originalName: 'Notes.docx',
+      },
+      zip: {
+        status: 'synced', sha256: 'z1', assetType: 'archive',
+        songTitle: 'Misc', songTitleSlug: 'misc',
+        sourceFolderLabel: 'primary', originalName: 'Stage Plot.zip',
+      },
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['primary']);
+
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+  assert.equal(bad.images.length, 1);
+  assert.equal(bad.images[0].originalName, 'cover.jpg');
+  assert.equal(bad.images[0].assetType, 'image');
+  assert.equal(bad.files.length, 1); // the docx
+  assert.equal(bad.files[0].assetType, 'doc');
+
+  const misc = tunes.find((t) => t.slug === 'misc');
+  assert.ok(misc, 'a Misc tune exists for song-less files');
+  assert.equal(misc.files.length, 1);
+  assert.equal(misc.files[0].originalName, 'Stage Plot.zip');
+  assert.equal(misc.files[0].assetType, 'archive');
+});

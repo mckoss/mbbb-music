@@ -151,6 +151,7 @@ function comparePart(a, b) {
  * @typedef {Object} CatalogAsset
  * @property {string} sha256
  * @property {string|null} originalName
+ * @property {string} [assetType]         Present for images/other files, to label/route them.
  *
  * @typedef {Object} Tune
  * @property {string} slug
@@ -160,6 +161,8 @@ function comparePart(a, b) {
  * @property {CatalogAsset[]} scores      Instrument-less PDFs (full scores, notes).
  * @property {CatalogAsset[]} audio       MP3 practice/reference tracks.
  * @property {CatalogAsset[]} musescore   MuseScore source files.
+ * @property {CatalogAsset[]} images      Images (JPEG) embeddable in the view.
+ * @property {CatalogAsset[]} files       Other downloadable files (docx, zip, …).
  */
 
 /**
@@ -179,7 +182,17 @@ export function buildCatalog(manifest, sourceLabels = []) {
   for (const e of canonical.values()) {
     const slug = songSlugOf(e);
     if (!bySong.has(slug)) {
-      bySong.set(slug, { slug, title: e.songTitle || '(unknown)', lastModified: null, parts: [], scores: [], audio: [], musescore: [] });
+      bySong.set(slug, {
+        slug,
+        title: e.songTitle || '(unknown)',
+        lastModified: null,
+        parts: [],
+        scores: [],
+        audio: [],
+        musescore: [],
+        images: [],
+        files: [],
+      });
     }
     const song = bySong.get(slug);
     if (e.modifiedTime && (!song.lastModified || e.modifiedTime > song.lastModified)) {
@@ -200,6 +213,11 @@ export function buildCatalog(manifest, sourceLabels = []) {
       song.audio.push(asset);
     } else if (e.assetType === 'musescore') {
       song.musescore.push(asset);
+    } else if (e.assetType === 'image') {
+      song.images.push({ ...asset, assetType: e.assetType });
+    } else {
+      // Any other accepted type (doc, archive, …) is a generic downloadable file.
+      song.files.push({ ...asset, assetType: e.assetType });
     }
   }
 

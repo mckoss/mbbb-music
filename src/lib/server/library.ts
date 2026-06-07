@@ -12,6 +12,7 @@ import { buildCatalog, liveAssets } from '../../sync/catalog.js';
 export interface AssetMeta {
   assetType: string;
   originalName: string | null;
+  mimeType: string | null;
 }
 
 interface Loaded {
@@ -50,7 +51,7 @@ function load(): Loaded {
   const assets = new Map<string, AssetMeta>();
   for (const e of liveAssets(manifest)) {
     if (e.sha256 && !assets.has(e.sha256)) {
-      assets.set(e.sha256, { assetType: e.assetType, originalName: e.originalName ?? null });
+      assets.set(e.sha256, { assetType: e.assetType, originalName: e.originalName ?? null, mimeType: e.mimeType ?? null });
     }
   }
 

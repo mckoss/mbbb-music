@@ -29,6 +29,14 @@
 
   const audioAsset = $derived(tune.audio[0] ?? null);
   const musescoreAsset = $derived(tune.musescore[0] ?? null);
+  const images = $derived(tune.images ?? []);
+  const files = $derived(tune.files ?? []);
+
+  // Download name for a misc asset: keep the original filename (it carries the
+  // right extension); fall back to a generated name if absent.
+  function fileDlName(a: { originalName: string | null; assetType?: string }): string {
+    return a.originalName ?? `mbbb-${tune.slug}-${a.assetType ?? 'file'}`;
+  }
 
   const modified = $derived(
     tune.lastModified ? new Date(tune.lastModified).toLocaleDateString() : ''
@@ -121,6 +129,32 @@
         src={`/blob/${active.sha}#toolbar=0&view=FitH`}
         style={`aspect-ratio:${aspect};`}
       ></iframe>
+    </div>
+  {/if}
+
+  {#if images.length}
+    <div class="images">
+      {#each images as img (img.sha256)}
+        <figure>
+          <a href={`/blob/${img.sha256}`} target="_blank" rel="noopener">
+            <img src={`/blob/${img.sha256}`} alt={img.originalName ?? 'Image'} loading="lazy" />
+          </a>
+          {#if img.originalName}<figcaption>{img.originalName}</figcaption>{/if}
+        </figure>
+      {/each}
+    </div>
+  {/if}
+
+  {#if files.length}
+    <div class="files">
+      <p class="kicker">Files</p>
+      <div class="downloads">
+        {#each files as f (f.sha256)}
+          <a class="dl" href={`/blob/${f.sha256}?dl=${encodeURIComponent(fileDlName(f))}`} download>
+            {f.originalName ?? f.assetType ?? 'Download'}
+          </a>
+        {/each}
+      </div>
     </div>
   {/if}
 </section>
@@ -221,5 +255,40 @@
 
   .preview.lyre iframe {
     max-width: 520px;
+  }
+
+  .images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .images figure {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 240px;
+  }
+
+  .images img {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .images figcaption {
+    color: var(--muted);
+    font-size: 0.8rem;
+    word-break: break-word;
+  }
+
+  .files {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 </style>

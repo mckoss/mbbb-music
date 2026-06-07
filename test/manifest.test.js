@@ -91,8 +91,8 @@ test('shortcuts and unsupported files are classified ignored, never new', () => 
     mimeType: 'application/vnd.google-apps.shortcut',
     shortcutDetails: { targetId: 'x' },
   };
-  const jpg = { id: 'j1', name: 'cover.jpg', mimeType: 'image/jpeg' };
-  const { counts, entries } = diffManifest(emptyManifest(), [classified(shortcut), classified(jpg)]);
+  const db = { id: 'j1', name: 'index.db', mimeType: 'application/octet-stream' };
+  const { counts, entries } = diffManifest(emptyManifest(), [classified(shortcut), classified(db)]);
   assert.equal(counts.ignored, 2);
   assert.equal(counts.new, undefined);
   assert.ok(entries.every((e) => e.status === 'ignored'));

@@ -58,6 +58,29 @@ test('ignores folders and non-exportable native Google files', () => {
 });
 
 test('ignores unsupported asset types with a descriptive reason', () => {
-  assert.equal(classifyDriveFile({ name: 'cover.jpg', mimeType: 'image/jpeg' }).ignoreReason, 'unsupported-type:jpg');
+  assert.equal(classifyDriveFile({ name: 'data.db', mimeType: 'application/octet-stream' }).ignoreReason, 'unsupported-type:db');
   assert.equal(classifyDriveFile({ name: 'noext', mimeType: 'application/octet-stream' }).ignoreReason, 'unknown-type');
+});
+
+test('accepts images as downloadable/embeddable assets', () => {
+  const jpg = classifyDriveFile({ name: 'cover.jpg', mimeType: 'image/jpeg' });
+  assert.equal(jpg.ignored, false);
+  assert.equal(jpg.assetType, 'image');
+  assert.deepEqual(jpg.download, { mode: 'media' });
+  // Recognized by extension even when Drive gives a generic mime.
+  assert.equal(classifyDriveFile({ name: 'photo.JPEG', mimeType: 'application/octet-stream' }).assetType, 'image');
+});
+
+test('accepts uploaded .docx (download-only) and .zip archives', () => {
+  const docx = classifyDriveFile({
+    name: 'Notes.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+  assert.equal(docx.ignored, false);
+  assert.equal(docx.assetType, 'doc');
+  assert.deepEqual(docx.download, { mode: 'media' }); // downloaded as-is, not exported
+
+  const zip = classifyDriveFile({ name: 'charts.zip', mimeType: 'application/zip' });
+  assert.equal(zip.ignored, false);
+  assert.equal(zip.assetType, 'archive');
 });

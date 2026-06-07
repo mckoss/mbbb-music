@@ -44,10 +44,11 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     const client = createFixtureDriveClient({ files: FIXTURE_FILES });
     const report = await runSync({ driveClient: client, config: makeConfig(dataDir), now: FIXED_NOW });
 
-    // 9 assets (incl. the Google Doc exported to PDF), 2 ignored (shortcut, jpg).
-    assert.equal(report.summary.new, 9);
-    assert.equal(report.summary.downloaded, 9);
-    assert.equal(report.summary.ignored, 2);
+    // 12 assets (incl. the Google Doc exported to PDF, a jpg, a docx, and a
+    // root-level zip), 1 ignored (the unresolvable shortcut).
+    assert.equal(report.summary.new, 12);
+    assert.equal(report.summary.downloaded, 12);
+    assert.equal(report.summary.ignored, 1);
     assert.equal(report.summary.failed, 0);
 
     // Each asset's bytes live at data/cas/<sha256-of-content>.
@@ -55,9 +56,9 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     assert.ok(await exists(resolve(dataDir, 'cas', trumpet)));
     assert.equal(await readFile(resolve(dataDir, 'cas', trumpet), 'utf8'), 'SYNTHETIC-PDF: bad guy trumpet part 1');
 
-    // The store holds exactly the 9 unique asset blobs (no nested dirs).
+    // The store holds exactly the 12 unique asset blobs (no nested dirs).
     const blobs = await readdir(resolve(dataDir, 'cas'));
-    assert.equal(blobs.length, 9);
+    assert.equal(blobs.length, 12);
 
     // Manifest records provenance, hash, cas path, metadata, and status.
     const manifest = await loadManifest(resolve(dataDir, 'manifest.json'));
@@ -74,6 +75,16 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     assert.ok(!('instrument' in mscz));
     assert.ok(!('key' in mscz));
     assert.ok(!('partNumber' in mscz));
+
+    // New asset types are accepted with their own type and song attribution.
+    assert.equal(manifest.files['bg-cover'].assetType, 'image');
+    assert.equal(manifest.files['bg-cover'].songTitle, 'Bad Guy');
+    assert.equal(manifest.files['bg-notes-docx'].assetType, 'doc');
+    assert.equal(manifest.files['bg-notes-docx'].songTitle, 'Bad Guy');
+    // A loose file with no song folder lands in the Misc bucket.
+    assert.equal(manifest.files['misc-zip'].assetType, 'archive');
+    assert.equal(manifest.files['misc-zip'].songTitle, 'Misc');
+    assert.equal(manifest.files['misc-zip'].songTitleSlug, 'misc');
   });
 });
 
@@ -84,9 +95,9 @@ test('re-running is idempotent: every blob already cached, nothing re-downloaded
     await runSync({ driveClient: client, config, now: FIXED_NOW });
     const second = await runSync({ driveClient: client, config, now: FIXED_NOW });
 
-    assert.equal(second.summary.unchanged, 9);
+    assert.equal(second.summary.unchanged, 12);
     assert.equal(second.summary.downloaded, 0);
-    assert.equal(second.summary.cached, 9);
+    assert.equal(second.summary.cached, 12);
   });
 });
 
@@ -211,7 +222,7 @@ test('a previously built cache skips download entirely (no re-download to rebuil
     const report = await runSync({ driveClient: noDownload, config, now: FIXED_NOW });
 
     assert.equal(report.summary.downloaded, 0);
-    assert.equal(report.summary.cached, 9);
+    assert.equal(report.summary.cached, 12);
     assert.equal(report.summary.failed, 0);
   });
 });
@@ -240,10 +251,10 @@ test('manifest is written first (full metadata) before any blob is fetched', asy
     };
 
     await runSync({ driveClient: client, config, now: FIXED_NOW });
-    // Before the first byte was fetched, the manifest held all 11 entries with
-    // the 9 assets queued as pending.
+    // Before the first byte was fetched, the manifest held all entries with the
+    // 12 assets queued as pending.
     assert.equal(entriesAtFirstDownload, FIXTURE_FILES.length);
-    assert.equal(pendingAtFirstDownload, 9);
+    assert.equal(pendingAtFirstDownload, 12);
 
     // After the run, each downloaded entry carries its hash so a resume skips it.
     const finalManifest = await loadManifest(manifestPath);
@@ -281,7 +292,7 @@ test('a source folder that returns no files is reported as a warning, not silent
     // ...and surfaced live through the logger.
     assert.equal(warns.length, 1);
     // The healthy source still synced as normal.
-    assert.equal(report.summary.new, 9);
+    assert.equal(report.summary.new, 12);
   });
 });
 
@@ -370,9 +381,9 @@ test('dry-run plans without fetching blobs or writing the manifest', async () =>
       now: FIXED_NOW,
     });
     assert.equal(report.dryRun, true);
-    assert.equal(report.summary.new, 9);
+    assert.equal(report.summary.new, 12);
     assert.equal(report.summary.downloaded, 0);
-    assert.equal(report.summary.pending, 9);
+    assert.equal(report.summary.pending, 12);
     assert.ok(!(await exists(resolve(dataDir, 'manifest.json'))));
     assert.ok(!(await exists(resolve(dataDir, 'cas'))));
   });
