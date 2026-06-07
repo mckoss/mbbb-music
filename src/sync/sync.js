@@ -67,8 +67,35 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     }
   }
 
+  // A single Drive file can be reached from more than one source — most commonly
+  // its real home folder plus a shortcut to it from another source. The manifest
+  // is keyed by file id, so without deduping here the file would be processed
+  // once per source and the LAST source walked would silently overwrite its
+  // provenance (sourceFolderLabel/originalFolder). Keep one entry per id,
+  // attributed to the highest-priority source — the earliest in config.sources,
+  // which is the listing order above — so a real folder always wins over a
+  // shortcut from a lower-priority source.
+  const deduped = [];
+  const seenIds = new Set();
+  let crossSourceDuplicates = 0;
+  for (const item of current) {
+    const id = item.file.id;
+    if (seenIds.has(id)) {
+      crossSourceDuplicates += 1;
+      continue;
+    }
+    seenIds.add(id);
+    deduped.push(item);
+  }
+  if (crossSourceDuplicates > 0) {
+    logger.info(
+      `${crossSourceDuplicates} file(s) were reachable from more than one source (e.g. via ` +
+        `shortcuts); each is attributed to its highest-priority source.`,
+    );
+  }
+
   // 2. Diff against the manifest.
-  const { entries, counts } = diffManifest(manifest, current.map(({ file, classification }) => ({ file, classification })));
+  const { entries, counts } = diffManifest(manifest, deduped.map(({ file, classification }) => ({ file, classification })));
 
   const actions = { downloaded: [], cached: [], ignored: [], deleted: [], failed: [] };
 
@@ -189,7 +216,8 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     duplicates,
     warnings,
     summary: {
-      seen: current.length,
+      seen: deduped.length,
+      crossSourceDuplicates,
       new: counts.new || 0,
       changed: counts.changed || 0,
       unchanged: counts.unchanged || 0,

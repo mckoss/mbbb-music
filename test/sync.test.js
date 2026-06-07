@@ -285,6 +285,43 @@ test('a source folder that returns no files is reported as a warning, not silent
   });
 });
 
+test('a file reachable from two sources is attributed to the higher-priority (earlier) source, once', async () => {
+  await withTempDir(async (dataDir) => {
+    // 'shared' lives in the primary source and is also pointed at by a shortcut
+    // from the secondary source (the fixture resolves it to the same target id).
+    const files = [
+      { id: 'shared', name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf', folderId: 'primary', folderName: 'Bad Guy', content: 'SHARED' },
+      {
+        id: 'sc',
+        name: 'Bad Guy - Trumpet (shortcut).pdf',
+        mimeType: 'application/vnd.google-apps.shortcut',
+        folderId: 'replica',
+        folderName: 'Replica Index',
+        shortcutDetails: { targetId: 'shared', targetMimeType: 'application/pdf' },
+      },
+      { id: 'only-replica', name: 'Honk - Tuba.pdf', mimeType: 'application/pdf', folderId: 'replica', folderName: 'HONK', content: 'NEW' },
+    ];
+    const config = {
+      dataDir,
+      manifestPath: resolve(dataDir, 'manifest.json'),
+      sources: [{ id: 'primary', label: 'primary' }, { id: 'replica', label: 'replica' }], // priority order
+    };
+    const report = await runSync({ driveClient: createFixtureDriveClient({ files }), config, now: FIXED_NOW });
+
+    // The shared file is counted once and attributed to the primary source —
+    // the replica shortcut does NOT overwrite its provenance.
+    assert.equal(report.summary.crossSourceDuplicates, 1);
+    assert.equal(report.summary.seen, 2); // shared + only-replica, not 3
+    const m = await loadManifest(resolve(dataDir, 'manifest.json'));
+    assert.equal(m.files['shared'].sourceFolderLabel, 'primary');
+    assert.equal(m.files['shared'].originalFolder, 'Bad Guy');
+    // The replica-only file keeps its replica attribution.
+    assert.equal(m.files['only-replica'].sourceFolderLabel, 'replica');
+    // The shortcut's own id is never a separate asset entry.
+    assert.ok(!m.files['sc']);
+  });
+});
+
 test('dry-run plans without fetching blobs or writing the manifest', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);
