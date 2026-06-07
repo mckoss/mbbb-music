@@ -115,7 +115,8 @@ function printSummary(report, { showAllDups = false } = {}) {
   console.log(
     `  seen=${s.seen} new=${s.new} changed=${s.changed} unchanged=${s.unchanged} ` +
       `deleted=${s.deleted} ignored=${s.ignored} downloaded=${s.downloaded} ` +
-      `cached=${s.cached}${report.dryRun ? ` pending=${s.pending}` : ''} failed=${s.failed}`,
+      `cached=${s.cached}${report.dryRun ? ` pending=${s.pending}` : ''} failed=${s.failed}` +
+      `${s.warnings ? ` warnings=${s.warnings}` : ''}`,
   );
   for (const a of report.actions.downloaded) {
     console.log(`    + cas/${a.sha256.slice(0, 12)}…`);
@@ -126,6 +127,14 @@ function printSummary(report, { showAllDups = false } = {}) {
   if (report.actions.failed.length) {
     for (const a of report.actions.failed) {
       console.log(`    ! FAILED ${a.name || a.id}: ${a.error}`);
+    }
+  }
+
+  const warnings = report.warnings || [];
+  if (warnings.length) {
+    console.log(`\n⚠ ${warnings.length} warning(s):`);
+    for (const w of warnings) {
+      console.log(`  - ${w.message}`);
     }
   }
 

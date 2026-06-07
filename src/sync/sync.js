@@ -43,9 +43,24 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
 
   // 1. List + classify across all configured source folders.
   const current = [];
+  const warnings = [];
   for (const source of config.sources) {
     logger.info(`Listing Drive folder: ${source.label} (${source.id})`);
     const files = await driveClient.listFiles(source.id);
+    // Drive returns an *empty* listing — not an error — for a parent the caller
+    // can't see, so an unshared/mistyped source folder otherwise syncs nothing
+    // silently. Surface it loudly with an actionable fix.
+    if (files.length === 0) {
+      const sa = config.google?.serviceAccount?.client_email;
+      const message =
+        `Source folder "${source.label}" (${source.id}) returned no files. Drive returns an ` +
+        `empty listing — not an error — for a folder the sync can't access, so this almost ` +
+        `always means the folder isn't shared (rather than truly empty). In Drive, open the ` +
+        `folder → Share → General access → "Anyone with the link" (Viewer)` +
+        `${sa ? `, or share it directly with the service account ${sa}` : ''}, then re-sync.`;
+      warnings.push({ source: source.label, sourceId: source.id, reason: 'empty-or-unshared', message });
+      logger.warn(message);
+    }
     for (const file of files) {
       const classification = classifyDriveFile(file);
       current.push({ file: { ...file, sourceFolderId: source.id, sourceFolderLabel: source.label }, classification });
@@ -172,6 +187,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     counts,
     actions,
     duplicates,
+    warnings,
     summary: {
       seen: current.length,
       new: counts.new || 0,
@@ -185,6 +201,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       failed: actions.failed.length,
       duplicateGroups: duplicates.length,
       duplicateFiles: duplicates.reduce((n, g) => n + g.count, 0),
+      warnings: warnings.length,
     },
   };
 }

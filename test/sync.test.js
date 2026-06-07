@@ -252,6 +252,39 @@ test('manifest is written first (full metadata) before any blob is fetched', asy
   });
 });
 
+test('a source folder that returns no files is reported as a warning, not silently skipped', async () => {
+  await withTempDir(async (dataDir) => {
+    const config = {
+      dataDir,
+      manifestPath: resolve(dataDir, 'manifest.json'),
+      // A good source plus one that lists nothing (e.g. unshared / mistyped id).
+      sources: [...FIXTURE_FOLDERS, { id: 'unshared-folder', label: 'mike-koss-replica' }],
+      google: { serviceAccount: { client_email: 'sa@proj.iam.gserviceaccount.com' } },
+    };
+    const warns = [];
+    const logger = { info() {}, warn: (m) => warns.push(String(m)), error() {} };
+    const report = await runSync({
+      driveClient: createFixtureDriveClient({ files: FIXTURE_FILES }),
+      config,
+      now: FIXED_NOW,
+      logger,
+    });
+
+    // Reported in the structured report...
+    assert.equal(report.summary.warnings, 1);
+    assert.equal(report.warnings.length, 1);
+    const w = report.warnings[0];
+    assert.equal(w.source, 'mike-koss-replica');
+    assert.equal(w.reason, 'empty-or-unshared');
+    assert.match(w.message, /Anyone with the link/);
+    assert.match(w.message, /sa@proj\.iam\.gserviceaccount\.com/); // actionable: names the SA
+    // ...and surfaced live through the logger.
+    assert.equal(warns.length, 1);
+    // The healthy source still synced as normal.
+    assert.equal(report.summary.new, 9);
+  });
+});
+
 test('dry-run plans without fetching blobs or writing the manifest', async () => {
   await withTempDir(async (dataDir) => {
     const config = makeConfig(dataDir);
