@@ -16,6 +16,9 @@ const DEFAULT_CONFIG_PATH = resolve(REPO_ROOT, 'config.json');
  * @typedef {Object} SourceFolder
  * @property {string} id     Drive folder id.
  * @property {string} label  Human-readable label (also used as provenance).
+ * @property {boolean} [foldered]  False if this source is NOT organized into
+ *        per-song subfolders (its files are grouped by the song embedded in each
+ *        filename instead). Defaults to true (folder name = song).
  */
 
 /**
@@ -75,7 +78,12 @@ function normalizeSources(sources) {
   if (!Array.isArray(sources)) return [];
   return sources
     .filter((s) => s && s.id)
-    .map((s, i) => ({ id: s.id, label: s.label || `drive-folder-${i + 1}` }));
+    .map((s, i) => ({
+      id: s.id,
+      label: s.label || `drive-folder-${i + 1}`,
+      // Preserve an explicit `foldered: false` (source not organized by song).
+      ...(s.foldered === false ? { foldered: false } : {}),
+    }));
 }
 
 /**

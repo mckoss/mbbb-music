@@ -61,6 +61,7 @@
 
   <nav class="tabs">
     <a href="/" class:active={path === '/'}>Collection</a>
+    <a href="/extras" class:active={path.startsWith('/extras')}>Extra Files</a>
     <a href="/gigs" class:active={path.startsWith('/gigs')}>Gig Packets</a>
   </nav>
 {/if}

@@ -37,6 +37,7 @@ export interface Instrument {
 export interface Catalog {
   tunes: Tune[];
   instruments: Instrument[];
+  extras: CatalogAsset[];
   uniqueCount: number;
   liveCount: number;
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers } from '../src/sync/catalog.js';
+import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong } from '../src/sync/catalog.js';
 
 // A small synthetic manifest exercising dedup, source priority, and bucketing.
 const MANIFEST = {
@@ -71,29 +71,80 @@ test('the index-folder copy is attributed to the real song, not its own entry', 
   assert.ok(!tunes.some((t) => t.slug === '50-indexed-by-instrument'));
 });
 
-test('content that only lives in an index/container folder is surfaced under Misc, never as a title', () => {
+test('index/container files match a known song by filename, else go to Extra Files (never a "Misc" title)', () => {
   const manifest = {
     files: {
-      orphan: {
+      // A real song folder establishes "Bad Guy" as a known song.
+      real: {
+        status: 'synced', sha256: 'b1', assetType: 'pdf',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'primary', originalFolder: 'Bad Guy', originalName: 'Bad Guy - Trumpet.pdf',
+        instrument: 'Trumpet', instrumentSlug: 'trumpet',
+      },
+      // Audio in an index folder, named for a known song -> merges into Bad Guy.
+      indexed: {
         status: 'synced', sha256: 'u1', assetType: 'mp3',
         songTitle: '20 Audio Files (INCOMPLETE)', songTitleSlug: '20-audio-files-incomplete',
         sourceFolderLabel: 'primary', originalFolder: '20 Audio Files (INCOMPLETE)',
-        originalName: 'Bumper to Bumper.mp3',
+        originalName: 'Bad Guy - Practice.mp3',
       },
-      // A real song with a number-leading name must still be a normal title.
-      realSong: {
-        status: 'synced', sha256: 'r1', assetType: 'pdf',
-        songTitle: '30 seconds to freebird', songTitleSlug: '30-seconds-to-freebird',
-        sourceFolderLabel: 'primary', originalFolder: '30 seconds to freebird',
-        originalName: '30 seconds to freebird - Score.pdf',
+      // An index file for an unknown song -> Extra Files.
+      orphan: {
+        status: 'synced', sha256: 'u2', assetType: 'pdf',
+        songTitle: '50 Indexed By Instrument', songTitleSlug: '50-indexed-by-instrument',
+        sourceFolderLabel: 'primary', originalFolder: '50 Indexed By Instrument',
+        originalName: 'Funkytown - Trumpet.pdf',
       },
     },
   };
-  const { tunes } = buildCatalog(manifest, ['primary']);
-  assert.ok(!tunes.some((t) => t.slug.startsWith('20-audio-files')), 'the index folder is not a title');
-  assert.ok(tunes.some((t) => t.slug === '30-seconds-to-freebird'), 'a real number-leading song stays a title');
-  const misc = tunes.find((t) => t.slug === 'misc');
-  assert.ok(misc && misc.audio.length === 1, 'the orphan audio lands in Misc');
+  const { tunes, extras } = buildCatalog(manifest, ['primary']);
+  assert.ok(!tunes.some((t) => /20-audio|50-indexed/.test(t.slug)), 'index folders are not titles');
+  assert.ok(!tunes.some((t) => t.slug === 'misc'), 'there is no "Misc" song');
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+  assert.equal(bad.audio.length, 1, 'the indexed audio merged into Bad Guy by filename');
+  assert.equal(extras.length, 1, 'the unknown-song file went to Extra Files');
+  assert.equal(extras[0].originalName, 'Funkytown - Trumpet.pdf');
+});
+
+test('files from a loose (unfoldered) source are matched by filename or sent to Extra Files', () => {
+  const manifest = {
+    files: {
+      real: {
+        status: 'synced', sha256: 'b1', assetType: 'pdf',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'foldered', originalFolder: 'Bad Guy', originalName: 'Bad Guy - Trumpet.pdf',
+        instrument: 'Trumpet', instrumentSlug: 'trumpet',
+      },
+      looseMatch: {
+        status: 'synced', sha256: 'l1', assetType: 'mp3',
+        sourceFolderLabel: 'loose', // no originalFolder
+        originalName: 'Bad_Guy_Sound_Machine-Drumset.mp3',
+      },
+      looseExtra: {
+        status: 'synced', sha256: 'l2', assetType: 'image',
+        sourceFolderLabel: 'loose',
+        originalName: 'mutiny-bay-logo.jpg',
+      },
+    },
+  };
+  const { tunes, extras } = buildCatalog(manifest, ['foldered', 'loose'], ['loose']);
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+  assert.equal(bad.audio.length, 1, 'the loose mp3 matched "Bad Guy" via its filename');
+  assert.equal(extras.length, 1, 'the unmatched logo went to Extra Files');
+  assert.equal(extras[0].originalName, 'mutiny-bay-logo.jpg');
+});
+
+test('matchKnownSong matches by embedded title (both prefix directions)', () => {
+  const known = [
+    { slug: 'baile-inolvidable', title: 'BAILE INOLVIDABLE', tokens: ['baile', 'inolvidable'] },
+    { slug: 'bad-guy', title: 'Bad Guy', tokens: ['bad', 'guy'] },
+    { slug: 'hot-to-go', title: 'Hot to Go', tokens: ['hot', 'to', 'go'] },
+  ].sort((a, b) => b.tokens.length - a.tokens.length);
+  assert.equal(matchKnownSong('Bad_Guy_Sound_Machine-Euphonium.mp3', known)?.title, 'Bad Guy'); // song ⊆ file
+  assert.equal(matchKnownSong('Hot to Go! - Trumpet 1.pdf', known)?.title, 'Hot to Go');
+  assert.equal(matchKnownSong('Baile.mp3', known)?.title, 'BAILE INOLVIDABLE'); // file ⊆ song
+  assert.equal(matchKnownSong('Copy of Bad Guy - Tuba.pdf', known)?.title, 'Bad Guy'); // "Copy of" stripped
+  assert.equal(matchKnownSong('Funkytown.pdf', known), null); // unknown song
 });
 
 test('explicit key and part number survive', () => {
@@ -135,7 +186,7 @@ test('matchIdentifiers lets an asset be opened by its song/type key or by filena
   assert.ok(matchIdentifiers(part).includes('iron-man-trumpet-bflat'));
 });
 
-test('images bucket inline, other files (docx/zip) bucket as downloads, song-less files go to Misc', () => {
+test('images bucket inline, docx/zip bucket as downloads; a song-less file goes to Extra Files', () => {
   const manifest = {
     files: {
       img: {
@@ -149,13 +200,13 @@ test('images bucket inline, other files (docx/zip) bucket as downloads, song-les
         sourceFolderLabel: 'primary', originalFolder: 'Bad Guy', originalName: 'Notes.docx',
       },
       zip: {
+        // No song folder and no song embedded in the name -> Extra Files.
         status: 'synced', sha256: 'z1', assetType: 'archive',
-        songTitle: 'Misc', songTitleSlug: 'misc',
         sourceFolderLabel: 'primary', originalName: 'Stage Plot.zip',
       },
     },
   };
-  const { tunes } = buildCatalog(manifest, ['primary']);
+  const { tunes, extras } = buildCatalog(manifest, ['primary']);
 
   const bad = tunes.find((t) => t.slug === 'bad-guy');
   assert.equal(bad.images.length, 1);
@@ -164,9 +215,8 @@ test('images bucket inline, other files (docx/zip) bucket as downloads, song-les
   assert.equal(bad.files.length, 1); // the docx
   assert.equal(bad.files[0].assetType, 'doc');
 
-  const misc = tunes.find((t) => t.slug === 'misc');
-  assert.ok(misc, 'a Misc tune exists for song-less files');
-  assert.equal(misc.files.length, 1);
-  assert.equal(misc.files[0].originalName, 'Stage Plot.zip');
-  assert.equal(misc.files[0].assetType, 'archive');
+  assert.ok(!tunes.some((t) => t.slug === 'misc'), 'no "Misc" song');
+  assert.equal(extras.length, 1);
+  assert.equal(extras[0].originalName, 'Stage Plot.zip');
+  assert.equal(extras[0].assetType, 'archive');
 });

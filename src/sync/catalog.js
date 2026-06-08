@@ -182,32 +182,95 @@ function comparePart(a, b) {
  * @property {CatalogAsset[]} files       Other downloadable files (docx, zip, …).
  */
 
+/** Is token-run `a` a leading prefix of token-run `b`? (token-level, not chars) */
+function tokensPrefix(a, b) {
+  if (a.length === 0 || a.length > b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * Match a filename to a known song by the song title embedded in the name —
+ * for files that aren't organized into per-song folders (e.g. a flat library
+ * folder). A song matches when its slug is a leading token-run of the filename
+ * ("bad-guy" in "bad-guy-sound-machine-trumpet") or the filename is a leading
+ * token-run of the song slug ("baile" → "baile-inolvidable"); the most specific
+ * (longest) known song wins. Returns { slug, title } or null.
+ *
+ * @param {string|null} originalName
+ * @param {Array<{slug:string,title:string,tokens:string[]}>} known  Longest-slug first.
+ */
+export function matchKnownSong(originalName, known) {
+  const fileSlug = slugifyStem(originalName || '').replace(/^(?:copy-of-)+/, '');
+  if (!fileSlug) return null;
+  const ft = fileSlug.split('-');
+  for (const k of known) {
+    if (tokensPrefix(k.tokens, ft) || tokensPrefix(ft, k.tokens)) return { slug: k.slug, title: k.title };
+  }
+  return null;
+}
+
 /**
  * Build the player-facing catalog: tunes grouped by song, each with its
  * per-instrument parts, full scores, audio, and MuseScore sources. Every unique
  * content blob appears once, attributed to its canonical song.
  *
+ * Files in a real per-song folder are attributed to that folder. Files that are
+ * NOT foldered by song — those in a `looseSourceLabels` source, or in an
+ * index/admin container folder — are matched by the song embedded in their
+ * filename and merged into the matching foldered song; anything that matches no
+ * known song is returned in `extras` (surfaced on the Extra Files tab), never as
+ * a bogus "Misc" song.
+ *
  * @param {object} manifest
- * @param {string[]} [sourceLabels]  Configured source labels in priority order.
- * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], uniqueCount:number, liveCount:number }}
+ * @param {string[]} [sourceLabels]       Configured source labels in priority order.
+ * @param {string[]} [looseSourceLabels]  Labels of sources NOT foldered by song.
+ * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], uniqueCount:number, liveCount:number }}
  */
-export function buildCatalog(manifest, sourceLabels = []) {
+export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []) {
   const pri = sourcePriority(sourceLabels, manifest);
   const { canonical, liveCount } = canonicalByContent(manifest, pri);
+  const loose = new Set(looseSourceLabels || []);
+
+  // A real per-song folder: not a loose (unfoldered) source, has a folder, and
+  // that folder isn't an index/admin container.
+  const isRealSongFolder = (e) =>
+    !loose.has(e.sourceFolderLabel) && e.originalFolder && !isContainerFolder(e.originalFolder);
+
+  // Known songs are the real per-song folders; loose/container files match into
+  // these by filename. Longest slug first so the most specific song wins.
+  const knownMap = new Map();
+  for (const e of canonical.values()) {
+    if (!isRealSongFolder(e)) continue;
+    const slug = songSlugOf(e);
+    if (slug && !knownMap.has(slug)) knownMap.set(slug, e.songTitle || slug);
+  }
+  const known = [...knownMap.entries()]
+    .map(([slug, title]) => ({ slug, title, tokens: slug.split('-') }))
+    .sort((a, b) => b.tokens.length - a.tokens.length);
 
   const bySong = new Map();
+  const extras = [];
   for (const e of canonical.values()) {
-    // Index/admin folders (e.g. "50 Indexed By Instrument", "20 Audio Files")
-    // aren't songs. Content whose canonical home is such a folder — i.e. it has
-    // no copy in a real song folder — is surfaced under Misc rather than as a
-    // bogus title. (Copies that also live in a real song folder already lose the
-    // dedup tiebreak to that folder, so they never reach here.)
-    const container = isContainerFolder(e.originalFolder);
-    const slug = container ? 'misc' : songSlugOf(e);
+    let slug;
+    let title;
+    if (isRealSongFolder(e)) {
+      slug = songSlugOf(e);
+      title = e.songTitle || '(unknown)';
+    } else {
+      // Not foldered by song — match the song embedded in the filename.
+      const match = matchKnownSong(e.originalName, known);
+      if (!match) {
+        extras.push({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType });
+        continue;
+      }
+      slug = match.slug;
+      title = match.title;
+    }
     if (!bySong.has(slug)) {
       bySong.set(slug, {
         slug,
-        title: container ? 'Misc' : e.songTitle || '(unknown)',
+        title,
         lastModified: null,
         parts: [],
         scores: [],
@@ -258,7 +321,9 @@ export function buildCatalog(manifest, sourceLabels = []) {
     .map(([slug, label]) => ({ slug, label, key: DEFAULT_KEY_BY_SLUG[slug] ?? null }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  return { tunes, instruments, uniqueCount: canonical.size, liveCount };
+  extras.sort((a, b) => (a.originalName || '').localeCompare(b.originalName || ''));
+
+  return { tunes, instruments, extras, uniqueCount: canonical.size, liveCount };
 }
 
 /**

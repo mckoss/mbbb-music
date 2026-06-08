@@ -24,7 +24,7 @@ interface Loaded {
 
 const EMPTY: Loaded = {
   mtimeMs: -1,
-  catalog: { tunes: [], instruments: [], uniqueCount: 0, liveCount: 0 },
+  catalog: { tunes: [], instruments: [], extras: [], uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
 };
@@ -43,8 +43,12 @@ function load(): Loaded {
   if (cached && cached.mtimeMs === stat.mtimeMs) return cached;
 
   const manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
-  const sourceLabels = (cfg.sources || []).map((s: { label: string }) => s.label).filter(Boolean);
-  const catalog = buildCatalog(manifest, sourceLabels);
+  const sources = (cfg.sources || []) as { label: string; foldered?: boolean }[];
+  const sourceLabels = sources.map((s) => s.label).filter(Boolean);
+  // Sources explicitly marked `foldered: false` aren't organized into per-song
+  // folders; their files are grouped by the song embedded in each filename.
+  const looseLabels = sources.filter((s) => s.foldered === false).map((s) => s.label);
+  const catalog = buildCatalog(manifest, sourceLabels, looseLabels);
 
   // Index every live blob's type/name so the blob endpoint can set the right
   // Content-Type and refuse hashes that aren't part of the library.

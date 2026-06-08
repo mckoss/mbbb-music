@@ -3,10 +3,11 @@
 
   "dataDir": "data",
 
-  "_comment_sources": "Folders to scan, each recursively. Order does not matter: storage is content-addressable (data/cas/<sha256>), so identical bytes in two sources share one blob automatically — no priority needed.",
+  "_comment_sources": "Folders to scan, each recursively. Listing order is the attribution priority when the same file is reachable from several sources. Set \"foldered\": false on a source whose files are NOT organized into per-song subfolders — its files are grouped by the song embedded in each filename and merged into matching songs; unmatched files appear on the Extra Files tab. Omit it (default true) for sources laid out as <source>/<song>/<asset>.",
   "sources": [
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_1", "label": "scores" },
-    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" }
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" },
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_3", "label": "loose-files", "foldered": false }
   ],
 
   "google": {
