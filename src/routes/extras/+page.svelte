@@ -2,7 +2,6 @@
   import { page } from '$app/state';
   import type { Catalog } from '$lib/types';
   import { stripCopyOf } from '$lib/format';
-  import { score } from '$lib/stores';
   import { audio, playSha, toggle } from '$lib/audio';
 
   const catalog = $derived(page.data.catalog as Catalog);
@@ -15,10 +14,6 @@
   const filtered = $derived(
     q.trim() ? cleaned.filter((e) => e.name.toLowerCase().includes(q.trim().toLowerCase())) : cleaned
   );
-
-  function viewPdf(e: { sha256: string; name: string }) {
-    score.set({ sha: e.sha256, title: e.name, label: 'Extra file' });
-  }
 
   function playAudio(e: { sha256: string; name: string }) {
     if ($audio.sha === e.sha256 && $audio.playing) toggle();
@@ -44,13 +39,11 @@
       <li class="row">
         <span class="name">{e.name}</span>
         <span class="actions">
-          {#if e.assetType === 'pdf'}
-            <button class="act" onclick={() => viewPdf(e)}>View</button>
-          {:else if e.assetType === 'mp3'}
+          {#if e.assetType === 'mp3'}
             <button class="act" onclick={() => playAudio(e)}>
               {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
             </button>
-          {:else if e.assetType === 'image'}
+          {:else if e.assetType === 'pdf' || e.assetType === 'image'}
             <a class="act" href={`/blob/${e.sha256}`} target="_blank" rel="noopener">View</a>
           {/if}
           <a class="dl" href={`/blob/${e.sha256}?dl=${encodeURIComponent(e.name)}`} download title="Download">⤓</a>

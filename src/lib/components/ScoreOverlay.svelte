@@ -1,39 +1,48 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { score, printFormat } from '$lib/stores';
+  import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
+  import type { Catalog } from '$lib/types';
+  import { activeScore } from '$lib/resolve';
   import AudioPlayer from './AudioPlayer.svelte';
 
-  const current = $derived($score);
-  const aspect = $derived($printFormat === 'lyre' ? 7 / 5 : 8.5 / 11);
+  // The overlay is driven entirely by the URL: it's open when ?view=score, and
+  // shows the PDF for ?song / ?instrument / ?format / ?part (each falling back to
+  // the cookie-persisted store when absent). This makes it shareable and survive
+  // a refresh, and the browser Back button closes it.
+  const catalog = $derived(page.data.catalog as Catalog);
+  const params = $derived(page.url.searchParams);
+  const open = $derived(params.get('view') === 'score');
+  const tune = $derived(catalog?.tunes?.find((t) => t.slug === params.get('song')) ?? null);
+  const instrument = $derived(params.get('instrument') ?? $instrumentSlug);
+  const format = $derived(((params.get('format') as PrintFormat) || $printFormat) as PrintFormat);
+  const partParam = $derived(params.get('part'));
+  const part = $derived(partParam && /^\d+$/.test(partParam) ? Number(partParam) : null);
 
-  // Open behavior: push a history entry so the browser Back button closes the
-  // overlay. We track whether we pushed so closing via the button can pop it
-  // back, keeping history tidy.
-  let pushed = false;
-
-  $effect(() => {
-    if (!browser) return;
-    if (current && !pushed) {
-      history.pushState({ scoreOverlay: true }, '');
-      pushed = true;
-    }
-  });
+  const current = $derived(open && tune ? activeScore(tune, instrument, format, part) : null);
+  const title = $derived(tune?.title ?? '');
+  const aspect = $derived(format === 'lyre' ? 7 / 5 : 8.5 / 11);
+  const practiceAudio = $derived(tune?.audio[0] ?? null);
 
   function close() {
-    if (browser && pushed) {
-      pushed = false;
-      // Popping triggers popstate, which clears the store below.
-      history.back();
-    } else {
-      score.set(null);
+    if (!browser) return;
+    // Pop our pushed entry so Back stays consistent; if we got here directly
+    // (deep link / fresh tab), just drop the score params in place.
+    if (window.history.length > 1) history.back();
+    else {
+      const p = new URLSearchParams(page.url.search);
+      p.delete('view');
+      p.delete('part');
+      goto(`?${p}`, { replaceState: true });
     }
   }
 
-  function onPopState() {
-    if (current) {
-      pushed = false;
-      score.set(null);
-    }
+  function setFormat(fmt: PrintFormat) {
+    printFormat.set(fmt); // keep the cookie/global in sync
+    const p = new URLSearchParams(page.url.search);
+    p.set('format', fmt);
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
   function onKey(e: KeyboardEvent) {
@@ -45,21 +54,21 @@
   }
 </script>
 
-<svelte:window onpopstate={onPopState} onkeydown={onKey} />
+<svelte:window onkeydown={onKey} />
 
 {#if current}
   <div class="overlay">
     <header class="bar">
       <div class="info">
         <p class="kicker perf">Performance view</p>
-        <h2>{current.title}</h2>
-        <p class="sub">{current.label} · {$printFormat === 'lyre' ? 'Lyre' : 'Letter'}</p>
+        <h2>{title}</h2>
+        <p class="sub">{current.label} · {format === 'lyre' ? 'Lyre' : 'Letter'}</p>
       </div>
 
       <div class="controls">
         <label class="fmt">
           <span class="eyebrow">Format</span>
-          <select bind:value={$printFormat}>
+          <select value={format} onchange={(e) => setFormat(e.currentTarget.value as PrintFormat)}>
             <option value="letter">Letter</option>
             <option value="lyre">Lyre</option>
           </select>
@@ -70,12 +79,12 @@
     </header>
 
     <div class="practice">
-      <AudioPlayer sha={current.sha ? current.sha : null} title={current.title} />
+      <AudioPlayer sha={practiceAudio?.sha256 ?? null} title={title} />
     </div>
 
-    <div class="stage" class:lyre={$printFormat === 'lyre'}>
+    <div class="stage" class:lyre={format === 'lyre'}>
       <iframe
-        title={`${current.title} — ${current.label}`}
+        title={`${title} — ${current.label}`}
         src={`/blob/${current.sha}#toolbar=0&view=FitH`}
         style={`aspect-ratio:${aspect};`}
       ></iframe>

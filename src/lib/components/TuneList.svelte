@@ -1,8 +1,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import type { Tune } from '$lib/types';
-  import { search, instrumentSlug, printFormat, score } from '$lib/stores';
+  import { search, instrumentSlug, printFormat } from '$lib/stores';
   import { activePdf } from '$lib/resolve';
+  import { songSearch, scoreSearch } from '$lib/nav';
   import { playSha } from '$lib/audio';
 
   let { tunes, selectedSlug }: { tunes: Tune[]; selectedSlug: string | null } = $props();
@@ -17,13 +19,21 @@
   // Back/Forward move between songs and the choice survives a refresh.
   function selectTune(t: Tune) {
     if (t.slug === selectedSlug) return; // no-op: avoid a duplicate history entry
-    goto(`?song=${encodeURIComponent(t.slug)}`, { keepFocus: true, noScroll: true });
+    goto(songSearch(page.url.searchParams, t.slug), { keepFocus: true, noScroll: true });
   }
 
   function openScore(t: Tune) {
-    selectTune(t);
     const active = activePdf(t, $instrumentSlug, $printFormat);
-    if (active) score.set({ sha: active.sha, title: t.title, label: active.label });
+    if (!active) return;
+    goto(
+      scoreSearch({
+        song: t.slug,
+        instrument: $instrumentSlug,
+        format: $printFormat,
+        part: active.isScore ? null : active.partNumber,
+      }),
+      { keepFocus: true, noScroll: true }
+    );
   }
 
   function playAudio(t: Tune) {

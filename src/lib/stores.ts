@@ -3,12 +3,6 @@ import { browser } from '$app/environment';
 
 export type PrintFormat = 'letter' | 'lyre';
 
-export interface ScoreView {
-  sha: string;
-  title: string;
-  label: string;
-}
-
 function readCookie(name: string): string | null {
   if (!browser) return null;
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -45,9 +39,8 @@ export const printFormat = persistedCookie<PrintFormat>('mbbb_format', 'letter')
 // Free-text filter for the collection list.
 export const search = writable<string>('');
 
-// (The selected song is held in the URL — ?song=<slug> — not a store, so it
-// survives refresh and adds history entries; see routes/+page.svelte.)
-
-// When non-null, the full-screen Score/Performance overlay is open showing
-// this PDF.
-export const score = writable<ScoreView | null>(null);
+// (The selected song, the open score view, instrument and format are all held
+// in the URL — ?song / ?view=score / ?instrument / ?format — not stores, so they
+// survive refresh, add history entries, and are shareable. Instrument & format
+// also persist in a cookie via the stores above as a fallback when absent from
+// the URL. See routes/+layout.svelte and components/ScoreOverlay.svelte.)

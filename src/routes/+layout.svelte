@@ -1,7 +1,8 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/state';
-  import { instrumentSlug, printFormat, score } from '$lib/stores';
+  import { goto } from '$app/navigation';
+  import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
   import type { Catalog } from '$lib/types';
@@ -10,6 +11,15 @@
     $props();
 
   const instruments = $derived(data.catalog.instruments ?? []);
+
+  // Instrument/format live in the cookie-backed stores but can be overridden by
+  // the URL (shareable links). Mirror any URL value into the store on navigation.
+  $effect(() => {
+    const ui = page.url.searchParams.get('instrument');
+    if (ui && ui !== $instrumentSlug) instrumentSlug.set(ui);
+    const uf = page.url.searchParams.get('format');
+    if ((uf === 'letter' || uf === 'lyre') && uf !== $printFormat) printFormat.set(uf);
+  });
 
   // Default the global instrument to the first one once the catalog is known.
   // A saved (cookie-restored) choice is kept as long as it still exists in the
@@ -21,8 +31,24 @@
     }
   });
 
+  // A selector change updates the store (persists to cookie) and reflects into
+  // the URL (replaceState — shareable, no history churn).
+  function setParam(key: string, value: string) {
+    const p = new URLSearchParams(page.url.search);
+    p.set(key, value);
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+  function setInstrument(value: string) {
+    instrumentSlug.set(value);
+    setParam('instrument', value);
+  }
+  function setFormat(value: PrintFormat) {
+    printFormat.set(value);
+    setParam('format', value);
+  }
+
   const path = $derived(page.url.pathname);
-  const overlayOpen = $derived($score != null);
+  const overlayOpen = $derived(page.url.searchParams.get('view') === 'score');
 </script>
 
 {#if !overlayOpen}
@@ -43,7 +69,7 @@
     <div class="globals">
       <label>
         <span class="eyebrow">Instrument</span>
-        <select bind:value={$instrumentSlug}>
+        <select value={$instrumentSlug} onchange={(e) => setInstrument(e.currentTarget.value)}>
           {#each instruments as inst (inst.slug)}
             <option value={inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
           {/each}
@@ -51,7 +77,7 @@
       </label>
       <label>
         <span class="eyebrow">Format</span>
-        <select bind:value={$printFormat}>
+        <select value={$printFormat} onchange={(e) => setFormat(e.currentTarget.value as PrintFormat)}>
           <option value="letter">Letter</option>
           <option value="lyre">Lyre</option>
         </select>

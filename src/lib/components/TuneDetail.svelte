@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import type { Tune } from '$lib/types';
   import type { PrintFormat } from '$lib/stores';
-  import { score } from '$lib/stores';
   import { partLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { partsForFormat, activePdf, type ActivePdf } from '$lib/resolve';
+  import { scoreSearch } from '$lib/nav';
   import AudioPlayer from './AudioPlayer.svelte';
 
   let {
@@ -69,7 +70,15 @@
 
   function openScore() {
     if (!active) return;
-    score.set({ sha: active.sha, title: tune.title, label: active.label });
+    goto(
+      scoreSearch({
+        song: tune.slug,
+        instrument: instrumentSlug,
+        format: printFormat,
+        part: active.isScore ? null : active.partNumber,
+      }),
+      { keepFocus: true, noScroll: true }
+    );
   }
 
   const aspect = $derived(printFormat === 'lyre' ? 7 / 5 : 8.5 / 11);

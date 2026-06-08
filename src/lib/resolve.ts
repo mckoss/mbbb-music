@@ -9,6 +9,7 @@ export interface ActivePdf {
   instrumentSlug: string | null;
   key: string | null;
   partNumber: number | null;
+  format: PrintFormat;
   isScore: boolean;
 }
 
@@ -52,6 +53,7 @@ export function activePdf(
       instrumentSlug: part.instrumentSlug,
       key: part.key,
       partNumber: part.partNumber,
+      format: part.format as PrintFormat,
       isScore: false,
     };
   }
@@ -63,8 +65,25 @@ export function activePdf(
       instrumentSlug: null,
       key: null,
       partNumber: null,
+      format: printFormat,
       isScore: true,
     };
   }
   return null;
+}
+
+/**
+ * Resolve the score-overlay PDF from URL params: the chosen instrument, format,
+ * and optional part number for a tune. Picks the matching part (or the full
+ * score when the instrument has none), via {@link activePdf}.
+ */
+export function activeScore(
+  tune: Tune,
+  instrumentSlug: string,
+  printFormat: PrintFormat,
+  part: number | null
+): ActivePdf | null {
+  const parts = partsForFormat(tune, instrumentSlug, printFormat);
+  const chosen = part != null ? parts.find((p) => p.partNumber === part) : null;
+  return activePdf(tune, instrumentSlug, printFormat, chosen?.sha256 ?? null);
 }
