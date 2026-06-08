@@ -215,41 +215,55 @@ export function matchKnownSong(originalName, known) {
   return null;
 }
 
-// Tokens that mark the end of the song name in a part filename — instrument
-// names, keys/clefs, and score/format/section words. The song is the run of
-// tokens before the first of these (e.g. "anthrax-trumpet-in-bb" → "anthrax").
-const DESCRIPTOR_TOKENS = new Set([
+// "Voice" tokens identify a part's instrument and written key/clef. A run of
+// these at the START of a name is the instrument prefix ("Trumpet Medicated
+// Chicken Water") and is skipped to reach the song that follows.
+const VOICE_TOKENS = new Set([
   // instruments
   'trumpet', 'cornet', 'trombone', 'tuba', 'sousaphone', 'flute', 'clarinet', 'euphonium',
   'baritone', 'bari', 'mellophone', 'melodica', 'horn', 'sax', 'saxophone', 'alto', 'tenor',
-  'soprano', 'drum', 'drums', 'drumset', 'snare', 'cymbal', 'cymbals', 'percussion', 'quad',
-  'toms', 'tupan', 'glockenspiel', 'glock', 'bells', 'kit', 'rig', 'vocals',
+  'soprano', 'piccolo', 'drum', 'drums', 'drumset', 'snare', 'cymbal', 'cymbals', 'percussion',
+  'quad', 'toms', 'tupan', 'glockenspiel', 'glock', 'bells', 'kit', 'rig', 'vocals',
   // keys / clefs / transposition
   'bass', 'treble', 'clef', 'bb', 'eb', 'ab', 'f', 'c', 'd', 'g', 'a', 'flat', 'sharp',
   'concert', 'in', 'bc', 'tc',
-  // score / format / section
+]);
+
+// Format/section words. With voice tokens these mark the end of the song name,
+// but unlike voice tokens they are NOT skipped at the start (so "Score and
+// Parts" yields no song prefix rather than digging out "and").
+const FORMAT_TOKENS = new Set([
   'score', 'parts', 'part', 'full', 'melody', 'harmony', 'lyre', 'letter', 'lyrics', 'notes',
   'finale', 'standardized', 'version', 'low', 'high', 'hi', 'lo', 'updated', 'line', 'groove', 'set',
 ]);
 
-/** A descriptor token, or a bare/version number (e.g. "2", "v1", "3.1"). */
+/** A token that identifies a part's instrument or key/clef. */
+function isVoiceToken(t) {
+  return VOICE_TOKENS.has(t);
+}
+
+/** Any descriptor token, or a bare/version number (e.g. "2", "v1", "3.1"). */
 function isDescriptorToken(t) {
-  return DESCRIPTOR_TOKENS.has(t) || /^v?\d+(\.\d+)*$/.test(t);
+  return VOICE_TOKENS.has(t) || FORMAT_TOKENS.has(t) || /^v?\d+(\.\d+)*$/.test(t);
 }
 
 /**
- * The song prefix embedded in a part filename: the leading run of name tokens
- * before the first instrument/key/descriptor token (with the "Copy of" prefix
- * stripped). Used to cluster unfoldered files that share a song into a new song.
- * Returns '' when the name starts with a descriptor (no usable song prefix).
+ * The song prefix embedded in a part filename, used to cluster unfoldered files
+ * that share a song. The "Copy of" prefix is stripped; a leading instrument/key
+ * run is skipped (so "Trumpet Medicated Chicken Water" → "medicated-chicken-
+ * water"); then the run of tokens up to the first descriptor is the song
+ * ("anthrax-trumpet-in-bb" → "anthrax"). Returns '' when no song name remains.
  */
 export function songPrefixOf(name) {
   const slug = slugifyStem(name || '').replace(/^(?:copy-of-)+/, '');
   if (!slug) return '';
+  const tokens = slug.split('-');
+  let i = 0;
+  while (i < tokens.length && isVoiceToken(tokens[i])) i++; // skip a leading instrument/key run
   const out = [];
-  for (const tok of slug.split('-')) {
-    if (isDescriptorToken(tok)) break;
-    out.push(tok);
+  for (; i < tokens.length; i++) {
+    if (isDescriptorToken(tokens[i])) break;
+    out.push(tokens[i]);
   }
   return out.join('-');
 }

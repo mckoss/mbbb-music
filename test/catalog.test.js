@@ -139,9 +139,11 @@ test('songPrefixOf strips trailing instrument/key/descriptor tokens', () => {
   assert.equal(songPrefixOf('Copy of Pony - Baritone (B.C.).pdf'), 'pony');
   assert.equal(songPrefixOf('Down For My City v2-C_(low)_BC.pdf'), 'down-for-my-city');
   assert.equal(songPrefixOf('You_Move_Ya_Lose-melody-Bb-treble_clef-letter.pdf'), 'you-move-ya-lose');
-  // A name that STARTS with a descriptor (instrument/score word) has no usable
-  // song prefix — such files fall through to Extra Files.
-  assert.equal(songPrefixOf('Trumpet Medicated Chicken Water.pdf'), '');
+  // Instrument-prefix pattern: a leading instrument/key run is skipped to reach
+  // the song that follows.
+  assert.equal(songPrefixOf('Trumpet Medicated Chicken Water.pdf'), 'medicated-chicken-water');
+  assert.equal(songPrefixOf('F Horn Medicated Chicken Water.pdf'), 'medicated-chicken-water');
+  // A format/section word at the start is NOT skipped, so there's no song prefix.
   assert.equal(songPrefixOf('Score_and_Parts.pdf'), '');
 });
 
