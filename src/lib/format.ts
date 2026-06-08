@@ -36,19 +36,24 @@ export function partLabel(part: CatalogPart): string {
   return part.partNumber != null ? `${base} ${part.partNumber}` : base;
 }
 
+/** Strip Drive's "Copy of " prefix (possibly repeated) from a filename. */
+export function stripCopyOf(name: string): string {
+  return name.replace(/^(?:copy of\s+)+/i, '');
+}
+
 /**
- * A human label for an audio file, derived from its filename — so multiple
- * recordings (full band, drums only, an isolated part, …) are distinguishable.
- * Drops the extension and a leading song-title prefix, leaving e.g. "Drums
- * Only" from "Bad Guy - Drums Only.mp3". Falls back to "Full recording".
+ * A human label for an audio recording, derived from its filename, so multiple
+ * recordings (full band, drums only, an isolated instrument, …) are
+ * distinguishable. Drops the extension and any "Copy of" prefix, then keeps just
+ * the instrument — the segment after the last "-" (so the song/arrangement
+ * prefix falls away): "Copy of Bad_Guy_Sound_Machine-Alto_Sax.mp3" → "Alto Sax".
+ * A file with no instrument segment is the "Full recording".
  */
-export function audioLabel(originalName: string | null, songTitle: string): string {
+export function audioLabel(originalName: string | null): string {
   if (!originalName) return 'Full recording';
-  let s = originalName.replace(/\.[^.]+$/, ''); // drop extension
-  const song = (songTitle ?? '').trim();
-  if (song && s.toLowerCase().startsWith(song.toLowerCase())) {
-    s = s.slice(song.length); // strip a leading "<song>" prefix
-  }
-  s = s.replace(/^[\s\-–—_]+/, '').trim(); // and any leftover separator
+  let s = stripCopyOf(originalName.replace(/\.[^.]+$/, '').trim()); // drop extension + "Copy of"
+  const dash = s.lastIndexOf('-');
+  s = dash >= 0 ? s.slice(dash + 1) : ''; // instrument is after the last dash
+  s = s.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
   return s || 'Full recording';
 }

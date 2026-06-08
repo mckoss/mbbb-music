@@ -2,7 +2,7 @@
   import type { Tune } from '$lib/types';
   import type { PrintFormat } from '$lib/stores';
   import { score } from '$lib/stores';
-  import { partLabel, instrumentDisplay, audioLabel } from '$lib/format';
+  import { partLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { partsFor, activePdf, type ActivePdf } from '$lib/resolve';
   import AudioPlayer from './AudioPlayer.svelte';
 
@@ -40,10 +40,10 @@
   });
   const playingAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
 
-  // Download filename for an audio file: keep the original (it says what it is),
-  // falling back to a generated name.
+  // Download filename for an audio file: the original minus Drive's "Copy of"
+  // prefix, falling back to a generated name.
   function audioDlName(a: { originalName: string | null }): string {
-    return a.originalName ?? `mbbb-${tune.slug}.mp3`;
+    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${tune.slug}.mp3`;
   }
 
   // Download name for a misc asset: keep the original filename (it carries the
@@ -111,7 +111,7 @@
           <span class="eyebrow">Recording</span>
           <select bind:value={chosenAudioSha}>
             {#each audios as a (a.sha256)}
-              <option value={a.sha256}>{audioLabel(a.originalName, tune.title)}</option>
+              <option value={a.sha256}>{audioLabel(a.originalName)}</option>
             {/each}
           </select>
         </label>
@@ -139,7 +139,7 @@
       {/if}
       {#each audios as a (a.sha256)}
         <a class="dl" href={`/blob/${a.sha256}?dl=${encodeURIComponent(audioDlName(a))}`} download>
-          ⤓ {audioLabel(a.originalName, tune.title)} (MP3)
+          ⤓ {audioLabel(a.originalName)} (MP3)
         </a>
       {/each}
     </div>
