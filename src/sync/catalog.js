@@ -197,11 +197,17 @@ export function buildCatalog(manifest, sourceLabels = []) {
 
   const bySong = new Map();
   for (const e of canonical.values()) {
-    const slug = songSlugOf(e);
+    // Index/admin folders (e.g. "50 Indexed By Instrument", "20 Audio Files")
+    // aren't songs. Content whose canonical home is such a folder — i.e. it has
+    // no copy in a real song folder — is surfaced under Misc rather than as a
+    // bogus title. (Copies that also live in a real song folder already lose the
+    // dedup tiebreak to that folder, so they never reach here.)
+    const container = isContainerFolder(e.originalFolder);
+    const slug = container ? 'misc' : songSlugOf(e);
     if (!bySong.has(slug)) {
       bySong.set(slug, {
         slug,
-        title: e.songTitle || '(unknown)',
+        title: container ? 'Misc' : e.songTitle || '(unknown)',
         lastModified: null,
         parts: [],
         scores: [],

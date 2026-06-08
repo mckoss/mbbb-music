@@ -71,6 +71,31 @@ test('the index-folder copy is attributed to the real song, not its own entry', 
   assert.ok(!tunes.some((t) => t.slug === '50-indexed-by-instrument'));
 });
 
+test('content that only lives in an index/container folder is surfaced under Misc, never as a title', () => {
+  const manifest = {
+    files: {
+      orphan: {
+        status: 'synced', sha256: 'u1', assetType: 'mp3',
+        songTitle: '20 Audio Files (INCOMPLETE)', songTitleSlug: '20-audio-files-incomplete',
+        sourceFolderLabel: 'primary', originalFolder: '20 Audio Files (INCOMPLETE)',
+        originalName: 'Bumper to Bumper.mp3',
+      },
+      // A real song with a number-leading name must still be a normal title.
+      realSong: {
+        status: 'synced', sha256: 'r1', assetType: 'pdf',
+        songTitle: '30 seconds to freebird', songTitleSlug: '30-seconds-to-freebird',
+        sourceFolderLabel: 'primary', originalFolder: '30 seconds to freebird',
+        originalName: '30 seconds to freebird - Score.pdf',
+      },
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['primary']);
+  assert.ok(!tunes.some((t) => t.slug.startsWith('20-audio-files')), 'the index folder is not a title');
+  assert.ok(tunes.some((t) => t.slug === '30-seconds-to-freebird'), 'a real number-leading song stays a title');
+  const misc = tunes.find((t) => t.slug === 'misc');
+  assert.ok(misc && misc.audio.length === 1, 'the orphan audio lands in Misc');
+});
+
 test('explicit key and part number survive', () => {
   const { tunes } = buildCatalog(MANIFEST, ['primary', 'secondary']);
   const iron = tunes.find((t) => t.slug === 'iron-man');
