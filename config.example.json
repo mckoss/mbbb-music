@@ -21,5 +21,13 @@
       "client_id": "...",
       "token_uri": "https://oauth2.googleapis.com/token"
     }
+  },
+
+  "_comment_auth": "Web sign-in (Google OAuth 2.0). Create an OAuth *Web application* client in Google Cloud → Credentials and add the redirect URI <origin>/auth/callback for every origin you serve (e.g. http://localhost:5173/auth/callback for dev, https://your-host/auth/callback for prod). clientId/clientSecret come from that client. cookieSecret is any long random string used to sign the session cookie (e.g. `openssl rand -base64 48`). admins[] are bootstrap admin emails that always have the admin role (and can't be removed in the UI); everyone else is granted a role in data/users.json via the Users admin page. redirectUri is optional — set it only to override the auto-derived <origin>/auth/callback (e.g. behind a proxy). If this block is omitted, or clientId/clientSecret/cookieSecret are blank, the site runs OPEN with no sign-in required.",
+  "auth": {
+    "clientId": "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "clientSecret": "REPLACE_WITH_OAUTH_CLIENT_SECRET",
+    "cookieSecret": "REPLACE_WITH_A_LONG_RANDOM_STRING",
+    "admins": ["you@gmail.com"]
   }
 }

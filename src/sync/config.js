@@ -31,7 +31,8 @@ const DEFAULT_CONFIG_PATH = resolve(REPO_ROOT, 'config.json');
  * @property {string} dataDir              Absolute path to the gitignored data/ dir.
  * @property {string} manifestPath         Absolute path to data/manifest.json.
  * @property {SourceFolder[]} sources      Configured Drive source folders.
- * @property {GoogleCredentials} google    Google OAuth credentials.
+ * @property {GoogleCredentials} google    Google service-account credentials (Drive sync).
+ * @property {Object} auth                 Web sign-in config: { clientId, clientSecret, cookieSecret, admins[], redirectUri? }.
  */
 
 /**
@@ -115,5 +116,8 @@ export function loadConfig(overrides = {}, env = process.env) {
     manifestPath: resolve(dataDir, 'manifest.json'),
     sources,
     google: raw.google || {},
+    // Web sign-in (Google OAuth) + session cookie + role bootstrap. Optional:
+    // when clientId/clientSecret/cookieSecret are absent the web app runs open.
+    auth: raw.auth || {},
   };
 }

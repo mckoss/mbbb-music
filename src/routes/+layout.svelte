@@ -5,10 +5,19 @@
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
-  import type { Catalog } from '$lib/types';
+  import type { Catalog, SessionUser } from '$lib/types';
 
-  let { data, children }: { data: { catalog: Catalog }; children: import('svelte').Snippet } =
+  let {
+    data,
+    children,
+  }: { data: { catalog: Catalog; user: SessionUser | null }; children: import('svelte').Snippet } =
     $props();
+
+  const user = $derived(data.user ?? null);
+  // Only an approved (role-bearing) user sees the app chrome; everyone else
+  // (login / pending) gets a bare page.
+  const authed = $derived(Boolean(user?.role));
+  const isAdmin = $derived(user?.role === 'admin');
 
   const instruments = $derived(data.catalog.instruments ?? []);
 
@@ -51,7 +60,7 @@
   const overlayOpen = $derived(page.url.searchParams.get('view') === 'score');
 </script>
 
-{#if !overlayOpen}
+{#if authed && !overlayOpen}
   <header class="masthead">
     <div class="brand">
       <enhanced:img
@@ -66,22 +75,28 @@
       </div>
     </div>
 
-    <div class="globals">
-      <label>
-        <span class="eyebrow">Instrument</span>
-        <select value={$instrumentSlug} onchange={(e) => setInstrument(e.currentTarget.value)}>
-          {#each instruments as inst (inst.slug)}
-            <option value={inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
-          {/each}
-        </select>
-      </label>
-      <label>
-        <span class="eyebrow">Format</span>
-        <select value={$printFormat} onchange={(e) => setFormat(e.currentTarget.value as PrintFormat)}>
-          <option value="letter">Letter</option>
-          <option value="lyre">Lyre</option>
-        </select>
-      </label>
+    <div class="right">
+      <div class="account">
+        <span class="who">{user?.email}{#if isAdmin}<span class="badge">admin</span>{/if}</span>
+        <form method="POST" action="/auth/logout"><button type="submit" class="signout">Sign out</button></form>
+      </div>
+      <div class="globals">
+        <label>
+          <span class="eyebrow">Instrument</span>
+          <select value={$instrumentSlug} onchange={(e) => setInstrument(e.currentTarget.value)}>
+            {#each instruments as inst (inst.slug)}
+              <option value={inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
+            {/each}
+          </select>
+        </label>
+        <label>
+          <span class="eyebrow">Format</span>
+          <select value={$printFormat} onchange={(e) => setFormat(e.currentTarget.value as PrintFormat)}>
+            <option value="letter">Letter</option>
+            <option value="lyre">Lyre</option>
+          </select>
+        </label>
+      </div>
     </div>
   </header>
 
@@ -90,10 +105,13 @@
     <a href="/extras" class:active={path.startsWith('/extras')}>Extra Files</a>
     <a href="/gigs" class:active={path.startsWith('/gigs')}>Gig Packets</a>
     <a href="/library-status" class:active={path.startsWith('/library-status')}>Library Status</a>
+    {#if isAdmin}
+      <a href="/admin/users" class:active={path.startsWith('/admin')}>Users</a>
+    {/if}
   </nav>
 {/if}
 
-<main class:hidden={overlayOpen}>
+<main class:hidden={overlayOpen} class:bare={!authed}>
   {@render children()}
 </main>
 
@@ -142,6 +160,50 @@
     color: #dfddd4;
     font-size: 0.95rem;
     max-width: 46ch;
+  }
+
+  .right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  .account {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.82rem;
+    color: #dfddd4;
+  }
+
+  .who {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #050505;
+    background: #f2d36b;
+    border-radius: 999px;
+    padding: 2px 7px;
+  }
+
+  .signout {
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 253, 247, 0.35);
+    background: transparent;
+    color: #fffdf7;
+    font-weight: 700;
+    font-size: 0.76rem;
+    cursor: pointer;
   }
 
   .globals {
@@ -200,6 +262,11 @@
 
   main.hidden {
     display: none;
+  }
+
+  /* Login / pending pages: no chrome, just a centered page. */
+  main.bare {
+    padding: 0;
   }
 
   @media (max-width: 980px) {

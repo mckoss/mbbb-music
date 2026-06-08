@@ -1,6 +1,18 @@
 // Shared player-facing catalog types, mirroring the shape returned by
 // GET /api/catalog (built server-side in src/sync/catalog.js).
 
+// --- Auth -------------------------------------------------------------------
+// Roles, highest-privilege first. 'admin' can view + manage users; 'member' and
+// (future) 'organizer' can view the library. A null role means signed-in but
+// not yet approved (the /pending state).
+export type Role = 'admin' | 'member' | 'organizer';
+
+export interface SessionUser {
+  email: string;
+  name: string | null;
+  role: Role | null;
+}
+
 export interface CatalogPart {
   sha256: string;
   instrumentSlug: string;
