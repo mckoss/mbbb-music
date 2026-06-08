@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import type { Catalog, Tune } from '$lib/types';
-  import { instrumentDisplay } from '$lib/format';
+  import type { Catalog, Tune, CatalogPart, CatalogAsset } from '$lib/types';
+  import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
   import { sourceStyle } from '$lib/sources';
 
   const catalog = $derived(page.data.catalog as Catalog);
@@ -15,34 +15,94 @@
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
 
-  // The indicator for a set of like assets (an instrument's parts, or a tune's
-  // audio): the count of items, colored by the highest-priority ("primary")
-  // source among them. Null when nothing is present (blank cell).
-  function cellFor(items: { source: string | null }[]) {
+  interface CellItem {
+    sha: string;
+    href: string;
+    label: string;
+  }
+  interface Cell {
+    count: number;
+    color: string;
+    text: string;
+    name: string;
+    items: CellItem[];
+  }
+
+  // The indicator for a set of like assets: the count, colored by the
+  // highest-priority ("primary") source among them, plus a list of openable
+  // items with descriptive names. Null when nothing is present (blank cell).
+  function buildCell(items: (CatalogPart | CatalogAsset)[], makeLabel: (a: never) => string): Cell | null {
     if (items.length === 0) return null;
     let best = items[0];
     for (const it of items) if (rank(it.source) < rank(best.source)) best = it;
-    return { count: items.length, ...sourceStyle(best.source) };
+    const style = sourceStyle(best.source);
+    return {
+      count: items.length,
+      color: style.color,
+      text: style.text,
+      name: style.name,
+      items: items.map((it) => ({
+        sha: it.sha256,
+        href: `/blob/${it.sha256}`,
+        label: makeLabel(it as never),
+      })),
+    };
   }
+
+  const partItemLabel = (p: CatalogPart) => `${partLabel(p)} — ${p.format === 'lyre' ? 'Lyre' : 'Letter'}`;
+  const audioItemLabel = (a: CatalogAsset) => audioLabel(a.originalName);
+  const museItemLabel = (a: CatalogAsset) => (a.originalName ? stripCopyOf(a.originalName) : 'MuseScore file');
+  const scoreItemLabel = (a: CatalogAsset) => (a.originalName ? stripCopyOf(a.originalName) : 'Full score');
 
   function partsFor(tune: Tune, instrumentSlug: string) {
     return tune.parts.filter((p) => p.instrumentSlug === instrumentSlug);
   }
 
-  // One row per tune: a cell per instrument (aligned to `instruments`) plus the
-  // audio cell. Precomputed here so the template avoids {@const} under <tr>.
+  // Columns, left to right: the master MuseScore source, audio, the whole-band
+  // PDF (instrument-less full scores), then one column per instrument.
+  const columns = $derived([
+    { key: 'musescore', label: 'MuseScore (Master)' },
+    { key: 'audio', label: 'Audio' },
+    { key: 'score', label: 'Whole Band (PDF)' },
+    ...instruments.map((i) => ({ key: i.slug, label: instrumentDisplay(i.label, i.key) })),
+  ]);
+
+  // One row per tune; cells aligned to `columns`.
   const rows = $derived(
     tunes.map((t) => ({
       slug: t.slug,
       title: t.title,
-      cells: instruments.map((inst) => cellFor(partsFor(t, inst.slug))),
-      audio: cellFor(t.audio),
+      cells: [
+        buildCell(t.musescore, museItemLabel),
+        buildCell(t.audio, audioItemLabel),
+        buildCell(t.scores, scoreItemLabel),
+        ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), partItemLabel)),
+      ] as (Cell | null)[],
     }))
   );
 
   // Legend entries, one per configured source (in priority order).
   const legend = $derived(sources.map((s) => ({ label: s, ...sourceStyle(s) })));
+
+  // Clicking a square: a lone file opens full screen; several open a popup of
+  // links. Escape (or the × / backdrop) closes the popup.
+  let popup = $state<{ title: string; items: CellItem[] } | null>(null);
+
+  function openCell(cell: Cell | null, colLabel: string, songTitle: string) {
+    if (!cell) return;
+    if (cell.count === 1) {
+      window.open(cell.items[0].href, '_blank', 'noopener');
+      return;
+    }
+    popup = { title: `${songTitle} — ${colLabel}`, items: cell.items };
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape' && popup) popup = null;
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <section class="status">
   <header>
@@ -51,7 +111,8 @@
     <p class="body">
       Each square marks where a score (or recording) exists and the color shows
       its primary source. The number counts every copy in the library — all parts
-      and both Letter/Lyre formats. Blank means nothing is on file.
+      and both Letter/Lyre formats. Click a square to open it (a single file opens
+      full screen; several open a list). Blank means nothing is on file.
     </p>
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
 
@@ -70,10 +131,11 @@
       <thead>
         <tr>
           <th class="corner" scope="col">Song</th>
-          {#each instruments as inst (inst.slug)}
-            <th class="col-head" scope="col"><span>{instrumentDisplay(inst.label, inst.key)}</span></th>
+          {#each columns as col (col.key)}
+            <th class="col-head" class:special={col.key === 'musescore' || col.key === 'audio' || col.key === 'score'} scope="col">
+              <span>{col.label}</span>
+            </th>
           {/each}
-          <th class="col-head audio" scope="col"><span>Audio</span></th>
         </tr>
       </thead>
       <tbody>
@@ -83,28 +145,44 @@
             {#each r.cells as c, i (i)}
               <td>
                 {#if c}
-                  <span class="sq" style:background={c.color} style:color={c.text} title={`${c.count} × ${c.name}`}>
+                  <button
+                    class="sq"
+                    style:background={c.color}
+                    style:color={c.text}
+                    title={`${c.count} × ${c.name} — click to open`}
+                    onclick={() => openCell(c, columns[i].label, r.title)}
+                  >
                     {c.count}
-                  </span>
+                  </button>
                 {/if}
               </td>
             {/each}
-            <td>
-              {#if r.audio}
-                <span class="sq" style:background={r.audio.color} style:color={r.audio.text} title={`${r.audio.count} × ${r.audio.name}`}>
-                  {r.audio.count}
-                </span>
-              {/if}
-            </td>
           </tr>
         {/each}
         {#if rows.length === 0}
-          <tr><td class="empty" colspan={instruments.length + 2}>No songs in the library yet.</td></tr>
+          <tr><td class="empty" colspan={columns.length + 1}>No songs in the library yet.</td></tr>
         {/if}
       </tbody>
     </table>
   </div>
 </section>
+
+{#if popup}
+  <div class="modal-backdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-label={popup.title}>
+      <header class="modal-head">
+        <h3>{popup.title}</h3>
+        <button class="x" onclick={() => (popup = null)} aria-label="Close">×</button>
+      </header>
+      <ul class="modal-list">
+        {#each popup.items as it (it.sha)}
+          <li><a href={it.href} target="_blank" rel="noopener">{it.label}</a></li>
+        {/each}
+      </ul>
+      <p class="modal-hint">Press Esc to close</p>
+    </div>
+  </div>
+{/if}
 
 <style>
   .status {
@@ -180,8 +258,8 @@
     border-bottom: 1px solid var(--line);
   }
 
-  /* Square intersections: every instrument/audio column is one cell wide and
-     every row one cell tall. */
+  /* Square intersections: every value column is one cell wide and every row one
+     cell tall. */
   .col-head,
   td {
     width: var(--cell);
@@ -213,7 +291,7 @@
     color: var(--ink);
   }
 
-  .col-head.audio span {
+  .col-head.special span {
     color: var(--accent-strong);
   }
 
@@ -264,15 +342,104 @@
     justify-content: center;
     width: 24px;
     height: 24px;
+    border: 0;
     border-radius: 4px;
     font-size: 0.72rem;
     font-weight: 800;
     line-height: 1;
+    cursor: pointer;
+    transition: transform 0.06s ease, box-shadow 0.06s ease;
+  }
+
+  .sq:hover {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+  }
+
+  .sq:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 1px;
   }
 
   .empty {
     padding: 16px;
     color: var(--muted);
     text-align: center;
+  }
+
+  /* Popup for cells with several files. */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .modal {
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 8px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+    width: min(440px, 100%);
+    max-height: 80vh;
+    overflow: auto;
+    padding: 18px 20px;
+  }
+
+  .modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .modal-head h3 {
+    font-size: 1.05rem;
+  }
+
+  .x {
+    border: 0;
+    background: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+
+  .modal-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .modal-list a {
+    display: block;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--accent-strong);
+    background: #f7f5ef;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .modal-hint {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-align: right;
   }
 </style>
