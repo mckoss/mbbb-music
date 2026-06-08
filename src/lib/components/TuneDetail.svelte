@@ -2,7 +2,7 @@
   import type { Tune } from '$lib/types';
   import type { PrintFormat } from '$lib/stores';
   import { score } from '$lib/stores';
-  import { partLabel, instrumentDisplay } from '$lib/format';
+  import { partLabel, instrumentDisplay, audioLabel } from '$lib/format';
   import { partsFor, activePdf, type ActivePdf } from '$lib/resolve';
   import AudioPlayer from './AudioPlayer.svelte';
 
@@ -27,10 +27,24 @@
   const active = $derived(activePdf(tune, instrumentSlug, chosenSha));
   const instrumentLabel = $derived(matches[0]?.instrument ?? instrumentSlug);
 
-  const audioAsset = $derived(tune.audio[0] ?? null);
+  const audios = $derived(tune.audio ?? []);
   const musescoreAsset = $derived(tune.musescore[0] ?? null);
   const images = $derived(tune.images ?? []);
   const files = $derived(tune.files ?? []);
+
+  // Which recording the inline player uses (reset when the tune changes).
+  let chosenAudioSha = $state<string | null>(null);
+  $effect(() => {
+    void tune.slug;
+    chosenAudioSha = audios.length > 0 ? audios[0].sha256 : null;
+  });
+  const playingAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
+
+  // Download filename for an audio file: keep the original (it says what it is),
+  // falling back to a generated name.
+  function audioDlName(a: { originalName: string | null }): string {
+    return a.originalName ?? `mbbb-${tune.slug}.mp3`;
+  }
 
   // Download name for a misc asset: keep the original filename (it carries the
   // right extension); fall back to a generated name if absent.
@@ -90,35 +104,46 @@
     </p>
   </header>
 
-  {#if audioAsset}
-    <AudioPlayer sha={audioAsset.sha256} title={tune.title} />
+  {#if audios.length > 0}
+    <div class="audio">
+      {#if audios.length > 1}
+        <label class="audio-select">
+          <span class="eyebrow">Recording</span>
+          <select bind:value={chosenAudioSha}>
+            {#each audios as a (a.sha256)}
+              <option value={a.sha256}>{audioLabel(a.originalName, tune.title)}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <AudioPlayer sha={playingAudio?.sha256 ?? null} title={tune.title} />
+    </div>
   {/if}
 
-  <div class="downloads">
-    {#if active}
-      <a class="dl" href={`/blob/${active.sha}?dl=${encodeURIComponent(dlName(active))}`} download>
-        PDF
-      </a>
-    {/if}
-    {#if musescoreAsset}
-      <a
-        class="dl"
-        href={`/blob/${musescoreAsset.sha256}?dl=${encodeURIComponent(`mbbb-${tune.slug}-full-score.mscz`)}`}
-        download
-      >
-        MuseScore
-      </a>
-    {/if}
-    {#if audioAsset}
-      <a
-        class="dl"
-        href={`/blob/${audioAsset.sha256}?dl=${encodeURIComponent(`mbbb-${tune.slug}.mp3`)}`}
-        download
-      >
-        Audio
-      </a>
-    {/if}
-  </div>
+  <section class="downloads-section">
+    <p class="kicker">Downloads</p>
+    <div class="downloads">
+      {#if active}
+        <a class="dl" href={`/blob/${active.sha}?dl=${encodeURIComponent(dlName(active))}`} download>
+          ⤓ Score (PDF)
+        </a>
+      {/if}
+      {#if musescoreAsset}
+        <a
+          class="dl"
+          href={`/blob/${musescoreAsset.sha256}?dl=${encodeURIComponent(`mbbb-${tune.slug}-full-score.mscz`)}`}
+          download
+        >
+          ⤓ MuseScore
+        </a>
+      {/if}
+      {#each audios as a (a.sha256)}
+        <a class="dl" href={`/blob/${a.sha256}?dl=${encodeURIComponent(audioDlName(a))}`} download>
+          ⤓ {audioLabel(a.originalName, tune.title)} (MP3)
+        </a>
+      {/each}
+    </div>
+  </section>
 
   {#if active}
     <button class="open-score" onclick={openScore}>Open Score</button>
@@ -204,6 +229,37 @@
 
   .muted {
     color: var(--muted);
+  }
+
+  .audio {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .audio-select {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .audio-select span {
+    color: var(--muted);
+  }
+
+  .audio-select select {
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 10px;
+    background: var(--panel);
+    color: var(--ink);
+  }
+
+  .downloads-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .downloads {

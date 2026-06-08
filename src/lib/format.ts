@@ -35,3 +35,20 @@ export function partLabel(part: CatalogPart): string {
   const base = instrumentDisplay(part.instrument ?? part.instrumentSlug, part.key);
   return part.partNumber != null ? `${base} ${part.partNumber}` : base;
 }
+
+/**
+ * A human label for an audio file, derived from its filename — so multiple
+ * recordings (full band, drums only, an isolated part, …) are distinguishable.
+ * Drops the extension and a leading song-title prefix, leaving e.g. "Drums
+ * Only" from "Bad Guy - Drums Only.mp3". Falls back to "Full recording".
+ */
+export function audioLabel(originalName: string | null, songTitle: string): string {
+  if (!originalName) return 'Full recording';
+  let s = originalName.replace(/\.[^.]+$/, ''); // drop extension
+  const song = (songTitle ?? '').trim();
+  if (song && s.toLowerCase().startsWith(song.toLowerCase())) {
+    s = s.slice(song.length); // strip a leading "<song>" prefix
+  }
+  s = s.replace(/^[\s\-–—_]+/, '').trim(); // and any leftover separator
+  return s || 'Full recording';
+}
