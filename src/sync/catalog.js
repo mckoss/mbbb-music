@@ -12,6 +12,7 @@
 
 import { slugify, slugifyStem } from './slugify.js';
 import { DEFAULT_KEY_BY_SLUG } from './instruments.js';
+import { isJunkName } from './classify.js';
 
 /** True for a manifest entry that still represents a present, downloaded asset. */
 export function isLive(entry) {
@@ -19,9 +20,13 @@ export function isLive(entry) {
   return status !== 'deleted' && !status.startsWith('ignored');
 }
 
-/** All live (present, non-ignored, non-deleted) manifest entries. */
+/**
+ * All live (present, non-ignored, non-deleted) manifest entries, excluding OS
+ * junk. The junk filter here also hides junk already recorded as `synced` in an
+ * older manifest (e.g. "._x.pdf"), so the catalog is clean without a re-sync.
+ */
 export function liveAssets(manifest) {
-  return Object.values(manifest.files || {}).filter(isLive);
+  return Object.values(manifest.files || {}).filter((e) => isLive(e) && !isJunkName(e.originalName));
 }
 
 /**

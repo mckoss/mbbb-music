@@ -71,6 +71,16 @@ test('accepts images as downloadable/embeddable assets', () => {
   assert.equal(classifyDriveFile({ name: 'photo.JPEG', mimeType: 'application/octet-stream' }).assetType, 'image');
 });
 
+test('ignores OS/system junk files', () => {
+  for (const name of ['._You_Move-melody.pdf', '.DS_Store', 'delete', 'Thumbs.db', '.hidden']) {
+    const c = classifyDriveFile({ name, mimeType: 'application/pdf' });
+    assert.equal(c.ignored, true, `${name} should be ignored`);
+    assert.equal(c.ignoreReason, 'junk', `${name} reason`);
+  }
+  // A normal file is not junk.
+  assert.equal(classifyDriveFile({ name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf' }).ignored, false);
+});
+
 test('accepts uploaded .docx (download-only) and .zip archives', () => {
   const docx = classifyDriveFile({
     name: 'Notes.docx',

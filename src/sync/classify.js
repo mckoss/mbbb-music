@@ -15,6 +15,24 @@ const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 /** Drive mime type for folders. */
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
+/** Exact filenames that are throwaway OS/system cruft, not real assets. */
+const JUNK_NAMES = new Set(['delete', 'thumbs.db', 'desktop.ini']);
+
+/**
+ * True for OS/system junk that should never be treated as an asset: macOS
+ * AppleDouble sidecars ("._name"), .DS_Store and other dotfiles, and known
+ * throwaway names. Such files are recorded as ignored, never fetched, and are
+ * excluded from the catalog.
+ *
+ * @param {string|null|undefined} name
+ */
+export function isJunkName(name) {
+  const n = String(name ?? '').trim();
+  if (!n) return false;
+  if (n.startsWith('.')) return true; // .DS_Store, ._resource-forks, dotfiles
+  return JUNK_NAMES.has(n.toLowerCase());
+}
+
 // Native Google editor types that have no binary form but export cleanly to PDF.
 // A PDF export drops straight into the existing content-addressable PDF path:
 // the exported bytes are downloaded, hashed, and stored/served like any other
@@ -105,6 +123,10 @@ export function classifyDriveFile(file) {
   // shortcutDetails regardless of the (sometimes spoofed) target mime.
   if (mimeType === SHORTCUT_MIME || file?.shortcutDetails) {
     return ignore('google-drive-shortcut');
+  }
+  // OS/system junk (._sidecars, .DS_Store, "delete", …) — never an asset.
+  if (isJunkName(name)) {
+    return ignore('junk');
   }
   // Native Google editor files (Docs/Sheets/Slides/Drawings) have no binary
   // asset, but export to PDF — accept them as PDFs fetched via export. Other
