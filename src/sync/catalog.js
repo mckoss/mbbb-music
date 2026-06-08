@@ -11,7 +11,7 @@
 // audio, and MuseScore sources.
 
 import { slugify, slugifyStem } from './slugify.js';
-import { DEFAULT_KEY_BY_SLUG } from './instruments.js';
+import { DEFAULT_KEY_BY_SLUG, detectPartNumber } from './instruments.js';
 import { isJunkName } from './classify.js';
 
 /** True for a manifest entry that still represents a present, downloaded asset. */
@@ -51,6 +51,26 @@ export function effectiveKey(entry) {
 /** A valid (>= 1) part number, or null. */
 function partNumberOf(entry) {
   return Number.isInteger(entry.partNumber) && entry.partNumber >= 1 ? entry.partNumber : null;
+}
+
+/** The print format of a PDF from its filename: 'lyre' for lyre-size, else 'letter'. */
+export function formatOf(name) {
+  return /\blyre\b/i.test(String(name ?? '')) ? 'lyre' : 'letter';
+}
+
+/**
+ * Part number for an entry, re-derived from the filename when the synced value
+ * is missing. detectPartNumber only reads a trailing number, so a format suffix
+ * ("Trumpet_2-Lyre") hides it; strip a trailing lyre/letter token first.
+ */
+function effectivePartNumber(entry) {
+  const stored = partNumberOf(entry);
+  if (stored != null) return stored;
+  // Drop a trailing format token that sits just before the extension (or at the
+  // end), keeping any real extension so detectPartNumber strips that — not a
+  // version dot like "V1.0" — and the part number ("…Trumpet_2") survives.
+  const cleaned = String(entry.originalName ?? '').replace(/[\s_-]*(lyre|letter)(?=(\.[^.]*)?$)/i, '');
+  return detectPartNumber(cleaned);
 }
 
 /**
@@ -158,7 +178,32 @@ export function canonicalByContent(manifest, pri) {
 
 function comparePart(a, b) {
   if (a.instrumentSlug !== b.instrumentSlug) return a.instrumentSlug.localeCompare(b.instrumentSlug);
-  return (a.partNumber ?? 0) - (b.partNumber ?? 0);
+  if ((a.partNumber ?? 0) !== (b.partNumber ?? 0)) return (a.partNumber ?? 0) - (b.partNumber ?? 0);
+  return String(a.format).localeCompare(String(b.format));
+}
+
+/**
+ * Collapse parts that are the same instrument/key/part/format down to one,
+ * keeping the newest by modified time (so older version copies — "V1.0" vs
+ * "V1.2" — don't show as undifferentiated duplicates). Strips the transient
+ * `_mtime` used for the comparison.
+ */
+function dedupeParts(parts) {
+  const best = new Map();
+  for (const p of parts) {
+    const key = `${p.instrumentSlug}|${p.key ?? ''}|${p.partNumber ?? ''}|${p.format}`;
+    const cur = best.get(key);
+    // Prefer the newer modifiedTime; tiebreak on name so "V1.2" beats "V1.0".
+    if (
+      !cur ||
+      (p._mtime || '') > (cur._mtime || '') ||
+      ((p._mtime || '') === (cur._mtime || '') && (p.originalName || '') > (cur.originalName || ''))
+    ) {
+      best.set(key, p);
+    }
+  }
+  // eslint-disable-next-line no-unused-vars
+  return [...best.values()].map(({ _mtime, ...rest }) => rest);
 }
 
 /**
@@ -339,7 +384,9 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
         instrument: e.instrument || null,
         instrumentSlug: e.instrumentSlug,
         key: effectiveKey(e),
-        partNumber: partNumberOf(e),
+        partNumber: effectivePartNumber(e),
+        format: formatOf(e.originalName),
+        _mtime: e.modifiedTime || '', // transient, used for version dedup
       });
     } else if (e.assetType === 'pdf') {
       song.scores.push(asset);
@@ -393,7 +440,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const tunes = [...bySong.values()]
     .sort((a, b) => a.slug.localeCompare(b.slug))
-    .map((s) => ({ ...s, parts: s.parts.sort(comparePart) }));
+    .map((s) => ({ ...s, parts: dedupeParts(s.parts).sort(comparePart) }));
 
   const instLabels = new Map();
   for (const t of tunes) {

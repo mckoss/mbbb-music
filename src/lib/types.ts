@@ -7,6 +7,7 @@ export interface CatalogPart {
   instrument: string | null;
   key: string | null;
   partNumber: number | null;
+  format: string; // 'letter' | 'lyre'
   originalName: string | null;
 }
 

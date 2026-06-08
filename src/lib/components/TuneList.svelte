@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Tune } from '$lib/types';
-  import { search, selectedSlug, instrumentSlug, score } from '$lib/stores';
+  import { search, selectedSlug, instrumentSlug, printFormat, score } from '$lib/stores';
   import { activePdf } from '$lib/resolve';
   import { playSha } from '$lib/audio';
 
@@ -18,7 +18,7 @@
 
   function openScore(t: Tune) {
     selectedSlug.set(t.slug);
-    const active = activePdf(t, $instrumentSlug);
+    const active = activePdf(t, $instrumentSlug, $printFormat);
     if (active) score.set({ sha: active.sha, title: t.title, label: active.label });
   }
 
@@ -29,7 +29,7 @@
   }
 
   function hasPdf(t: Tune): boolean {
-    return activePdf(t, $instrumentSlug) != null;
+    return activePdf(t, $instrumentSlug, $printFormat) != null;
   }
 </script>
 

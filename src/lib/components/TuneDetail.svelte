@@ -3,7 +3,7 @@
   import type { PrintFormat } from '$lib/stores';
   import { score } from '$lib/stores';
   import { partLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
-  import { partsFor, activePdf, type ActivePdf } from '$lib/resolve';
+  import { partsForFormat, activePdf, type ActivePdf } from '$lib/resolve';
   import AudioPlayer from './AudioPlayer.svelte';
 
   let {
@@ -12,19 +12,21 @@
     printFormat,
   }: { tune: Tune; instrumentSlug: string; printFormat: PrintFormat } = $props();
 
-  const matches = $derived(partsFor(tune, instrumentSlug));
+  // Parts conform to the selected print format (Letter/Lyre).
+  const matches = $derived(partsForFormat(tune, instrumentSlug, printFormat));
 
-  // Chosen part sha when multiple parts exist; reset when the tune/instrument
-  // changes by deriving the default from the current matches.
+  // Chosen part sha when multiple parts exist; reset when the tune/instrument/
+  // format changes by deriving the default from the current matches.
   let chosenSha = $state<string | null>(null);
   $effect(() => {
     // Reset selection whenever the candidate set changes.
     void tune.slug;
     void instrumentSlug;
+    void printFormat;
     chosenSha = matches.length > 0 ? matches[0].sha256 : null;
   });
 
-  const active = $derived(activePdf(tune, instrumentSlug, chosenSha));
+  const active = $derived(activePdf(tune, instrumentSlug, printFormat, chosenSha));
   const instrumentLabel = $derived(matches[0]?.instrument ?? instrumentSlug);
 
   const audios = $derived(tune.audio ?? []);

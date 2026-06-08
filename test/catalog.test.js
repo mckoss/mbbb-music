@@ -168,6 +168,30 @@ test('unfoldered files sharing a song prefix form a new song; a lone file stays 
   assert.equal(extras[0].originalName, 'Funkytown.pdf');
 });
 
+test('parts carry print format, re-derive lyre part numbers, and dedupe version copies', () => {
+  const p = (sha, name, mt) => ({
+    status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,
+    instrument: 'Trumpet', instrumentSlug: 'trumpet', key: 'bflat', modifiedTime: mt,
+  });
+  const manifest = {
+    files: {
+      a: p('a', 'Iron Man-V1.0-Trumpet_1.pdf', '2026-01-01T00:00:00Z'), // letter v1.0
+      b: p('b', 'Iron Man-V1.2-Trumpet_1.pdf', '2026-02-01T00:00:00Z'), // letter v1.2 (newer)
+      c: p('c', 'Iron Man-V1.0-Trumpet_1-Lyre.pdf', '2026-01-01T00:00:00Z'), // lyre, number hidden by suffix
+      d: p('d', 'Iron Man-V1.0-Trumpet_2.pdf', '2026-01-01T00:00:00Z'), // letter part 2
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['loose'], ['loose']);
+  const tpt = tunes.find((t) => t.slug === 'iron-man').parts.filter((x) => x.instrumentSlug === 'trumpet');
+
+  const letter1 = tpt.filter((x) => x.partNumber === 1 && x.format === 'letter');
+  assert.equal(letter1.length, 1, 'version copies of the same part/format collapse to one');
+  assert.equal(letter1[0].originalName, 'Iron Man-V1.2-Trumpet_1.pdf', 'keeps the newest version');
+  assert.ok(tpt.some((x) => x.partNumber === 1 && x.format === 'lyre'), 'lyre part 1 keeps its number');
+  assert.ok(tpt.some((x) => x.partNumber === 2 && x.format === 'letter'));
+  assert.ok(!tpt.some((x) => x.partNumber == null), 'no undifferentiated unnumbered duplicates');
+});
+
 test('matchKnownSong matches by embedded title (both prefix directions)', () => {
   const known = [
     { slug: 'baile-inolvidable', title: 'BAILE INOLVIDABLE', tokens: ['baile', 'inolvidable'] },
