@@ -27,6 +27,7 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "@sveltejs/adapter-node": "5.5.4",
+    "@sveltejs/enhanced-img": "0.10.4",
     "@sveltejs/kit": "2.63.0",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@types/node": "25.9.2",

@@ -26,9 +26,16 @@
 {#if !overlayOpen}
   <header class="masthead">
     <div class="brand">
-      <p class="eyebrow brand-eyebrow">Mutiny Bay Brass Band</p>
-      <h1>Music</h1>
-      <p class="desc">Browse the band library, audition recordings, and open scores for performance.</p>
+      <enhanced:img
+        class="logo"
+        src="$lib/assets/mbbb-logo.png?w=112"
+        alt="Mutiny Bay Brass Band logo"
+      />
+      <div class="brand-text">
+        <p class="eyebrow brand-eyebrow">Mutiny Bay Brass Band</p>
+        <h1>Music</h1>
+        <p class="desc">Browse the band library, audition recordings, and open scores for performance.</p>
+      </div>
     </div>
 
     <div class="globals">
@@ -72,6 +79,20 @@
     gap: 24px;
     align-items: flex-end;
     justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+
+  /* Displayed at 56px; the source is emitted at 112px (?w=112) for 2× screens. */
+  .logo {
+    width: 56px;
+    height: 56px;
+    flex: none;
+    object-fit: contain;
   }
 
   .brand-eyebrow {
