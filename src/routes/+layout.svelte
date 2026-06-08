@@ -11,10 +11,12 @@
 
   const instruments = $derived(data.catalog.instruments ?? []);
 
-  // Default the global instrument to the first one once the catalog is known,
-  // but never clobber a user selection.
+  // Default the global instrument to the first one once the catalog is known.
+  // A saved (cookie-restored) choice is kept as long as it still exists in the
+  // catalog; an empty or stale value falls back to the first instrument.
   $effect(() => {
-    if (!$instrumentSlug && instruments.length > 0) {
+    if (instruments.length === 0) return;
+    if (!instruments.some((i) => i.slug === $instrumentSlug)) {
       instrumentSlug.set(instruments[0].slug);
     }
   });
