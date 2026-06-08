@@ -28,7 +28,7 @@
     <div class="brand">
       <enhanced:img
         class="logo"
-        src="$lib/assets/mbbb-logo.png?w=224"
+        src="$lib/assets/mbbb-logo.png?w=300"
         alt="Mutiny Bay Brass Band logo"
       />
       <div class="brand-text">
@@ -84,15 +84,18 @@
   .brand {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: clamp(14px, 3vw, 28px);
   }
 
-  /* Displayed at 112px; the source is emitted at 224px (?w=224) for 2× screens. */
+  /* Matches the prototype: scales with the viewport up to 150px, circular with a
+     drop shadow. Source emitted at 300px (?w=300) to stay crisp at the 150px
+     max on 2× screens. The ≤980px rule below fixes it at 116px. */
   .logo {
-    width: 112px;
-    height: 112px;
-    flex: none;
-    object-fit: contain;
+    width: clamp(92px, 12vw, 150px);
+    height: auto;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
   }
 
   .brand-eyebrow {
@@ -173,6 +176,10 @@
     .masthead {
       flex-direction: column;
       align-items: stretch;
+    }
+
+    .logo {
+      width: 116px;
     }
   }
 </style>
