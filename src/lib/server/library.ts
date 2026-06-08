@@ -15,16 +15,20 @@ export interface AssetMeta {
   mimeType: string | null;
 }
 
+// The builder's catalog plus a label -> Drive folder URL map added here (the
+// folder ids live in the server-only config, not the manifest).
+type ServerCatalog = ReturnType<typeof buildCatalog> & { sourceUrls: Record<string, string> };
+
 interface Loaded {
   mtimeMs: number;
-  catalog: ReturnType<typeof buildCatalog>;
+  catalog: ServerCatalog;
   assets: Map<string, AssetMeta>;
   casDir: string;
 }
 
 const EMPTY: Loaded = {
   mtimeMs: -1,
-  catalog: { tunes: [], instruments: [], extras: [], sources: [], uniqueCount: 0, liveCount: 0 },
+  catalog: { tunes: [], instruments: [], extras: [], sources: [], sourceUrls: {}, uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
 };
@@ -43,12 +47,18 @@ function load(): Loaded {
   if (cached && cached.mtimeMs === stat.mtimeMs) return cached;
 
   const manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
-  const sources = (cfg.sources || []) as { label: string; foldered?: boolean }[];
+  const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean }[];
   const sourceLabels = sources.map((s) => s.label).filter(Boolean);
   // Sources explicitly marked `foldered: false` aren't organized into per-song
   // folders; their files are grouped by the song embedded in each filename.
   const looseLabels = sources.filter((s) => s.foldered === false).map((s) => s.label);
-  const catalog = buildCatalog(manifest, sourceLabels, looseLabels);
+  // Map each source label to its Google Drive folder URL so the UI can link to
+  // the source in Drive.
+  const sourceUrls: Record<string, string> = {};
+  for (const s of sources) {
+    if (s.label && s.id) sourceUrls[s.label] = `https://drive.google.com/drive/folders/${s.id}`;
+  }
+  const catalog: ServerCatalog = { ...buildCatalog(manifest, sourceLabels, looseLabels), sourceUrls };
 
   // Index every live blob's type/name so the blob endpoint can set the right
   // Content-Type and refuse hashes that aren't part of the library.

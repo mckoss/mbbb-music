@@ -81,8 +81,11 @@
     }))
   );
 
-  // Legend entries, one per configured source (in priority order).
-  const legend = $derived(sources.map((s) => ({ label: s, ...sourceStyle(s) })));
+  // Legend entries, one per configured source (in priority order), linked to
+  // the source's Google Drive folder when known.
+  const legend = $derived(
+    sources.map((s) => ({ label: s, url: catalog.sourceUrls?.[s] ?? null, ...sourceStyle(s) }))
+  );
 
   // Clicking a square: a lone file opens full screen; several open a popup of
   // links. Escape (or the × / backdrop) closes the popup.
@@ -120,7 +123,11 @@
       {#each legend as l (l.label)}
         <li>
           <span class="swatch" style:background={l.color}></span>
-          {l.name}
+          {#if l.url}
+            <a href={l.url} target="_blank" rel="noopener">{l.name}</a>
+          {:else}
+            {l.name}
+          {/if}
         </li>
       {/each}
     </ul>
@@ -229,6 +236,11 @@
     gap: 8px;
     font-size: 0.82rem;
     color: var(--ink);
+  }
+
+  .legend a {
+    color: var(--accent-strong);
+    text-decoration: underline;
   }
 
   .swatch {

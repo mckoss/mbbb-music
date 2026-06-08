@@ -42,6 +42,7 @@ export interface Catalog {
   instruments: Instrument[];
   extras: CatalogAsset[];
   sources: string[]; // source labels in priority order (highest first)
+  sourceUrls: Record<string, string>; // source label -> Google Drive folder URL
   uniqueCount: number;
   liveCount: number;
 }
