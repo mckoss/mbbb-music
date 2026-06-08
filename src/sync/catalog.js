@@ -215,6 +215,53 @@ export function matchKnownSong(originalName, known) {
   return null;
 }
 
+// Tokens that mark the end of the song name in a part filename — instrument
+// names, keys/clefs, and score/format/section words. The song is the run of
+// tokens before the first of these (e.g. "anthrax-trumpet-in-bb" → "anthrax").
+const DESCRIPTOR_TOKENS = new Set([
+  // instruments
+  'trumpet', 'cornet', 'trombone', 'tuba', 'sousaphone', 'flute', 'clarinet', 'euphonium',
+  'baritone', 'bari', 'mellophone', 'melodica', 'horn', 'sax', 'saxophone', 'alto', 'tenor',
+  'soprano', 'drum', 'drums', 'drumset', 'snare', 'cymbal', 'cymbals', 'percussion', 'quad',
+  'toms', 'tupan', 'glockenspiel', 'glock', 'bells', 'kit', 'rig', 'vocals',
+  // keys / clefs / transposition
+  'bass', 'treble', 'clef', 'bb', 'eb', 'ab', 'f', 'c', 'd', 'g', 'a', 'flat', 'sharp',
+  'concert', 'in', 'bc', 'tc',
+  // score / format / section
+  'score', 'parts', 'part', 'full', 'melody', 'harmony', 'lyre', 'letter', 'lyrics', 'notes',
+  'finale', 'standardized', 'version', 'low', 'high', 'hi', 'lo', 'updated', 'line', 'groove', 'set',
+]);
+
+/** A descriptor token, or a bare/version number (e.g. "2", "v1", "3.1"). */
+function isDescriptorToken(t) {
+  return DESCRIPTOR_TOKENS.has(t) || /^v?\d+(\.\d+)*$/.test(t);
+}
+
+/**
+ * The song prefix embedded in a part filename: the leading run of name tokens
+ * before the first instrument/key/descriptor token (with the "Copy of" prefix
+ * stripped). Used to cluster unfoldered files that share a song into a new song.
+ * Returns '' when the name starts with a descriptor (no usable song prefix).
+ */
+export function songPrefixOf(name) {
+  const slug = slugifyStem(name || '').replace(/^(?:copy-of-)+/, '');
+  if (!slug) return '';
+  const out = [];
+  for (const tok of slug.split('-')) {
+    if (isDescriptorToken(tok)) break;
+    out.push(tok);
+  }
+  return out.join('-');
+}
+
+/** Title-case a song slug for display: "we-are-number-one" → "We Are Number One". */
+function titleCaseSlug(slug) {
+  return slug
+    .split('-')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
 /**
  * Build the player-facing catalog: tunes grouped by song, each with its
  * per-instrument parts, full scores, audio, and MuseScore sources. Every unique
@@ -256,36 +303,18 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const bySong = new Map();
   const extras = [];
-  for (const e of canonical.values()) {
-    let slug;
-    let title;
-    if (isRealSongFolder(e)) {
-      slug = songSlugOf(e);
-      title = e.songTitle || '(unknown)';
-    } else {
-      // Not foldered by song — match the song embedded in the filename.
-      const match = matchKnownSong(e.originalName, known);
-      if (!match) {
-        extras.push({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType });
-        continue;
-      }
-      slug = match.slug;
-      title = match.title;
+  const extraOf = (e) => ({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType });
+
+  const getSong = (slug, title) => {
+    let song = bySong.get(slug);
+    if (!song) {
+      song = { slug, title, lastModified: null, parts: [], scores: [], audio: [], musescore: [], images: [], files: [] };
+      bySong.set(slug, song);
     }
-    if (!bySong.has(slug)) {
-      bySong.set(slug, {
-        slug,
-        title,
-        lastModified: null,
-        parts: [],
-        scores: [],
-        audio: [],
-        musescore: [],
-        images: [],
-        files: [],
-      });
-    }
-    const song = bySong.get(slug);
+    return song;
+  };
+
+  const addAsset = (song, e) => {
     if (e.modifiedTime && (!song.lastModified || e.modifiedTime > song.lastModified)) {
       song.lastModified = e.modifiedTime;
     }
@@ -309,6 +338,42 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     } else {
       // Any other accepted type (doc, archive, …) is a generic downloadable file.
       song.files.push({ ...asset, assetType: e.assetType });
+    }
+  };
+
+  // Pass 1: foldered files go to their folder's song; an unfoldered file goes to
+  // a known song matched by its filename, else it's held for prefix-clustering.
+  const pending = [];
+  for (const e of canonical.values()) {
+    if (isRealSongFolder(e)) {
+      addAsset(getSong(songSlugOf(e), e.songTitle || '(unknown)'), e);
+      continue;
+    }
+    const match = matchKnownSong(e.originalName, known);
+    if (match) addAsset(getSong(match.slug, match.title), e);
+    else pending.push(e);
+  }
+
+  // Pass 2: cluster the still-unmatched files by the song prefix embedded in
+  // their names. A prefix shared by 2+ files becomes a new song (these are
+  // unfoldered songs not in the library, e.g. the HONK set); a lone file with no
+  // sibling sharing its prefix is an Extra File.
+  const byPrefix = new Map();
+  for (const e of pending) {
+    const prefix = songPrefixOf(e.originalName);
+    if (!prefix) {
+      extras.push(extraOf(e));
+      continue;
+    }
+    if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
+    byPrefix.get(prefix).push(e);
+  }
+  for (const [prefix, group] of byPrefix) {
+    if (group.length >= 2) {
+      const song = getSong(prefix, titleCaseSlug(prefix));
+      for (const e of group) addAsset(song, e);
+    } else {
+      for (const e of group) extras.push(extraOf(e));
     }
   }
 

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong } from '../src/sync/catalog.js';
+import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf } from '../src/sync/catalog.js';
 
 // A small synthetic manifest exercising dedup, source priority, and bucketing.
 const MANIFEST = {
@@ -132,6 +132,38 @@ test('files from a loose (unfoldered) source are matched by filename or sent to 
   assert.equal(bad.audio.length, 1, 'the loose mp3 matched "Bad Guy" via its filename');
   assert.equal(extras.length, 1, 'the unmatched logo went to Extra Files');
   assert.equal(extras[0].originalName, 'mutiny-bay-logo.jpg');
+});
+
+test('songPrefixOf strips trailing instrument/key/descriptor tokens', () => {
+  assert.equal(songPrefixOf('Anthrax - Trumpet in Bb.pdf'), 'anthrax');
+  assert.equal(songPrefixOf('Copy of Pony - Baritone (B.C.).pdf'), 'pony');
+  assert.equal(songPrefixOf('Down For My City v2-C_(low)_BC.pdf'), 'down-for-my-city');
+  assert.equal(songPrefixOf('You_Move_Ya_Lose-melody-Bb-treble_clef-letter.pdf'), 'you-move-ya-lose');
+  // A name that STARTS with a descriptor (instrument/score word) has no usable
+  // song prefix — such files fall through to Extra Files.
+  assert.equal(songPrefixOf('Trumpet Medicated Chicken Water.pdf'), '');
+  assert.equal(songPrefixOf('Score_and_Parts.pdf'), '');
+});
+
+test('unfoldered files sharing a song prefix form a new song; a lone file stays Extra', () => {
+  const file = (sha, name) => ({
+    status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,
+  });
+  const manifest = {
+    files: {
+      a: file('a1', 'Anthrax - Trombone.pdf'),
+      b: file('b1', 'Anthrax - Trumpet in Bb.pdf'),
+      c: file('c1', 'Anthrax - Full Score.pdf'),
+      lone: file('l1', 'Funkytown.pdf'), // single file, no sibling -> Extra
+    },
+  };
+  const { tunes, extras } = buildCatalog(manifest, ['loose'], ['loose']);
+  const anthrax = tunes.find((t) => t.slug === 'anthrax');
+  assert.ok(anthrax, 'a new "Anthrax" song was formed from the shared prefix');
+  assert.equal(anthrax.title, 'Anthrax');
+  assert.equal(anthrax.parts.length + anthrax.scores.length, 3);
+  assert.equal(extras.length, 1);
+  assert.equal(extras[0].originalName, 'Funkytown.pdf');
 });
 
 test('matchKnownSong matches by embedded title (both prefix directions)', () => {
