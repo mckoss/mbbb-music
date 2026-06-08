@@ -28,7 +28,7 @@
     <div class="brand">
       <enhanced:img
         class="logo"
-        src="$lib/assets/mbbb-logo.png?w=112"
+        src="$lib/assets/mbbb-logo.png?w=224"
         alt="Mutiny Bay Brass Band logo"
       />
       <div class="brand-text">
@@ -87,10 +87,10 @@
     gap: 18px;
   }
 
-  /* Displayed at 56px; the source is emitted at 112px (?w=112) for 2× screens. */
+  /* Displayed at 112px; the source is emitted at 224px (?w=224) for 2× screens. */
   .logo {
-    width: 56px;
-    height: 56px;
+    width: 112px;
+    height: 112px;
     flex: none;
     object-fit: contain;
   }
