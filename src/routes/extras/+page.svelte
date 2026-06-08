@@ -36,18 +36,47 @@
 
   <ul class="list">
     {#each filtered as e (e.sha256)}
-      <li class="row">
-        <span class="name">{e.name}</span>
-        <span class="actions">
-          {#if e.assetType === 'mp3'}
-            <button class="act" onclick={() => playAudio(e)}>
-              {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
-            </button>
-          {:else if e.assetType === 'pdf' || e.assetType === 'image'}
-            <a class="act" href={`/blob/${e.sha256}`} target="_blank" rel="noopener">View</a>
-          {/if}
-          <a class="dl" href={`/blob/${e.sha256}?dl=${encodeURIComponent(e.name)}`} download title="Download">⤓</a>
-        </span>
+      <li class="row" class:has-thumb={e.assetType === 'image' || e.assetType === 'pdf'}>
+        {#if e.assetType === 'image'}
+          <a
+            class="thumb"
+            href={`/blob/${e.sha256}`}
+            target="_blank"
+            rel="noopener"
+            title="View full screen"
+          >
+            <img src={`/blob/${e.sha256}`} alt={e.name} loading="lazy" />
+          </a>
+        {:else if e.assetType === 'pdf'}
+          <a
+            class="thumb pdf"
+            href={`/blob/${e.sha256}`}
+            target="_blank"
+            rel="noopener"
+            title="View full screen"
+          >
+            <iframe
+              title={e.name}
+              src={`/blob/${e.sha256}#toolbar=0&navpanes=0&view=FitH`}
+              tabindex="-1"
+              scrolling="no"
+            ></iframe>
+            <span class="thumb-veil" aria-hidden="true"></span>
+          </a>
+        {/if}
+        <div class="meta">
+          <span class="name">{e.name}</span>
+          <span class="actions">
+            {#if e.assetType === 'mp3'}
+              <button class="act" onclick={() => playAudio(e)}>
+                {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
+              </button>
+            {:else if e.assetType === 'pdf' || e.assetType === 'image'}
+              <a class="act" href={`/blob/${e.sha256}`} target="_blank" rel="noopener">View</a>
+            {/if}
+            <a class="dl" href={`/blob/${e.sha256}?dl=${encodeURIComponent(e.name)}`} download title="Download">⤓</a>
+          </span>
+        </div>
       </li>
     {/each}
     {#if filtered.length === 0}
@@ -99,20 +128,79 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+
+  /* Two columns on wider screens so the previews don't dominate the page. */
+  @media (min-width: 760px) {
+    .list {
+      grid-template-columns: 1fr 1fr;
+    }
   }
 
   .row {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px 6px 12px;
+  }
+
+  /* Plain (non-thumbnail) rows keep the original single-line layout. */
+  .row .meta {
     display: flex;
     align-items: center;
     gap: 10px;
     justify-content: space-between;
     min-height: 44px;
+  }
+
+  /* Rows with a preview stack the thumbnail above the name + actions line. */
+  .row.has-thumb {
+    padding: 8px;
+  }
+
+  .row.has-thumb .meta {
+    padding: 0 4px;
+  }
+
+  .thumb {
+    display: block;
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 6px 8px 6px 12px;
+    overflow: hidden;
+    background: #fff;
+    cursor: zoom-in;
+  }
+
+  .thumb img {
+    display: block;
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    background: #efece3;
+  }
+
+  .thumb.pdf {
+    height: 280px;
+  }
+
+  .thumb.pdf iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    pointer-events: none;
+  }
+
+  /* Transparent layer so a click anywhere over the PDF iframe follows the link
+     (the iframe itself swallows clicks). */
+  .thumb-veil {
+    position: absolute;
+    inset: 0;
   }
 
   .name {
@@ -161,6 +249,7 @@
   }
 
   .empty {
+    grid-column: 1 / -1;
     color: var(--muted);
     font-size: 0.85rem;
     padding: 12px;
