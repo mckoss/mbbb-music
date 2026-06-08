@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import type { Tune } from '$lib/types';
-  import { search, selectedSlug, instrumentSlug, printFormat, score } from '$lib/stores';
+  import { search, instrumentSlug, printFormat, score } from '$lib/stores';
   import { activePdf } from '$lib/resolve';
   import { playSha } from '$lib/audio';
 
-  let { tunes }: { tunes: Tune[] } = $props();
+  let { tunes, selectedSlug }: { tunes: Tune[]; selectedSlug: string | null } = $props();
 
   const filtered = $derived(
     $search.trim()
@@ -12,18 +13,21 @@
       : tunes
   );
 
+  // Selecting a song updates the URL (?song=<slug>), adding a history entry so
+  // Back/Forward move between songs and the choice survives a refresh.
   function selectTune(t: Tune) {
-    selectedSlug.set(t.slug);
+    if (t.slug === selectedSlug) return; // no-op: avoid a duplicate history entry
+    goto(`?song=${encodeURIComponent(t.slug)}`, { keepFocus: true, noScroll: true });
   }
 
   function openScore(t: Tune) {
-    selectedSlug.set(t.slug);
+    selectTune(t);
     const active = activePdf(t, $instrumentSlug, $printFormat);
     if (active) score.set({ sha: active.sha, title: t.title, label: active.label });
   }
 
   function playAudio(t: Tune) {
-    selectedSlug.set(t.slug);
+    selectTune(t);
     const a = t.audio[0];
     if (a) playSha(a.sha256, t.title);
   }
@@ -48,7 +52,7 @@
 
   <ul class="tiles">
     {#each filtered as t (t.slug)}
-      <li class="tile" class:selected={$selectedSlug === t.slug}>
+      <li class="tile" class:selected={selectedSlug === t.slug}>
         <button class="title" onclick={() => selectTune(t)}>{t.title}</button>
         <div class="actions">
           <button class="act" onclick={() => openScore(t)} disabled={!hasPdf(t)}>Score</button>

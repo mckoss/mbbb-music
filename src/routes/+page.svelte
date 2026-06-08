@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { selectedSlug, instrumentSlug, printFormat } from '$lib/stores';
+  import { instrumentSlug, printFormat } from '$lib/stores';
   import type { Catalog, Tune } from '$lib/types';
   import TuneList from '$lib/components/TuneList.svelte';
   import TuneDetail from '$lib/components/TuneDetail.svelte';
@@ -8,20 +8,15 @@
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
 
-  // Default the selection to the first tune once tunes are available.
-  $effect(() => {
-    if ($selectedSlug == null && tunes.length > 0) {
-      selectedSlug.set(tunes[0].slug);
-    }
-  });
-
+  // The selected song lives in the URL (?song=<slug>) so it survives a refresh
+  // and each change is a history entry. Falls back to the first tune when unset.
   const selected = $derived<Tune | null>(
-    tunes.find((t) => t.slug === $selectedSlug) ?? tunes[0] ?? null
+    tunes.find((t) => t.slug === page.url.searchParams.get('song')) ?? tunes[0] ?? null
   );
 </script>
 
 <div class="collection">
-  <TuneList {tunes} />
+  <TuneList {tunes} selectedSlug={selected?.slug ?? null} />
   {#if selected}
     <TuneDetail tune={selected} instrumentSlug={$instrumentSlug} printFormat={$printFormat} />
   {:else}

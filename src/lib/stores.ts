@@ -45,8 +45,8 @@ export const printFormat = persistedCookie<PrintFormat>('mbbb_format', 'letter')
 // Free-text filter for the collection list.
 export const search = writable<string>('');
 
-// The currently-selected tune slug, or null when none is selected.
-export const selectedSlug = writable<string | null>(null);
+// (The selected song is held in the URL — ?song=<slug> — not a store, so it
+// survives refresh and adds history entries; see routes/+page.svelte.)
 
 // When non-null, the full-screen Score/Performance overlay is open showing
 // this PDF.
