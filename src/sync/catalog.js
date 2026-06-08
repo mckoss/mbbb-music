@@ -17,7 +17,7 @@ import { isJunkName } from './classify.js';
 /** True for a manifest entry that still represents a present, downloaded asset. */
 export function isLive(entry) {
   const status = entry.status || '';
-  return status !== 'deleted' && !status.startsWith('ignored');
+  return status !== 'deleted' && status !== 'unreachable' && !status.startsWith('ignored');
 }
 
 /**
@@ -232,6 +232,7 @@ function dedupeParts(parts) {
  * @property {CatalogAsset[]} musescore   MuseScore source files.
  * @property {CatalogAsset[]} images      Images (JPEG) embeddable in the view.
  * @property {CatalogAsset[]} files       Other downloadable files (docx, zip, …).
+ * @property {Object[]} unreachable       Unreachable shortcuts (no content) for the health view.
  */
 
 /** Is token-run `a` a leading prefix of token-run `b`? (token-level, not chars) */
@@ -315,6 +316,27 @@ export function songPrefixOf(name) {
   return out.join('-');
 }
 
+/**
+ * A catalog item for an unreachable shortcut (no content). Typed like a part
+ * when an instrument was detected, and carries a Drive "request access" URL
+ * built from the shortcut's target id.
+ */
+function unreachableItem(e) {
+  const hasInstrument = Boolean(e.instrumentSlug);
+  return {
+    assetType: e.assetType || 'pdf',
+    instrumentSlug: e.instrumentSlug || null,
+    instrument: e.instrument || null,
+    key: hasInstrument ? effectiveKey(e) : null,
+    partNumber: hasInstrument ? effectivePartNumber(e) : null,
+    format: formatOf(e.originalName),
+    originalName: e.originalName || null,
+    source: e.sourceFolderLabel || null,
+    driveUrl: e.shortcutTarget ? `https://drive.google.com/file/d/${e.shortcutTarget}/view` : null,
+    unreachable: true,
+  };
+}
+
 /** Title-case a song slug for display: "we-are-number-one" → "We Are Number One". */
 function titleCaseSlug(slug) {
   return slug
@@ -369,7 +391,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
     if (!song) {
-      song = { slug, title, lastModified: null, parts: [], scores: [], audio: [], musescore: [], images: [], files: [] };
+      song = { slug, title, lastModified: null, parts: [], scores: [], audio: [], musescore: [], images: [], files: [], unreachable: [] };
       bySong.set(slug, song);
     }
     return song;
@@ -440,6 +462,20 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     }
   }
 
+  // Pass 3: unreachable shortcuts (recorded by sync, no content) are surfaced on
+  // the health view. Attach each to its song — by the song folder/title embedded
+  // in its metadata, falling back to a filename match — and skip any with no home.
+  for (const e of Object.values(manifest.files || {})) {
+    if (e.status !== 'unreachable') continue;
+    let song = bySong.get(songSlugOf(e));
+    if (!song) {
+      const m = matchKnownSong(e.originalName, known);
+      if (m) song = bySong.get(m.slug);
+    }
+    if (!song) continue;
+    song.unreachable.push(unreachableItem(e));
+  }
+
   const tunes = [...bySong.values()]
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((s) => ({ ...s, parts: dedupeParts(s.parts).sort(comparePart) }));
@@ -448,6 +484,12 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   for (const t of tunes) {
     for (const p of t.parts) {
       if (!instLabels.has(p.instrumentSlug)) instLabels.set(p.instrumentSlug, p.instrument || p.instrumentSlug);
+    }
+    // Instruments that appear only via an unreachable part still get a column.
+    for (const u of t.unreachable) {
+      if (u.instrumentSlug && !instLabels.has(u.instrumentSlug)) {
+        instLabels.set(u.instrumentSlug, u.instrument || u.instrumentSlug);
+      }
     }
   }
   const instruments = [...instLabels.entries()]

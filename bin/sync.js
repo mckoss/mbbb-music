@@ -114,7 +114,8 @@ function printSummary(report, { showAllDups = false } = {}) {
   console.log(`  sources  : ${report.sources.map((x) => x.label).join(', ')}`);
   console.log(
     `  seen=${s.seen} new=${s.new} changed=${s.changed} unchanged=${s.unchanged} ` +
-      `deleted=${s.deleted} ignored=${s.ignored} downloaded=${s.downloaded} ` +
+      `deleted=${s.deleted} ignored=${s.ignored}` +
+      `${s.unreachable ? ` unreachable=${s.unreachable}` : ''} downloaded=${s.downloaded} ` +
       `cached=${s.cached}${report.dryRun ? ` pending=${s.pending}` : ''} failed=${s.failed}` +
       `${s.warnings ? ` warnings=${s.warnings}` : ''}`,
   );

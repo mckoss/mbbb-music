@@ -78,7 +78,7 @@ export function isChanged(prev, file) {
 /**
  * @typedef {Object} DiffEntry
  * @property {string} id              Drive file id.
- * @property {'new'|'changed'|'unchanged'|'deleted'|'ignored'} status
+ * @property {'new'|'changed'|'unchanged'|'deleted'|'ignored'|'unreachable'} status
  * @property {object} file            The Drive file (for present files) or {} for deleted.
  * @property {import('./classify.js').Classification} [classification]
  * @property {object} [prev]          Prior manifest entry, when present.
@@ -102,6 +102,12 @@ export function diffManifest(manifest, current) {
     seen.add(id);
     const prev = prevFiles[id];
 
+    if (classification.unreachable) {
+      // A shortcut whose target couldn't be read — recorded (no content) so the
+      // health view can flag it; never downloaded.
+      entries.push({ id, status: 'unreachable', file, classification, prev });
+      continue;
+    }
     if (classification.ignored) {
       entries.push({ id, status: 'ignored', file, classification, prev });
       continue;

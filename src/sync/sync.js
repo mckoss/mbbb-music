@@ -113,7 +113,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   // 2. Diff against the manifest.
   const { entries, counts } = diffManifest(manifest, deduped.map(({ file, classification }) => ({ file, classification })));
 
-  const actions = { downloaded: [], cached: [], ignored: [], deleted: [], failed: [] };
+  const actions = { downloaded: [], cached: [], ignored: [], unreachable: [], deleted: [], failed: [] };
 
   // 3. Build the complete manifest up front. Because the SHA-256 IS the storage
   // location, every entry is fully known before any bytes are fetched, so the
@@ -125,6 +125,15 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     if (entry.status === 'ignored') {
       manifest.files[entry.id] = buildIgnoredEntry(entry, timestamp);
       actions.ignored.push({ id: entry.id, name: entry.file.name, reason: entry.classification.ignoreReason });
+      continue;
+    }
+    if (entry.status === 'unreachable') {
+      // An unreadable shortcut: record its classified metadata (no content) so the
+      // health view can flag the permission gap. Never queued for download.
+      const { file } = entry;
+      const meta = detectAssetMetadata({ originalName: file.name, songTitle: file.folderName || MISC_SONG });
+      manifest.files[entry.id] = buildUnreachableEntry(entry, meta, timestamp);
+      actions.unreachable.push({ id: entry.id, name: file.name });
       continue;
     }
     if (entry.status === 'deleted') {
@@ -242,6 +251,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       unchanged: counts.unchanged || 0,
       deleted: counts.deleted || 0,
       ignored: counts.ignored || 0,
+      unreachable: actions.unreachable.length,
       downloaded: actions.downloaded.length,
       cached: actions.cached.length,
       pending: dryRun ? pending.length : 0,
@@ -282,6 +292,32 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     instrumentSlug: meta.instrumentSlug,
     key: meta.key,
     partNumber: meta.partNumber,
+    syncedAt: timestamp,
+  });
+}
+
+function buildUnreachableEntry(entry, meta, timestamp) {
+  const { file, classification } = entry;
+  // A shortcut whose target can't be read: no sha256/size (no content), but the
+  // classified metadata + the target id (for a "request access" link) are kept.
+  return compact({
+    driveFileId: entry.id,
+    sourceFolderId: file.sourceFolderId,
+    sourceFolderLabel: file.sourceFolderLabel,
+    originalName: file.name,
+    originalFolder: file.folderName,
+    mimeType: file.mimeType,
+    modifiedTime: file.modifiedTime,
+    version: file.version,
+    assetType: classification?.assetType,
+    songTitle: meta.songTitle,
+    songTitleSlug: meta.songTitleSlug,
+    instrument: meta.instrument,
+    instrumentSlug: meta.instrumentSlug,
+    key: meta.key,
+    partNumber: meta.partNumber,
+    shortcutTarget: file.shortcutTarget,
+    status: 'unreachable',
     syncedAt: timestamp,
   });
 }

@@ -66,6 +66,40 @@ test('buildCatalog groups by song, dedups content, and buckets assets', () => {
   assert.equal(bad.lastModified, '2026-01-03T00:00:00.000Z'); // max across the song
 });
 
+test('unreachable shortcuts surface on the tune (with a Drive link) but are not live parts', () => {
+  const manifest = {
+    files: {
+      // A reachable euphonium part (the principal copy).
+      ok: {
+        status: 'synced', sha256: 'e1', assetType: 'pdf',
+        songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+        instrument: 'Euphonium', instrumentSlug: 'euphonium',
+        sourceFolderLabel: 'primary', originalFolder: 'Iron Man',
+        originalName: 'Iron Man - Euphonium.pdf',
+      },
+      // An older euphonium copy that exists only as an unreadable shortcut.
+      un: {
+        status: 'unreachable', assetType: 'pdf',
+        songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+        instrument: 'Euphonium', instrumentSlug: 'euphonium',
+        sourceFolderLabel: 'secondary', originalFolder: 'Iron Man',
+        originalName: 'Iron Man-V1.0-Euphonium.pdf', shortcutTarget: 'tgt-123',
+      },
+    },
+  };
+  const { tunes, liveCount } = buildCatalog(manifest, ['primary', 'secondary']);
+  assert.equal(liveCount, 1, 'the unreachable entry is not counted as live');
+
+  const iron = tunes.find((t) => t.slug === 'iron-man');
+  assert.equal(iron.parts.length, 1, 'only the reachable part is a real part');
+  assert.equal(iron.unreachable.length, 1);
+  const u = iron.unreachable[0];
+  assert.equal(u.instrumentSlug, 'euphonium');
+  assert.equal(u.source, 'secondary');
+  assert.equal(u.unreachable, true);
+  assert.equal(u.driveUrl, 'https://drive.google.com/file/d/tgt-123/view');
+});
+
 test('the index-folder copy is attributed to the real song, not its own entry', () => {
   const { tunes } = buildCatalog(MANIFEST, ['primary', 'secondary']);
   assert.ok(!tunes.some((t) => t.slug === '50-indexed-by-instrument'));

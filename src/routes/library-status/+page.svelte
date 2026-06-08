@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import type { Catalog, Tune, CatalogPart, CatalogAsset } from '$lib/types';
+  import type { Catalog, Tune, CatalogPart, CatalogAsset, UnreachableItem } from '$lib/types';
   import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
-  import { sourceStyle } from '$lib/sources';
+  import { sourceStyle, UNREACHABLE_STYLE } from '$lib/sources';
 
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
@@ -15,48 +15,79 @@
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
 
+  // Anything carrying a source + (optional) instrument/format/name — covers both
+  // reachable assets/parts and unreachable items.
+  type Sourced = { source: string | null; sha256?: string } & Partial<CatalogPart> & Partial<UnreachableItem>;
+
   interface CellItem {
-    sha: string;
     href: string;
     label: string;
+    color: string; // popup link accent (red for unreachable)
+    unreachable: boolean;
   }
   interface Cell {
     count: number;
-    color: string;
+    color: string; // square background (the principal's color; red if it's unreachable)
     text: string;
     name: string;
     items: CellItem[];
+    dot: boolean; // a non-red square that still hides an unreachable file
   }
 
-  // The indicator for a set of like assets: the count, colored by the
-  // highest-priority ("primary") source among them, plus a list of openable
-  // items with descriptive names. Null when nothing is present (blank cell).
-  function buildCell(items: (CatalogPart | CatalogAsset)[], makeLabel: (a: never) => string): Cell | null {
-    if (items.length === 0) return null;
-    let best = items[0];
-    for (const it of items) if (rank(it.source) < rank(best.source)) best = it;
-    const style = sourceStyle(best.source);
+  // The indicator for a column's reachable + unreachable items. The square is
+  // colored by the principal (highest-priority source, ties preferring a
+  // reachable copy); it's red only when that principal is itself unreachable.
+  // Each popup item is colored by its own status (red when unreachable).
+  function buildCell(
+    reachable: Sourced[],
+    unreachable: UnreachableItem[],
+    makeLabel: (a: Sourced) => string
+  ): Cell | null {
+    const all = [
+      ...reachable.map((it) => ({ it, unreachable: false })),
+      ...unreachable.map((it) => ({ it: it as Sourced, unreachable: true })),
+    ];
+    if (all.length === 0) return null;
+
+    let principal = all[0];
+    for (const cur of all) {
+      const better =
+        rank(cur.it.source) < rank(principal.it.source) ||
+        (rank(cur.it.source) === rank(principal.it.source) && principal.unreachable && !cur.unreachable);
+      if (better) principal = cur;
+    }
+    const style = principal.unreachable ? UNREACHABLE_STYLE : sourceStyle(principal.it.source);
+    // A non-red square that nonetheless hides an unreachable copy gets a corner
+    // dot, so a buried permissions gap is visible at a glance.
+    const dot = !principal.unreachable && all.some((a) => a.unreachable);
+
     return {
-      count: items.length,
+      count: all.length,
       color: style.color,
       text: style.text,
       name: style.name,
-      items: items.map((it) => ({
-        sha: it.sha256,
-        href: `/blob/${it.sha256}`,
-        label: makeLabel(it as never),
+      dot,
+      items: all.map(({ it, unreachable: un }) => ({
+        href: un ? (it.driveUrl ?? '#') : `/blob/${it.sha256}`,
+        label: un ? `${makeLabel(it)} — unreachable` : makeLabel(it),
+        color: un ? UNREACHABLE_STYLE.color : 'var(--accent-strong)',
+        unreachable: un,
       })),
     };
   }
 
-  const partItemLabel = (p: CatalogPart) => `${partLabel(p)} — ${p.format === 'lyre' ? 'Lyre' : 'Letter'}`;
-  const audioItemLabel = (a: CatalogAsset) => audioLabel(a.originalName);
-  const museItemLabel = (a: CatalogAsset) => (a.originalName ? stripCopyOf(a.originalName) : 'MuseScore file');
-  const scoreItemLabel = (a: CatalogAsset) => (a.originalName ? stripCopyOf(a.originalName) : 'Full score');
+  const partItemLabel = (p: Sourced) =>
+    `${partLabel(p as CatalogPart)} — ${p.format === 'lyre' ? 'Lyre' : 'Letter'}`;
+  const audioItemLabel = (a: Sourced) => audioLabel(a.originalName ?? null);
+  const museItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'MuseScore file');
+  const scoreItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'Full score');
 
-  function partsFor(tune: Tune, instrumentSlug: string) {
-    return tune.parts.filter((p) => p.instrumentSlug === instrumentSlug);
-  }
+  const partsFor = (t: Tune, slug: string) => t.parts.filter((p) => p.instrumentSlug === slug);
+  // Route unreachable items to the same columns as their reachable counterparts.
+  const unMusescore = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'musescore');
+  const unAudio = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'mp3');
+  const unScore = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'pdf' && !u.instrumentSlug);
+  const unFor = (t: Tune, slug: string) => (t.unreachable ?? []).filter((u) => u.instrumentSlug === slug);
 
   // Columns, left to right: the master MuseScore source, audio, the whole-band
   // PDF (instrument-less full scores), then one column per instrument.
@@ -73,28 +104,31 @@
       slug: t.slug,
       title: t.title,
       cells: [
-        buildCell(t.musescore, museItemLabel),
-        buildCell(t.audio, audioItemLabel),
-        buildCell(t.scores, scoreItemLabel),
-        ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), partItemLabel)),
+        buildCell(t.musescore, unMusescore(t), museItemLabel),
+        buildCell(t.audio, unAudio(t), audioItemLabel),
+        buildCell(t.scores, unScore(t), scoreItemLabel),
+        ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel)),
       ] as (Cell | null)[],
     }))
   );
 
-  // Legend entries, one per configured source (in priority order), linked to
-  // the source's Google Drive folder when known.
-  const legend = $derived(
-    sources.map((s) => ({ label: s, url: catalog.sourceUrls?.[s] ?? null, ...sourceStyle(s) }))
-  );
+  // Legend: one entry per configured source (linked to its Drive folder when
+  // known), plus the reserved "unreachable" red.
+  const legend = $derived([
+    ...sources.map((s) => ({ key: s, url: catalog.sourceUrls?.[s] ?? null, ...sourceStyle(s) })),
+    { key: '__unreachable', url: null, ...UNREACHABLE_STYLE },
+  ]);
 
-  // Clicking a square: a lone file opens full screen; several open a popup of
-  // links. Escape (or the × / backdrop) closes the popup.
+  // Clicking a square: a lone file opens (full screen for a reachable file, or
+  // the Drive "request access" page for an unreachable one); several open a popup
+  // of links. Escape (or the ×) closes the popup.
   let popup = $state<{ title: string; items: CellItem[] } | null>(null);
 
   function openCell(cell: Cell | null, colLabel: string, songTitle: string) {
     if (!cell) return;
     if (cell.count === 1) {
-      window.open(cell.items[0].href, '_blank', 'noopener');
+      const href = cell.items[0].href;
+      if (href && href !== '#') window.open(href, '_blank', 'noopener');
       return;
     }
     popup = { title: `${songTitle} — ${colLabel}`, items: cell.items };
@@ -114,13 +148,15 @@
     <p class="body">
       Each square marks where a score (or recording) exists and the color shows
       its primary source. The number counts every copy in the library — all parts
-      and both Letter/Lyre formats. Click a square to open it (a single file opens
-      full screen; several open a list). Blank means nothing is on file.
+      and both Letter/Lyre formats. <strong>Red</strong> flags a part that's only a
+      shortcut the sync can't read (a permissions gap to fix in Drive). Click a
+      square to open it (a single file opens full screen; several open a list).
+      Blank means nothing is on file.
     </p>
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
 
     <ul class="legend">
-      {#each legend as l (l.label)}
+      {#each legend as l (l.key)}
         <li>
           <span class="swatch" style:background={l.color}></span>
           {#if l.url}
@@ -156,10 +192,13 @@
                     class="sq"
                     style:background={c.color}
                     style:color={c.text}
-                    title={`${c.count} × ${c.name} — click to open`}
+                    title={c.dot
+                      ? `${c.count} × ${c.name} — includes an unreachable copy — click to open`
+                      : `${c.count} × ${c.name} — click to open`}
                     onclick={() => openCell(c, columns[i].label, r.title)}
                   >
                     {c.count}
+                    {#if c.dot}<span class="dot" aria-hidden="true"></span>{/if}
                   </button>
                 {/if}
               </td>
@@ -182,8 +221,17 @@
         <button class="x" onclick={() => (popup = null)} aria-label="Close">×</button>
       </header>
       <ul class="modal-list">
-        {#each popup.items as it (it.sha)}
-          <li><a href={it.href} target="_blank" rel="noopener" onclick={() => (popup = null)}>{it.label}</a></li>
+        {#each popup.items as it, i (i)}
+          <li>
+            <a
+              href={it.href}
+              target="_blank"
+              rel="noopener"
+              class:unreachable={it.unreachable}
+              style:color={it.color}
+              onclick={() => (popup = null)}
+            >{it.label}</a>
+          </li>
         {/each}
       </ul>
       <p class="modal-hint">Press Esc to close</p>
@@ -349,6 +397,7 @@
   }
 
   .sq {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -361,6 +410,18 @@
     line-height: 1;
     cursor: pointer;
     transition: transform 0.06s ease, box-shadow 0.06s ease;
+  }
+
+  /* Corner marker: this otherwise-OK square hides an unreachable copy. */
+  .dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d8413a;
+    border: 1px solid #fffdf7;
   }
 
   .sq:hover {
@@ -434,18 +495,21 @@
   }
 
   .modal-list a {
-    display: block;
-    min-height: 44px;
     display: flex;
+    min-height: 44px;
     align-items: center;
     padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 6px;
     text-decoration: none;
-    color: var(--accent-strong);
     background: #f7f5ef;
     font-weight: 600;
     font-size: 0.85rem;
+  }
+
+  .modal-list a.unreachable {
+    border-color: #d8413a;
+    background: #fdf1f0;
   }
 
   .modal-hint {

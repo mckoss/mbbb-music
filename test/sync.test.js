@@ -45,10 +45,11 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     const report = await runSync({ driveClient: client, config: makeConfig(dataDir), now: FIXED_NOW });
 
     // 12 assets (incl. the Google Doc exported to PDF, a jpg, a docx, and a
-    // root-level zip), 1 ignored (the unresolvable shortcut).
+    // root-level zip), 1 unreachable (the shortcut whose target can't be read).
     assert.equal(report.summary.new, 12);
     assert.equal(report.summary.downloaded, 12);
-    assert.equal(report.summary.ignored, 1);
+    assert.equal(report.summary.ignored, 0);
+    assert.equal(report.summary.unreachable, 1);
     assert.equal(report.summary.failed, 0);
 
     // Each asset's bytes live at data/cas/<sha256-of-content>.
@@ -63,7 +64,11 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     // Manifest records provenance, hash, cas path, metadata, and status.
     const manifest = await loadManifest(resolve(dataDir, 'manifest.json'));
     assert.equal(Object.keys(manifest.files).length, FIXTURE_FILES.length);
-    assert.equal(manifest.files['bg-shortcut'].status, 'ignored|google-drive-shortcut');
+    // The shortcut whose target can't be read is recorded as unreachable (no
+    // content), classified by its filename, and carries the target id.
+    assert.equal(manifest.files['bg-shortcut'].status, 'unreachable');
+    assert.equal(manifest.files['bg-shortcut'].shortcutTarget, 'external-thing');
+    assert.equal(manifest.files['bg-shortcut'].sha256, undefined);
     const e = manifest.files['bg-tpt-1'];
     assert.equal(e.status, 'synced');
     assert.equal(e.sha256, trumpet);

@@ -56,7 +56,11 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
     const sc = file.shortcutDetails;
     if (!sc?.targetId) return { ...file };
     const target = byId.get(sc.targetId);
-    if (!target || target.mimeType === SHORTCUT_MIME || target.shortcutDetails) return { ...file };
+    if (!target || target.mimeType === SHORTCUT_MIME || target.shortcutDetails) {
+      // Target absent/unresolvable — stand the pointer in, flagged unreachable so
+      // the sync records the permission/visibility gap rather than dropping it.
+      return { ...file, unreachable: true, shortcutTarget: sc.targetId };
+    }
     return file.folderName != null ? { ...target, folderName: file.folderName } : { ...target };
   }
 
@@ -219,10 +223,13 @@ export function createGoogleDriveClient(config = {}, options = {}) {
     if (!meta || !meta.id || meta.mimeType === SHORTCUT_MIME || meta.shortcutDetails) {
       logger.warn(
         `Shortcut "${shortcut.name}"${song ? ` in "${song}"` : ''} points at a file the sync ` +
-          `can't read (target ${targetId}); skipping it. Share the target with the service ` +
-          `account, or place the file directly in a source folder.`,
+          `can't read (target ${targetId}); recording it as unreachable. Share the target with ` +
+          `the service account, or place the file directly in a source folder.`,
       );
-      return song ? { ...shortcut, folderName: song } : shortcut;
+      // Stand the pointer in, flagged unreachable + carrying the target id so the
+      // sync records the permission gap (and the UI can link to "request access").
+      const stand = song ? { ...shortcut, folderName: song } : { ...shortcut };
+      return { ...stand, unreachable: true, shortcutTarget: targetId };
     }
     return song ? { ...meta, folderName: song } : meta;
   }

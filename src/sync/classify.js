@@ -116,6 +116,22 @@ export function classifyDriveFile(file) {
   const mimeType = file?.mimeType ?? '';
   const name = file?.name ?? '';
 
+  // A shortcut whose target the Drive client couldn't read. Type it from its
+  // filename so the catalog can place it in the right column, but mark it
+  // unreachable — it is recorded for the health view and never fetched.
+  if (file?.unreachable) {
+    const ext = extensionOf(name);
+    const kind = ASSET_KINDS.find((k) => k.exts.includes(ext));
+    return {
+      assetType: kind?.type ?? null,
+      ext: kind?.ext ?? null,
+      ignored: false,
+      unreachable: true,
+      ignoreReason: null,
+      download: null,
+    };
+  }
+
   if (mimeType === FOLDER_MIME) {
     return ignore('folder');
   }

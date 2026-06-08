@@ -63,7 +63,7 @@ export const FIXTURE_FILES = [
     content: 'SYNTHETIC-MSCZ: bad guy musescore source',
   },
   {
-    // Shortcut pointer — must be ignored.
+    // Shortcut whose target isn't in the corpus — recorded as unreachable.
     id: 'bg-shortcut',
     name: 'Reference Performance (YouTube).pdf',
     mimeType: 'application/vnd.google-apps.shortcut',

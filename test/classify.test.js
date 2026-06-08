@@ -43,6 +43,19 @@ test('ignores Google Drive shortcut files even when named .pdf', () => {
   assert.equal(c.ignoreReason, 'google-drive-shortcut');
 });
 
+test('classifies an unreachable shortcut stand-in by its filename, not ignored', () => {
+  const c = classifyDriveFile({
+    name: 'Iron Man-Euphonium.pdf',
+    mimeType: 'application/vnd.google-apps.shortcut',
+    shortcutDetails: { targetId: 'x' },
+    unreachable: true,
+  });
+  assert.equal(c.unreachable, true);
+  assert.equal(c.ignored, false);
+  assert.equal(c.assetType, 'pdf'); // typed from the filename
+  assert.equal(c.download, null); // never fetched
+});
+
 test('ignores shortcuts detected only via shortcutDetails', () => {
   const c = classifyDriveFile({ name: 'thing.pdf', mimeType: 'application/pdf', shortcutDetails: { targetId: 'x' } });
   assert.equal(c.ignored, true);

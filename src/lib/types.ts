@@ -19,6 +19,21 @@ export interface CatalogAsset {
   assetType?: string;
 }
 
+// An unreachable shortcut (target not readable by the sync). No content/sha; it
+// carries a Drive "request access" URL and is surfaced only on the health view.
+export interface UnreachableItem {
+  assetType: string;
+  instrumentSlug: string | null;
+  instrument: string | null;
+  key: string | null;
+  partNumber: number | null;
+  format: string;
+  originalName: string | null;
+  source: string | null;
+  driveUrl: string | null;
+  unreachable: true;
+}
+
 export interface Tune {
   slug: string;
   title: string;
@@ -29,6 +44,7 @@ export interface Tune {
   musescore: CatalogAsset[];
   images: CatalogAsset[];
   files: CatalogAsset[];
+  unreachable: UnreachableItem[];
 }
 
 export interface Instrument {
