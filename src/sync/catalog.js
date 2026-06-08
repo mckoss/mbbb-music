@@ -214,10 +214,12 @@ function dedupeParts(parts) {
  * @property {string|null} key           Effective key (explicit or instrument default).
  * @property {number|null} partNumber
  * @property {string|null} originalName
+ * @property {string|null} source         Canonical source label this copy came from.
  *
  * @typedef {Object} CatalogAsset
  * @property {string} sha256
  * @property {string|null} originalName
+ * @property {string|null} source         Canonical source label this copy came from.
  * @property {string} [assetType]         Present for images/other files, to label/route them.
  *
  * @typedef {Object} Tune
@@ -336,7 +338,7 @@ function titleCaseSlug(slug) {
  * @param {object} manifest
  * @param {string[]} [sourceLabels]       Configured source labels in priority order.
  * @param {string[]} [looseSourceLabels]  Labels of sources NOT foldered by song.
- * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], uniqueCount:number, liveCount:number }}
+ * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], sources: string[], uniqueCount:number, liveCount:number }}
  */
 export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []) {
   const pri = sourcePriority(sourceLabels, manifest);
@@ -377,7 +379,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     if (e.modifiedTime && (!song.lastModified || e.modifiedTime > song.lastModified)) {
       song.lastModified = e.modifiedTime;
     }
-    const asset = { sha256: e.sha256, originalName: e.originalName || null };
+    const asset = { sha256: e.sha256, originalName: e.originalName || null, source: e.sourceFolderLabel || null };
     if (e.assetType === 'pdf' && e.instrumentSlug) {
       song.parts.push({
         ...asset,
@@ -454,7 +456,11 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   extras.sort((a, b) => (a.originalName || '').localeCompare(b.originalName || ''));
 
-  return { tunes, instruments, extras, uniqueCount: canonical.size, liveCount };
+  // Source labels in priority order (highest first), so the client can resolve
+  // each asset's "primary" source and color it consistently.
+  const sources = [...pri.keys()];
+
+  return { tunes, instruments, extras, sources, uniqueCount: canonical.size, liveCount };
 }
 
 /**

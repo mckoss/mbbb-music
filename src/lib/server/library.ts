@@ -24,7 +24,7 @@ interface Loaded {
 
 const EMPTY: Loaded = {
   mtimeMs: -1,
-  catalog: { tunes: [], instruments: [], extras: [], uniqueCount: 0, liveCount: 0 },
+  catalog: { tunes: [], instruments: [], extras: [], sources: [], uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
 };

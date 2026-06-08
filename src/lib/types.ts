@@ -9,11 +9,13 @@ export interface CatalogPart {
   partNumber: number | null;
   format: string; // 'letter' | 'lyre'
   originalName: string | null;
+  source: string | null; // canonical source label this copy came from
 }
 
 export interface CatalogAsset {
   sha256: string;
   originalName: string | null;
+  source: string | null; // canonical source label this copy came from
   assetType?: string;
 }
 
@@ -39,6 +41,7 @@ export interface Catalog {
   tunes: Tune[];
   instruments: Instrument[];
   extras: CatalogAsset[];
+  sources: string[]; // source labels in priority order (highest first)
   uniqueCount: number;
   liveCount: number;
 }
