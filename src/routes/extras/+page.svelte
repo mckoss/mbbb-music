@@ -2,6 +2,8 @@
   import { page } from '$app/state';
   import type { Catalog } from '$lib/types';
   import { stripCopyOf } from '$lib/format';
+  import { score } from '$lib/stores';
+  import { audio, playSha, toggle } from '$lib/audio';
 
   const catalog = $derived(page.data.catalog as Catalog);
   const extras = $derived(catalog.extras ?? []);
@@ -13,6 +15,15 @@
   const filtered = $derived(
     q.trim() ? cleaned.filter((e) => e.name.toLowerCase().includes(q.trim().toLowerCase())) : cleaned
   );
+
+  function viewPdf(e: { sha256: string; name: string }) {
+    score.set({ sha: e.sha256, title: e.name, label: 'Extra file' });
+  }
+
+  function playAudio(e: { sha256: string; name: string }) {
+    if ($audio.sha === e.sha256 && $audio.playing) toggle();
+    else playSha(e.sha256, e.name);
+  }
 </script>
 
 <section class="extras">
@@ -32,7 +43,18 @@
     {#each filtered as e (e.sha256)}
       <li class="row">
         <span class="name">{e.name}</span>
-        <a class="dl" href={`/blob/${e.sha256}?dl=${encodeURIComponent(e.name)}`} download>⤓ Download</a>
+        <span class="actions">
+          {#if e.assetType === 'pdf'}
+            <button class="act" onclick={() => viewPdf(e)}>View</button>
+          {:else if e.assetType === 'mp3'}
+            <button class="act" onclick={() => playAudio(e)}>
+              {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
+            </button>
+          {:else if e.assetType === 'image'}
+            <a class="act" href={`/blob/${e.sha256}`} target="_blank" rel="noopener">View</a>
+          {/if}
+          <a class="dl" href={`/blob/${e.sha256}?dl=${encodeURIComponent(e.name)}`} download title="Download">⤓</a>
+        </span>
       </li>
     {/each}
     {#if filtered.length === 0}
@@ -106,19 +128,43 @@
     word-break: break-word;
   }
 
-  .dl {
+  .actions {
     flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .act {
     min-height: 40px;
+    min-width: 64px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     padding: 0 14px;
+    border: 1px solid var(--accent-strong);
+    border-radius: 6px;
+    text-decoration: none;
+    background: var(--accent);
+    color: #fffdf7;
+    font-weight: 700;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+
+  .dl {
+    min-height: 40px;
+    min-width: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid var(--line);
     border-radius: 6px;
     text-decoration: none;
     color: var(--accent-strong);
     background: #f7f5ef;
-    font-weight: 600;
-    font-size: 0.8rem;
+    font-weight: 700;
+    font-size: 1rem;
   }
 
   .empty {
