@@ -176,7 +176,7 @@
       </header>
       <ul class="modal-list">
         {#each popup.items as it (it.sha)}
-          <li><a href={it.href} target="_blank" rel="noopener">{it.label}</a></li>
+          <li><a href={it.href} target="_blank" rel="noopener" onclick={() => (popup = null)}>{it.label}</a></li>
         {/each}
       </ul>
       <p class="modal-hint">Press Esc to close</p>
