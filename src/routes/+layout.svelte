@@ -33,8 +33,8 @@
       />
       <div class="brand-text">
         <p class="eyebrow brand-eyebrow">Mutiny Bay Brass Band</p>
-        <h1>Music</h1>
-        <p class="desc">Browse the band library, audition recordings, and open scores for performance.</p>
+        <h1>Music Portfolio</h1>
+        <p class="desc">Browse the music library, choose an instrument and part, and assemble gig packets in set-list order.</p>
       </div>
     </div>
 
