@@ -74,6 +74,12 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    /* Pin the list and bound it to the viewport so a long catalog scrolls
+       inside the pane (instead of leaving the card over-tall) while the detail
+       pane drives the page scroll. */
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
   }
 
   h2 {
@@ -99,11 +105,28 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    max-height: 68vh;
+    /* Fill the remaining pane height and scroll internally (min-height:0 lets a
+       flex child shrink below its content so overflow-y actually kicks in). */
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+
+  /* On a stacked (single-column) layout, don't pin the list to the viewport —
+     let it sit in normal flow with a sensible cap so it doesn't fill the screen. */
+  @media (max-width: 980px) {
+    .list-pane {
+      position: static;
+      max-height: none;
+    }
+
+    .tiles {
+      flex: none;
+      max-height: 60vh;
+    }
   }
 
   .tile {

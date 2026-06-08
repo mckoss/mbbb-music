@@ -36,6 +36,10 @@
   .collection {
     display: grid;
     grid-template-columns: minmax(300px, 0.9fr) minmax(460px, 1.35fr);
+    /* Don't stretch the panes to equal height: the detail pane (with its PDF
+       preview) is tall, and stretching the list pane to match left dead space
+       below the (shorter) list. Let each pane take its natural height. */
+    align-items: start;
     gap: 18px;
     max-width: 1480px;
     margin: 0 auto;
