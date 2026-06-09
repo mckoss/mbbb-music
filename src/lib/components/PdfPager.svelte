@@ -4,16 +4,25 @@
 
   // Renders a PDF one page at a time, scaled so a whole page fits the available
   // box, with prev/next paging. Native PDF iframes can't be paged programmatically
-  // on iOS Safari (the music-stand target), so we rasterize each page with PDF.js
-  // onto a canvas — giving reliable single-tap paging and a true full-page fit.
+  // on iOS Safari (the music-stand target), so we rasterize each page with PDF.js.
+  //
+  // We render onto an OFFSCREEN canvas and display the result as an <img>. iOS
+  // WebKit silently fails to composite a live <canvas> inside a position:fixed
+  // overlay (it shows up blank white), but composites images reliably — so the
+  // visible element is an <img>, never the canvas. The pixel ratio is also capped
+  // so the rasterized image stays within iOS's canvas/export size limits.
   let {
     sha,
     tap = false,
     title = '',
   }: { sha: string; tap?: boolean; title?: string } = $props();
 
+  // iOS won't reliably display or export very large canvases; 1.5x keeps scores
+  // crisp while staying well within the safe range on a retina iPad.
+  const MAX_DPR = 1.5;
+
   let container = $state<HTMLDivElement | null>(null);
-  let canvas = $state<HTMLCanvasElement | null>(null);
+  let imgEl = $state<HTMLImageElement | null>(null);
 
   let pageNum = $state(1);
   let numPages = $state(0);
@@ -75,37 +84,47 @@
     const d = doc;
     const n = pageNum;
     void resizeTick;
-    if (!d || !canvas || !container) return;
+    if (!d || !imgEl || !container) return;
     void renderPage(d, n);
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function renderPage(d: any, n: number) {
-    const c = canvas;
+    const target = imgEl;
     const box = container;
-    if (!c || !box) return;
+    if (!target || !box) return;
     const myGen = gen;
     try {
       const pageObj = await d.getPage(n);
       if (myGen !== gen) return;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
       const base = pageObj.getViewport({ scale: 1 });
       const cw = box.clientWidth;
       const ch = box.clientHeight;
       if (cw < 2 || ch < 2) return;
       const scale = Math.max(0.05, Math.min(cw / base.width, ch / base.height));
       const viewport = pageObj.getViewport({ scale: scale * dpr });
+
+      // Render to a detached canvas, then hand the pixels to the <img>.
+      const c = document.createElement('canvas');
+      c.width = Math.floor(viewport.width);
+      c.height = Math.floor(viewport.height);
       const ctx = c.getContext('2d');
       if (!ctx) return;
       renderTask?.cancel?.();
-      c.width = Math.floor(viewport.width);
-      c.height = Math.floor(viewport.height);
-      c.style.width = `${Math.floor(viewport.width / dpr)}px`;
-      c.style.height = `${Math.floor(viewport.height / dpr)}px`;
       renderTask = pageObj.render({ canvasContext: ctx, viewport });
       await renderTask.promise;
-    } catch {
-      /* a superseded/cancelled render throws — safe to ignore */
+      if (myGen !== gen) return;
+
+      const url = c.toDataURL('image/png');
+      // iOS returns a near-empty data URL when a canvas is too big to export.
+      if (url.length < 100) throw new Error('canvas export failed (too large)');
+      target.src = url;
+      err = null;
+    } catch (e) {
+      // Ignore superseded/cancelled renders; surface anything else.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (myGen === gen && !/cancel/i.test(msg)) err = msg;
     }
   }
 
@@ -150,8 +169,7 @@
 
 <div class="pager">
   <div class="canvas-box" bind:this={container}>
-    <canvas bind:this={canvas} aria-label={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`}
-    ></canvas>
+    <img bind:this={imgEl} alt={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`} />
 
     {#if loading}
       <p class="status">Loading score…</p>
@@ -208,11 +226,17 @@
     justify-content: center;
   }
 
-  canvas {
-    background: #fff;
-    box-shadow: var(--shadow);
+  img {
     max-width: 100%;
     max-height: 100%;
+    object-fit: contain;
+    background: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  /* Hide the broken-image glyph before the first page has been rasterized. */
+  img:not([src]) {
+    visibility: hidden;
   }
 
   .status {
