@@ -1,10 +1,12 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { invalidateAll } from '$app/navigation';
+  import { enhance } from '$app/forms';
   import { onDestroy } from 'svelte';
   import type { Catalog, Tune, CatalogPart, CatalogAsset, UnreachableItem } from '$lib/types';
   import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
   import { sourceStyle, UNREACHABLE_STYLE } from '$lib/sources';
+  import { ALL_STATUSES, STATUS_DESC } from '$lib/song-status';
 
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
@@ -105,6 +107,7 @@
     tunes.map((t) => ({
       slug: t.slug,
       title: t.title,
+      status: t.status,
       cells: [
         buildCell(t.musescore, unMusescore(t), museItemLabel),
         buildCell(t.audio, unAudio(t), audioItemLabel),
@@ -112,6 +115,13 @@
         ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel)),
       ] as (Cell | null)[],
     }))
+  );
+
+  // Group rows into status sections (in ALL_STATUSES order), dropping empty ones.
+  const groups = $derived(
+    ALL_STATUSES.map((status) => ({ status, rows: rows.filter((r) => r.status === status) })).filter(
+      (g) => g.rows.length > 0
+    )
   );
 
   // Legend: one entry per configured source (linked to its Drive folder when
@@ -286,28 +296,54 @@
         </tr>
       </thead>
       <tbody>
-        {#each rows as r (r.slug)}
-          <tr>
-            <th class="row-head" scope="row">{r.title}</th>
-            {#each r.cells as c, i (i)}
-              <td>
-                {#if c}
-                  <button
-                    class="sq"
-                    style:background={c.color}
-                    style:color={c.text}
-                    title={c.dot
-                      ? `${c.count} × ${c.name} — includes an unreachable copy — click to open`
-                      : `${c.count} × ${c.name} — click to open`}
-                    onclick={() => openCell(c, columns[i].label, r.title)}
-                  >
-                    {c.count}
-                    {#if c.dot}<span class="dot" aria-hidden="true"></span>{/if}
-                  </button>
-                {/if}
-              </td>
-            {/each}
+        {#each groups as g (g.status)}
+          <tr class="group-head">
+            <th class="group-label" colspan={columns.length + 1} scope="colgroup">
+              <span title={STATUS_DESC[g.status]}>{g.status}</span>
+              <span class="group-count">{g.rows.length}</span>
+            </th>
           </tr>
+          {#each g.rows as r (r.slug)}
+            <tr>
+              <th class="row-head" scope="row">
+                <span class="row-title">{r.title}</span>
+                {#if isAdmin}
+                  <form method="POST" action="?/setStatus" use:enhance>
+                    <input type="hidden" name="slug" value={r.slug} />
+                    <select
+                      class="status-select"
+                      name="status"
+                      value={r.status}
+                      aria-label={`Status for ${r.title}`}
+                      onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                    >
+                      {#each ALL_STATUSES as s (s)}
+                        <option value={s}>{s}</option>
+                      {/each}
+                    </select>
+                  </form>
+                {/if}
+              </th>
+              {#each r.cells as c, i (i)}
+                <td>
+                  {#if c}
+                    <button
+                      class="sq"
+                      style:background={c.color}
+                      style:color={c.text}
+                      title={c.dot
+                        ? `${c.count} × ${c.name} — includes an unreachable copy — click to open`
+                        : `${c.count} × ${c.name} — click to open`}
+                      onclick={() => openCell(c, columns[i].label, r.title)}
+                    >
+                      {c.count}
+                      {#if c.dot}<span class="dot" aria-hidden="true"></span>{/if}
+                    </button>
+                  {/if}
+                </td>
+              {/each}
+            </tr>
+          {/each}
         {/each}
         {#if rows.length === 0}
           <tr><td class="empty" colspan={columns.length + 1}>No songs in the library yet.</td></tr>
@@ -585,6 +621,48 @@
   .row-head {
     color: var(--ink);
     word-break: break-word;
+  }
+
+  .row-title {
+    display: block;
+  }
+
+  .row-head form {
+    margin: 4px 0 0;
+  }
+
+  .status-select {
+    width: 100%;
+    font-size: 0.7rem;
+    padding: 2px 4px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper);
+    color: var(--ink);
+  }
+
+  /* Status section header rows. */
+  .group-head .group-label {
+    position: sticky;
+    left: 0;
+    background: var(--paper);
+    text-align: left;
+    padding: 10px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink);
+    border-top: 2px solid var(--line);
+    z-index: 2;
+  }
+
+  .group-count {
+    margin-left: 8px;
+    font-weight: 600;
+    color: #6b6862;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   tbody tr:nth-child(even) .row-head {

@@ -8,6 +8,8 @@ import { resolve } from 'node:path';
 
 import { loadConfig } from '../../sync/config.js';
 import { buildCatalog, liveAssets } from '../../sync/catalog.js';
+import { statusMap, statusMtimeMs } from './song-status.js';
+import { DEFAULT_STATUS } from '$lib/song-status';
 
 export interface AssetMeta {
   assetType: string;
@@ -21,6 +23,7 @@ type ServerCatalog = ReturnType<typeof buildCatalog> & { sourceUrls: Record<stri
 
 interface Loaded {
   mtimeMs: number;
+  statusMtimeMs: number;
   catalog: ServerCatalog;
   assets: Map<string, AssetMeta>;
   casDir: string;
@@ -28,6 +31,7 @@ interface Loaded {
 
 const EMPTY: Loaded = {
   mtimeMs: -1,
+  statusMtimeMs: -1,
   catalog: { tunes: [], instruments: [], extras: [], sources: [], sourceUrls: {}, uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
@@ -44,7 +48,10 @@ function load(): Loaded {
     // No manifest yet (no sync has run). Serve an empty catalog rather than 500.
     return EMPTY;
   }
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached;
+  // The catalog also depends on the admin status file, so a status change must
+  // invalidate the cache even when the manifest is untouched.
+  const sMtime = statusMtimeMs();
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.statusMtimeMs === sMtime) return cached;
 
   const manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
   const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean }[];
@@ -58,7 +65,12 @@ function load(): Loaded {
   for (const s of sources) {
     if (s.label && s.id) sourceUrls[s.label] = `https://drive.google.com/drive/folders/${s.id}`;
   }
-  const catalog: ServerCatalog = { ...buildCatalog(manifest, sourceLabels, looseLabels), sourceUrls };
+  // Attach each song's admin-assigned status (default 'Unfiled') here at the
+  // server boundary, so the pure sync catalog stays decoupled from the store.
+  const built = buildCatalog(manifest, sourceLabels, looseLabels);
+  const statuses = statusMap();
+  const tunes = built.tunes.map((t) => ({ ...t, status: statuses[t.slug] ?? DEFAULT_STATUS }));
+  const catalog: ServerCatalog = { ...built, tunes, sourceUrls };
 
   // Index every live blob's type/name so the blob endpoint can set the right
   // Content-Type and refuse hashes that aren't part of the library.
@@ -69,7 +81,7 @@ function load(): Loaded {
     }
   }
 
-  cached = { mtimeMs: stat.mtimeMs, catalog, assets, casDir: resolve(cfg.dataDir, 'cas') };
+  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, catalog, assets, casDir: resolve(cfg.dataDir, 'cas') };
   return cached;
 }
 

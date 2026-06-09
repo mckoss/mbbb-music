@@ -1,6 +1,8 @@
 // Shared player-facing catalog types, mirroring the shape returned by
 // GET /api/catalog (built server-side in src/sync/catalog.js).
 
+import type { SongStatus } from './song-status';
+
 // --- Auth -------------------------------------------------------------------
 // Roles, highest-privilege first. 'admin' can view + manage users; 'member' and
 // (future) 'organizer' can view the library. A null role means signed-in but
@@ -50,6 +52,7 @@ export interface UnreachableItem {
 export interface Tune {
   slug: string;
   title: string;
+  status: SongStatus; // admin-assigned, or 'Unfiled' when unannotated
   lastModified: string | null;
   parts: CatalogPart[];
   scores: CatalogAsset[];
