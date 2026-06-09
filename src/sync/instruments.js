@@ -17,7 +17,7 @@ const INSTRUMENTS = [
   { label: 'Alto saxophone', slug: 'alto-sax', defaultKey: 'eflat', match: ['alto saxophone', 'alto sax', 'altosax', 'alto'] },
   { label: 'Soprano saxophone', slug: 'soprano-sax', defaultKey: 'bflat', match: ['soprano saxophone', 'soprano sax', 'soprano'] },
   { label: 'Tenor saxophone', slug: 'tenor-sax', defaultKey: 'bflat', match: ['tenor saxophone', 'tenor sax', 'tenorsax'] },
-  { label: 'Baritone saxophone', slug: 'bari-sax', defaultKey: 'eflat', match: ['baritone saxophone', 'bari saxophone', 'bari sax', 'bari-sax'] },
+  { label: 'Baritone saxophone', slug: 'bari-sax', defaultKey: 'eflat', match: ['baritone saxophone', 'baritone sax', 'bari saxophone', 'bari sax', 'bari-sax'] },
   { label: 'Clarinet', slug: 'clarinet', defaultKey: 'bflat', match: ['clarinet'] },
   { label: 'Flute', slug: 'flute', defaultKey: null, match: ['flute'] },
   { label: 'Trumpet', slug: 'trumpet', defaultKey: 'bflat', match: ['trumpet', 'cornet'] },
@@ -45,7 +45,13 @@ export const DEFAULT_KEY_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.
  * @returns {Instrument | null}
  */
 export function detectInstrument(text) {
-  const haystack = String(text ?? '').toLowerCase();
+  // Normalize underscores to spaces (exported filenames often use them, e.g.
+  // "Baritone_Sax") so multi-word matchers like "baritone sax" still hit; without
+  // this, "Baritone_Sax" slips past bari-sax and is caught by Euphonium's
+  // generic "baritone".
+  const haystack = String(text ?? '')
+    .toLowerCase()
+    .replace(/_/g, ' ');
   for (const inst of INSTRUMENTS) {
     if (inst.match.some((needle) => haystack.includes(needle))) {
       return inst;
