@@ -183,6 +183,32 @@ function comparePart(a, b) {
 }
 
 /**
+ * An isolated audio track is a single instrument's stem rather than the full-band
+ * mix. Detected three ways: a detected instrument; an "isolated"/"drums only"/
+ * "drum part" label; or a trailing instrument/voice suffix like "-Glockenspiel"
+ * or "-Drum Kit" (caught even when the instrument isn't one we classify parts
+ * for). The full-band mix is none of these, so it sorts first and becomes the
+ * default recording (#4).
+ */
+function isIsolatedAudio(a) {
+  if (a.instrumentSlug) return true;
+  const n = (a.originalName || '').toLowerCase();
+  if (/\bdrums?\s*only\b|\bisolated\b|\bdrum\s*part\b/.test(n)) return true;
+  const tokens = slugifyStem(a.originalName || '')
+    .replace(/^(?:copy-of-)+/, '')
+    .split('-')
+    .filter(Boolean);
+  // A run of voice tokens at the end is an instrument suffix on the song name.
+  return tokens.length > 0 && isVoiceToken(tokens[tokens.length - 1]);
+}
+
+function compareAudio(a, b) {
+  const iso = (isIsolatedAudio(a) ? 1 : 0) - (isIsolatedAudio(b) ? 1 : 0);
+  if (iso) return iso;
+  return (a.originalName || '').localeCompare(b.originalName || '');
+}
+
+/**
  * Collapse parts that are the same instrument/key/part/format down to one,
  * keeping the newest by modified time (so older version copies — "V1.0" vs
  * "V1.2" — don't show as undifferentiated duplicates). Strips the transient
@@ -435,7 +461,9 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     } else if (e.assetType === 'pdf') {
       song.scores.push(asset);
     } else if (e.assetType === 'mp3') {
-      song.audio.push(asset);
+      // Carry the detected instrument so the full-band mix (no instrument) can be
+      // ordered ahead of isolated parts (drums, a single horn) as the default.
+      song.audio.push({ ...asset, instrumentSlug: e.instrumentSlug || undefined });
     } else if (e.assetType === 'musescore') {
       song.musescore.push(asset);
     } else if (e.assetType === 'image') {
@@ -501,7 +529,11 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const tunes = [...bySong.values()]
     .sort((a, b) => a.slug.localeCompare(b.slug))
-    .map((s) => ({ ...s, parts: dedupeParts(s.parts).sort(comparePart) }));
+    .map((s) => ({
+      ...s,
+      parts: dedupeParts(s.parts).sort(comparePart),
+      audio: s.audio.slice().sort(compareAudio),
+    }));
 
   const instLabels = new Map();
   for (const t of tunes) {

@@ -29,6 +29,7 @@ export interface CatalogAsset {
   originalName: string | null;
   source: string | null; // canonical source label this copy came from
   assetType?: string;
+  instrumentSlug?: string; // set on audio: the isolated-part instrument, if any
 }
 
 // An unreachable shortcut (target not readable by the sync). No content/sha; it

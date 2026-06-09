@@ -224,6 +224,26 @@ test('version copies of one instrument exercise are not a song, but go to Extras
   );
 });
 
+test('full-band mix is the default recording, ahead of isolated parts (#4)', () => {
+  const mp3 = (sha, name, instrumentSlug) => ({
+    status: 'synced', sha256: sha, assetType: 'mp3', sourceFolderLabel: 'primary',
+    originalFolder: 'Bad Guy', songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+    originalName: name, ...(instrumentSlug ? { instrumentSlug } : {}),
+  });
+  const manifest = {
+    files: {
+      // Isolated parts listed first, to prove ordering (not input order) decides.
+      d: mp3('d1', 'Bad_Guy-Drumset.mp3', 'drums'),    // detected instrument
+      g: mp3('g1', 'Bad_Guy-Glockenspiel.mp3'),        // unclassified -> suffix rule
+      f: mp3('f1', 'Bad_Guy.mp3'),                     // the full-band mix
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['primary']);
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+  assert.equal(bad.audio.length, 3);
+  assert.equal(bad.audio[0].originalName, 'Bad_Guy.mp3', 'full-band mix is the default');
+});
+
 test('parts carry print format, re-derive lyre part numbers, and dedupe version copies', () => {
   const p = (sha, name, mt) => ({
     status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,
