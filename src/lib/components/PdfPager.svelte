@@ -1,148 +1,68 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { onDestroy } from 'svelte';
+  import { RENDER_REV } from '$lib/render-rev';
 
-  // Renders a PDF one page at a time, scaled so a whole page fits the available
-  // box, with prev/next paging. Native PDF iframes can't be paged programmatically
-  // on iOS Safari (the music-stand target), so we rasterize each page with PDF.js.
-  //
-  // We render onto an OFFSCREEN canvas and display the result as an <img>. iOS
-  // WebKit silently fails to composite a live <canvas> inside a position:fixed
-  // overlay (it shows up blank white), but composites images reliably — so the
-  // visible element is an <img>, never the canvas. The pixel ratio is also capped
-  // so the rasterized image stays within iOS's canvas/export size limits.
+  // Pages a score one image at a time. The server rasterizes each PDF page to
+  // lossless WebP (see /render/[sha]); here we just show an <img> and page
+  // through them. An <img> composites reliably on iOS Safari (the music-stand
+  // target), unlike an on-device canvas — so all PDF.js now lives server-side.
   let {
     sha,
     tap = false,
     title = '',
   }: { sha: string; tap?: boolean; title?: string } = $props();
 
-  // iOS won't reliably display or export very large canvases; 1.5x keeps scores
-  // crisp while staying well within the safe range on a retina iPad.
-  const MAX_DPR = 1.5;
-
-  let container = $state<HTMLDivElement | null>(null);
-  let imgEl = $state<HTMLImageElement | null>(null);
-
   let pageNum = $state(1);
   let numPages = $state(0);
   let loading = $state(true);
   let err = $state<string | null>(null);
 
-  // Bumped by the ResizeObserver so the render effect re-fits on layout changes.
-  let resizeTick = $state(0);
-
-  // Non-reactive handles. `gen` guards against races when sha changes mid-load.
-  type PdfLib = typeof import('pdfjs-dist');
-  let lib: PdfLib | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let doc = $state<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let renderTask: any = null;
+  // Guards against a stale info response landing after the sha changed again.
   let gen = 0;
 
-  async function ensureLib(): Promise<PdfLib> {
-    if (lib) return lib;
-    const mod = await import('pdfjs-dist');
-    // Bundled module worker (Vite rewrites the ?url import to an emitted asset).
-    const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-    mod.GlobalWorkerOptions.workerSrc = workerUrl;
-    lib = mod;
-    return mod;
-  }
+  const pageUrl = (n: number) => `/render/${sha}/${n}.webp?r=${RENDER_REV}`;
+  const src = $derived(numPages > 0 ? pageUrl(pageNum) : '');
 
-  // Load the document whenever the sha changes; reset to page 1.
+  // Load the page count whenever the score changes; reset to page 1.
   $effect(() => {
     const s = sha;
     if (!browser || !s) return;
     const myGen = ++gen;
     loading = true;
     err = null;
+    numPages = 0;
+    pageNum = 1;
     (async () => {
       try {
-        const l = await ensureLib();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const d: any = await l.getDocument({ url: `/blob/${s}` }).promise;
-        if (myGen !== gen) {
-          d.destroy?.();
-          return;
-        }
-        doc?.destroy?.();
-        numPages = d.numPages;
-        pageNum = 1;
-        doc = d;
+        const res = await fetch(`/render/${s}/info`);
+        if (!res.ok) throw new Error(`info ${res.status}`);
+        const { pages } = (await res.json()) as { pages: number };
+        if (myGen !== gen) return;
+        numPages = pages;
       } catch (e) {
-        if (myGen === gen) err = e instanceof Error ? e.message : String(e);
-      } finally {
-        if (myGen === gen) loading = false;
+        if (myGen === gen) {
+          err = e instanceof Error ? e.message : String(e);
+          loading = false;
+        }
       }
     })();
   });
 
-  // Re-render on page change, document change, or resize.
+  // Warm the next page so a forward tap is instant.
   $effect(() => {
-    const d = doc;
-    const n = pageNum;
-    void resizeTick;
-    if (!d || !imgEl || !container) return;
-    void renderPage(d, n);
+    if (!browser || numPages < 2 || pageNum >= numPages) return;
+    const img = new Image();
+    img.src = pageUrl(pageNum + 1);
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function renderPage(d: any, n: number) {
-    const target = imgEl;
-    const box = container;
-    if (!target || !box) return;
-    const myGen = gen;
-    try {
-      const pageObj = await d.getPage(n);
-      if (myGen !== gen) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const base = pageObj.getViewport({ scale: 1 });
-      const cw = box.clientWidth;
-      const ch = box.clientHeight;
-      if (cw < 2 || ch < 2) return;
-      const scale = Math.max(0.05, Math.min(cw / base.width, ch / base.height));
-      const viewport = pageObj.getViewport({ scale: scale * dpr });
-
-      // Render to a detached canvas, then hand the pixels to the <img>.
-      const c = document.createElement('canvas');
-      c.width = Math.floor(viewport.width);
-      c.height = Math.floor(viewport.height);
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-      renderTask?.cancel?.();
-      renderTask = pageObj.render({ canvasContext: ctx, viewport });
-      await renderTask.promise;
-      if (myGen !== gen) return;
-
-      const url = c.toDataURL('image/png');
-      // iOS returns a near-empty data URL when a canvas is too big to export.
-      if (url.length < 100) throw new Error('canvas export failed (too large)');
-      target.src = url;
-      err = null;
-    } catch (e) {
-      // Ignore superseded/cancelled renders; surface anything else.
-      const msg = e instanceof Error ? e.message : String(e);
-      if (myGen === gen && !/cancel/i.test(msg)) err = msg;
-    }
+  function onLoad() {
+    loading = false;
+    err = null;
   }
-
-  $effect(() => {
-    const box = container;
-    if (!browser || !box) return;
-    const ro = new ResizeObserver(() => {
-      resizeTick++;
-    });
-    ro.observe(box);
-    return () => ro.disconnect();
-  });
-
-  onDestroy(() => {
-    gen++; // invalidate any in-flight async work
-    renderTask?.cancel?.();
-    doc?.destroy?.();
-  });
+  function onError() {
+    loading = false;
+    err = 'image failed to load';
+  }
 
   export function prev() {
     if (pageNum > 1) pageNum -= 1;
@@ -168,14 +88,22 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="pager">
-  <div class="canvas-box" bind:this={container}>
-    <img bind:this={imgEl} alt={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`} />
+  <div class="canvas-box">
+    {#if src}
+      <img
+        {src}
+        alt={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`}
+        onload={onLoad}
+        onerror={onError}
+      />
+    {/if}
 
     {#if loading}
       <p class="status">Loading score…</p>
     {:else if err}
       <p class="status error">
-        Couldn't render the score. <a href={`/blob/${sha}`} target="_blank" rel="noopener">Open the PDF</a>
+        Couldn't render the score{#if err}: <span class="errdetail">{err}</span>{/if}.
+        <a href={`/blob/${sha}`} target="_blank" rel="noopener">Open the PDF</a>
       </p>
     {/if}
 
@@ -234,19 +162,22 @@
     box-shadow: var(--shadow);
   }
 
-  /* Hide the broken-image glyph before the first page has been rasterized. */
-  img:not([src]) {
-    visibility: hidden;
-  }
-
   .status {
     position: absolute;
     color: #dfddd4;
     font-size: 0.9rem;
+    max-width: 80%;
+    text-align: center;
   }
 
   .status.error a {
     color: #f2d36b;
+  }
+
+  .errdetail {
+    color: #f6b8b4;
+    font-family: ui-monospace, monospace;
+    word-break: break-word;
   }
 
   .tapzone {
