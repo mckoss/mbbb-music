@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Test the supported floor (package.json engines: >=20) and current LTS.
-        node-version: ['20', '22']
+        # Node 24 (LTS) — matches the local dev version pinned in .nvmrc.
+        node-version: ['24']
 
     steps:
       - uses: actions/checkout@v4
