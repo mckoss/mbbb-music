@@ -212,6 +212,25 @@ and public-safe visual assets. Unsafe contents include:
 
 When in doubt, add a tiny synthetic fixture instead of a real file.
 
+## Versioning
+
+The app carries a semantic version (`MAJOR.MINOR.PATCH`) that is bumped with
+every push.
+
+- **Single source of truth:** `package.json`'s `version` field. `svelte.config.js`
+  reads it into `kit.version.name`, so `import { version } from '$app/environment'`
+  returns the same string. The masthead shows it as small `v X.Y.Z` text
+  (`src/routes/+layout.svelte`). Never hard-code the version anywhere else — the
+  package.json value and the UI must always match.
+- **Bump every push.** Before pushing, raise the version to match the change:
+  - **MINOR** (`0.2.x` → `0.3.0`) for a new feature or user-visible enhancement.
+  - **PATCH** (`0.2.1` → `0.2.2`) for a bug fix or small, non-feature change.
+  - **MAJOR** is reserved for a breaking change or a deliberate milestone — ask
+    Mike before bumping it.
+- Use judgement: when a push mixes a feature and fixes, bump MINOR. Reset PATCH
+  to 0 on a MINOR bump (e.g. `0.2.4` → `0.3.0`).
+- One bump per push, not per commit; the version reflects what ships.
+
 ## Commit Guidance
 
 Mike's broader rule for active software projects is to ask before committing.

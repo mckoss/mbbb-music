@@ -1,6 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/state';
+  import { version } from '$app/environment';
   import { goto } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
@@ -72,6 +73,7 @@
         <p class="eyebrow brand-eyebrow">Mutiny Bay Brass Band</p>
         <h1>Music Portfolio</h1>
         <p class="desc">Browse the music library, choose an instrument and part, and assemble gig packets in set-list order.</p>
+        <p class="version">v {version}</p>
       </div>
     </div>
 
@@ -160,6 +162,14 @@
     color: #dfddd4;
     font-size: 0.95rem;
     max-width: 46ch;
+  }
+
+  .version {
+    margin-top: 8px;
+    color: #8d8a80;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
   }
 
   .right {
