@@ -101,6 +101,17 @@ first — that adds churn and obscures which checkout you're operating in.
    ln -s ../mbbb-music/node_modules node_modules
    ```
 
+   With those three symlinks the worktree is immediately **testable** — no
+   re-sync, no `npm install`. `npm run check`, `npm run build`, and `npm test`
+   resolve through the linked `node_modules`, and the web server serves the real,
+   pre-populated catalog through the linked `data/` (manifest, content-addressed
+   blobs, and the render cache — so scores render without re-rasterizing). Run it
+   with `npm run dev`, or `MBBB_NO_AUTH=true npm run dev:no-auth` for an open
+   LAN/dev session that skips Google sign-in (a synthetic admin). `check`,
+   `build`, the tests, and the no-auth dev server need none of `config.json`'s
+   secrets — only a real Drive re-sync does — so you can verify a change end to
+   end without ever touching credentials.
+
 2. **Modify** the code. If the change affects classification, re-sync here — it
    writes **through** the `data` symlink to the shared manifest the running
    server reads (intentional, not a leak).
