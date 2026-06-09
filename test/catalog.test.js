@@ -244,6 +244,26 @@ test('full-band mix is the default recording, ahead of isolated parts (#4)', () 
   assert.equal(bad.audio[0].originalName, 'Bad_Guy.mp3', 'full-band mix is the default');
 });
 
+test('audio defaults to the newest version of the full-band mix (#4)', () => {
+  const mp3 = (sha, name, mtime, instrumentSlug) => ({
+    status: 'synced', sha256: sha, assetType: 'mp3', sourceFolderLabel: 'primary',
+    originalFolder: 'Iron Man', songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+    originalName: name, modifiedTime: mtime, ...(instrumentSlug ? { instrumentSlug } : {}),
+  });
+  const manifest = {
+    files: {
+      a: mp3('a1', 'Iron Man-V1.0.mp3', '2025-08-04T00:00:00Z'),       // older full mix
+      b: mp3('b1', 'Iron Man-V1.2.mp3', '2026-04-21T00:00:00Z'),       // newer full mix
+      d: mp3('d1', 'Iron Man-Drum_Kit.mp3', '2026-01-01T00:00:00Z', 'drums'),
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['primary']);
+  const t = tunes.find((x) => x.slug === 'iron-man');
+  assert.equal(t.audio[0].originalName, 'Iron Man-V1.2.mp3', 'newest full-band version is the default');
+  assert.ok(!t.audio.some((a) => a.originalName === 'Iron Man-V1.0.mp3'), 'older version copy is deduped away');
+  assert.equal(t.audio.length, 2, 'newest full mix + the distinct drum stem remain');
+});
+
 test('parts carry print format, re-derive lyre part numbers, and dedupe version copies', () => {
   const p = (sha, name, mt) => ({
     status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,

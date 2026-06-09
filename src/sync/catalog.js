@@ -209,6 +209,43 @@ function compareAudio(a, b) {
 }
 
 /**
+ * A recording's identity, ignoring version tokens, so "Iron Man-V1.0" and
+ * "Iron Man-V1.2" share a key but distinct recordings ("…cadillacs" vs
+ * "Samba Breaks") do not. Strips a leading "Copy of" and any version-number
+ * tokens (v1, 1.2, …) left by slugifying.
+ */
+function audioBaseKey(name) {
+  const slug = slugifyStem(name || '').replace(/^(?:copy-of-)+/, '');
+  return slug
+    .split('-')
+    .filter((t) => t && !/^v?\d+(\.\d+)*$/.test(t))
+    .join('-');
+}
+
+/**
+ * Collapse version copies of the same recording down to one, keeping the newest
+ * by modified time (so "Iron Man-V1.0" doesn't outrank "Iron Man-V1.2" as the
+ * default). Distinct recordings are untouched. Strips the transient `_mtime`.
+ */
+function dedupeAudio(audio) {
+  const best = new Map();
+  for (const a of audio) {
+    const key = audioBaseKey(a.originalName) || a.sha256;
+    const cur = best.get(key);
+    // Prefer the newer modifiedTime; tiebreak on name so "V1.2" beats "V1.0".
+    if (
+      !cur ||
+      (a._mtime || '') > (cur._mtime || '') ||
+      ((a._mtime || '') === (cur._mtime || '') && (a.originalName || '') > (cur.originalName || ''))
+    ) {
+      best.set(key, a);
+    }
+  }
+  // eslint-disable-next-line no-unused-vars
+  return [...best.values()].map(({ _mtime, ...rest }) => rest);
+}
+
+/**
  * Collapse parts that are the same instrument/key/part/format down to one,
  * keeping the newest by modified time (so older version copies — "V1.0" vs
  * "V1.2" — don't show as undifferentiated duplicates). Strips the transient
@@ -462,8 +499,9 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       song.scores.push(asset);
     } else if (e.assetType === 'mp3') {
       // Carry the detected instrument so the full-band mix (no instrument) can be
-      // ordered ahead of isolated parts (drums, a single horn) as the default.
-      song.audio.push({ ...asset, instrumentSlug: e.instrumentSlug || undefined });
+      // ordered ahead of isolated parts (drums, a single horn) as the default;
+      // `_mtime` (transient) lets version copies of one recording dedupe to newest.
+      song.audio.push({ ...asset, instrumentSlug: e.instrumentSlug || undefined, _mtime: e.modifiedTime || '' });
     } else if (e.assetType === 'musescore') {
       song.musescore.push(asset);
     } else if (e.assetType === 'image') {
@@ -532,7 +570,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     .map((s) => ({
       ...s,
       parts: dedupeParts(s.parts).sort(comparePart),
-      audio: s.audio.slice().sort(compareAudio),
+      audio: dedupeAudio(s.audio).sort(compareAudio),
     }));
 
   const instLabels = new Map();
