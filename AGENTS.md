@@ -81,31 +81,41 @@ deploy commands before assuming another agent will know them.
 
 ## Isolated Changes With Git Worktrees
 
-To make an independent code change on its own branch/commit without disturbing
-other in-progress work in the main checkout, use a git worktree. A fresh
-worktree is an empty checkout, though — it does **not** contain the gitignored
-`data/` (manifest + content-addressed blobs), `config.json` (Drive credentials),
-or `node_modules/`. Symlink those three from the main checkout so a re-sync, the
-web server, and the test suite all work without re-fetching ~1000 files from
-Drive or reinstalling dependencies:
+For an independent code change that shouldn't disturb other in-progress work in
+the main checkout, run the whole lifecycle in a git worktree:
+**isolate → modify → commit → push → then dispose.** Push the worktree's branch
+straight to the remote; do **not** merge the branch back into the main checkout
+first — that adds churn and obscures which checkout you're operating in.
 
-```bash
-git worktree add -b <branch> ../mbbb-music-<name>
-cd ../mbbb-music-<name>
-ln -s ../mbbb-music/data data
-ln -s ../mbbb-music/config.json config.json
-ln -s ../mbbb-music/node_modules node_modules
-```
+1. **Isolate.** Create the worktree and symlink the three gitignored paths a
+   fresh checkout lacks — `data/` (manifest + content-addressed blobs),
+   `config.json` (Drive credentials), and `node_modules/` — from the main
+   checkout, so a re-sync, the web server, and the tests work without re-fetching
+   ~1000 files from Drive or reinstalling dependencies:
 
-Notes:
+   ```bash
+   git worktree add -b <branch> ../mbbb-music-<name>
+   cd ../mbbb-music-<name>
+   ln -s ../mbbb-music/data data
+   ln -s ../mbbb-music/config.json config.json
+   ln -s ../mbbb-music/node_modules node_modules
+   ```
 
-- A re-sync in the worktree writes **through** the `data` symlink to the shared
-  real data, so the fix lands in the same manifest the running server reads —
-  this is intentional, not a leak.
-- `.gitignore` lists `data/` and `node_modules/` with trailing slashes, which do
-  **not** match a symlink, so they show as untracked. Stage only the files you
-  actually changed (`git add <paths>`) — never `git add -A` in such a worktree.
-- Clean up when done: `rm` the three symlinks, then `git worktree remove <path>`.
+2. **Modify** the code. If the change affects classification, re-sync here — it
+   writes **through** the `data` symlink to the shared manifest the running
+   server reads (intentional, not a leak).
+
+3. **Commit** in the worktree, staging only the files you changed
+   (`git add <paths>` — never `git add -A`; the `data`/`node_modules` symlinks
+   show as untracked because the trailing-slash `.gitignore` patterns don't match
+   symlinks). Bump the version here too — the worktree's `package.json` is clean,
+   which avoids fighting unrelated uncommitted edits in the main checkout.
+
+4. **Push** the branch from the worktree straight to the remote
+   (`git push origin <branch>:main`, since this repo works direct-to-main).
+
+5. **Dispose** only after the push has landed: `rm` the three symlinks, then
+   `git worktree remove <path>` and delete the branch.
 
 ## Dependencies
 
@@ -192,7 +202,7 @@ The current prototype is intentionally direct:
 When editing the prototype:
 
 - Keep the prototype buildless — plain HTML/CSS/JS that GitHub Pages serves
-  directly — unless Mike explicitly asks for a real app scaffold. This is a
+  directly — unless a real app scaffold is explicitly requested. This is a
   deployment choice for `docs/`, not a project-wide no-dependency rule (see
   [Dependencies](#dependencies)).
 - Do not add real private data to sample arrays.
@@ -254,17 +264,26 @@ every push.
   - **MINOR** (`0.2.x` → `0.3.0`) for a new feature or user-visible enhancement.
   - **PATCH** (`0.2.1` → `0.2.2`) for a bug fix or small, non-feature change.
   - **MAJOR** is reserved for a breaking change or a deliberate milestone — ask
-    Mike before bumping it.
+    the maintainer before bumping it.
 - Use judgement: when a push mixes a feature and fixes, bump MINOR. Reset PATCH
   to 0 on a MINOR bump (e.g. `0.2.4` → `0.3.0`).
 - One bump per push, not per commit; the version reflects what ships.
 
 ## Commit Guidance
 
-Mike's broader rule for active software projects is to ask before committing.
-Make the code or docs change, verify it, show the diff summary, and wait for an
-explicit commit request.
+Ask before committing. Make the code or docs change, verify it, show the diff
+summary, and wait for an explicit commit request.
 
 For this repo specifically, keep commits focused: one design update, prototype
 change, importer experiment, or documentation pass at a time.
+
+**Linear history — no merge commits, ever.** This repo keeps a fully linear
+history. Land work by rebasing the branch onto the current `main` (a
+fast-forward push), or, when a GitHub PR is used, **squash-merge** it. Defer the
+rebase until the feature is ready to push — don't integrate with `main`
+prematurely; the only reason to integrate a branch early is to cherry-pick a
+single commit out of it. This is enforced: the GitHub repo has
+`allow_merge_commit` disabled (only squash and rebase merges are allowed), and
+locally `merge.ff = only` (a non-fast-forward `git merge` errors instead of
+creating a merge commit) with `pull.rebase = true`.
 
