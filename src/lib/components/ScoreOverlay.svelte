@@ -4,7 +4,8 @@
   import { goto } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import type { Catalog } from '$lib/types';
-  import { activeScore } from '$lib/resolve';
+  import { activeScore, partsForFormat } from '$lib/resolve';
+  import { instrumentDisplay, partLabel } from '$lib/format';
   import AudioPlayer from './AudioPlayer.svelte';
 
   // The overlay is driven entirely by the URL: it's open when ?view=score, and
@@ -25,6 +26,12 @@
   const aspect = $derived(format === 'lyre' ? 7 / 5 : 8.5 / 11);
   const practiceAudio = $derived(tune?.audio[0] ?? null);
 
+  // Instrument/part are switchable in-place: changing them updates the URL params
+  // (replaceState — no remount), which re-resolves the PDF below. Audio plays
+  // through a global singleton element, so swapping the score never interrupts it.
+  const instruments = $derived(catalog?.instruments ?? []);
+  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format) : []);
+
   function close() {
     if (!browser) return;
     // Pop our pushed entry so Back stays consistent; if we got here directly
@@ -42,6 +49,21 @@
     printFormat.set(fmt); // keep the cookie/global in sync
     const p = new URLSearchParams(page.url.search);
     p.set('format', fmt);
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+
+  function setInstrument(slug: string) {
+    instrumentSlug.set(slug); // keep the cookie/global in sync
+    const p = new URLSearchParams(page.url.search);
+    p.set('instrument', slug);
+    p.delete('part'); // a part number is meaningless for a different instrument
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+
+  function setPart(value: string) {
+    const p = new URLSearchParams(page.url.search);
+    if (value === '') p.delete('part');
+    else p.set('part', value);
     goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
@@ -66,6 +88,29 @@
       </div>
 
       <div class="controls">
+        {#if instruments.length}
+          <label class="fmt">
+            <span class="eyebrow">Instrument</span>
+            <select value={instrument} onchange={(e) => setInstrument(e.currentTarget.value)}>
+              {#each instruments as inst (inst.slug)}
+                <option value={inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        {#if parts.length > 1}
+          <label class="fmt">
+            <span class="eyebrow">Part</span>
+            <select
+              value={String(current?.partNumber ?? '')}
+              onchange={(e) => setPart(e.currentTarget.value)}
+            >
+              {#each parts as p (p.sha256)}
+                <option value={String(p.partNumber ?? '')}>{partLabel(p)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         <label class="fmt">
           <span class="eyebrow">Format</span>
           <select value={format} onchange={(e) => setFormat(e.currentTarget.value as PrintFormat)}>
