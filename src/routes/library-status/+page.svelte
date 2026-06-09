@@ -1,5 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { invalidateAll } from '$app/navigation';
+  import { onDestroy } from 'svelte';
   import type { Catalog, Tune, CatalogPart, CatalogAsset, UnreachableItem } from '$lib/types';
   import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
   import { sourceStyle, UNREACHABLE_STYLE } from '$lib/sources';
@@ -119,6 +121,84 @@
     { key: '__unreachable', url: null, ...UNREACHABLE_STYLE },
   ]);
 
+  // --- Admin: run the Drive sync with live progress (SSE) ------------------
+  const isAdmin = $derived(page.data.user?.role === 'admin');
+
+  interface SyncLine {
+    t: number;
+    level: 'info' | 'warn' | 'error';
+    msg: string;
+  }
+
+  let syncing = $state(false);
+  let syncLines = $state<SyncLine[]>([]);
+  let syncSummary = $state<Record<string, number> | null>(null);
+  let syncError = $state<string | null>(null);
+  let es: EventSource | null = null;
+
+  function closeEs() {
+    if (es) {
+      es.close();
+      es = null;
+    }
+  }
+
+  // Start (no-op server-side if already running) then watch the progress stream.
+  async function runSync() {
+    syncLines = [];
+    syncSummary = null;
+    syncError = null;
+    syncing = true;
+    try {
+      await fetch('/admin/sync', { method: 'POST' });
+    } catch {
+      /* the stream below still reports status */
+    }
+    watch();
+  }
+
+  function watch() {
+    closeEs();
+    es = new EventSource('/admin/sync');
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'state') {
+        syncing = ev.state.running;
+        syncLines = ev.state.lines ?? [];
+        syncSummary = ev.state.summary ?? null;
+        syncError = ev.state.error ?? null;
+        if (!ev.state.running && (ev.state.summary || ev.state.error)) closeEs();
+      } else if (ev.type === 'line') {
+        syncLines = [...syncLines, ev.line];
+      } else if (ev.type === 'start') {
+        syncing = true;
+      } else if (ev.type === 'done') {
+        syncSummary = ev.summary;
+      } else if (ev.type === 'error') {
+        syncError = ev.error;
+      } else if (ev.type === 'end') {
+        syncing = false;
+        closeEs();
+        invalidateAll(); // refresh the catalog/matrix with freshly synced data
+      }
+    };
+    es.onerror = () => {
+      // Stream closed (normally after 'end', or a transient drop). Stop here;
+      // the user can click again to reconnect — the server replays state.
+      closeEs();
+    };
+  }
+
+  function summaryText(s: Record<string, number>): string {
+    const parts = [`${s.seen} seen`, `${s.new} new`, `${s.downloaded} downloaded`];
+    if (s.unreachable) parts.push(`${s.unreachable} unreachable`);
+    if (s.failed) parts.push(`${s.failed} failed`);
+    if (s.warnings) parts.push(`${s.warnings} warnings`);
+    return `Sync complete — ${parts.join(', ')}.`;
+  }
+
+  onDestroy(closeEs);
+
   // Clicking a square: a lone file opens (full screen for a reachable file, or
   // the Drive "request access" page for an unreachable one); several open a popup
   // of links. Escape (or the ×) closes the popup.
@@ -167,6 +247,30 @@
         </li>
       {/each}
     </ul>
+
+    {#if isAdmin}
+      <div class="sync">
+        <div class="sync-head">
+          <button class="sync-btn" onclick={runSync} disabled={syncing}>
+            {syncing ? 'Syncing…' : 'Sync from Drive'}
+          </button>
+          {#if syncing}<span class="spinner" aria-hidden="true"></span>{/if}
+          {#if !syncing && syncSummary}<span class="ok">✓ done</span>{/if}
+          {#if !syncing && syncError}<span class="bad">✗ failed</span>{/if}
+        </div>
+
+        {#if syncing && syncLines.length}
+          <div class="sync-log" aria-live="polite">
+            {#each syncLines.slice(-12) as l (l.t + l.msg)}
+              <div class="ln {l.level}">{l.msg}</div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if syncSummary}<p class="sync-result">{summaryText(syncSummary)}</p>{/if}
+        {#if syncError}<p class="sync-result bad-text">Sync failed: {syncError}</p>{/if}
+      </div>
+    {/if}
   </header>
 
   <div class="scroller">
@@ -289,6 +393,101 @@
   .legend a {
     color: var(--accent-strong);
     text-decoration: underline;
+  }
+
+  /* Admin sync control */
+  .sync {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper);
+  }
+
+  .sync-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .sync-btn {
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-strong);
+    background: var(--accent);
+    color: #fffdf7;
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+
+  .sync-btn:disabled {
+    opacity: 0.7;
+    cursor: progress;
+  }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--line);
+    border-top-color: var(--accent-strong);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .ok {
+    color: #2e9e4f;
+    font-weight: 700;
+    font-size: 0.82rem;
+  }
+
+  .bad {
+    color: #d8413a;
+    font-weight: 700;
+    font-size: 0.82rem;
+  }
+
+  .sync-log {
+    max-height: 180px;
+    overflow: auto;
+    background: #1c1c1c;
+    color: #e6e3da;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+  }
+
+  .ln {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .ln.warn {
+    color: #f2d36b;
+  }
+
+  .ln.error {
+    color: #ff8d85;
+  }
+
+  .sync-result {
+    font-size: 0.82rem;
+    color: var(--ink);
+  }
+
+  .bad-text {
+    color: #8a1f1a;
   }
 
   .swatch {
