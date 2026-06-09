@@ -11,7 +11,7 @@
   ],
 
   "google": {
-    "_comment": "Authentication is by Google service account only. The source folders are public, so no folder sharing is needed — the service account just provides Drive API credentials. Paste the JSON key Google Cloud gives you here, inline.",
+    "_comment": "Drive SYNC credentials only — a Google service account (separate from website sign-in, which uses the `auth` block below). The source folders are public, so no folder sharing is needed; the service account just provides Drive API credentials for `npm run sync`. Paste the JSON key Google Cloud gives you here, inline.",
     "serviceAccount": {
       "type": "service_account",
       "project_id": "your-project",

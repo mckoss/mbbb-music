@@ -192,9 +192,10 @@ The current slice is the **player core** (catalog browse + scores + audio):
   lyre, with the same audio transport; closes on Escape or browser Back.
 - A **single shared audio transport** stays continuous between the Collection
   player and the Score overlay.
-- **Gig Packets** is a placeholder; auth, gigs, and the admin/import UI are
-  deferred (they need decisions and Postgres — see the milestones in
-  [docs/design.md](docs/design.md)).
+- **Sign-in** — Google OAuth with role-based access (see
+  [Authentication](#authentication-google-sign-in) below).
+- **Gig Packets** is a placeholder; gigs and the admin/import UI are deferred
+  (see the milestones in [docs/design.md](docs/design.md)).
 
 Architecture: the manifest→catalog model is shared with the CLI in
 `src/sync/catalog.js` (`buildCatalog`); `src/lib/server/library.ts` loads and
@@ -204,6 +205,86 @@ scrubbing), and immutable caching, serving only manifest-known hashes. `data/`
 stays gitignored; the app needs a populated `data/` (run a sync) to show real
 music.
 
+### Authentication (Google sign-in)
+
+The site can require Google sign-in with role-based access. Members sign in with
+their Google account, are matched against an allowlist, and get a 30-day signed
+session cookie; the role is resolved live per request.
+
+- **Roles:** `admin` (view everything + manage users), `member` and `organizer`
+  (view the library). A signed-in account that isn't on the allowlist lands on a
+  `/pending` page until an admin grants it a role.
+- **Gate:** unauthenticated → `/login`; signed-in but no role → `/pending`;
+  members → library + Library Status; `/admin/users` → admins only. `/blob` and
+  `/api/*` are gated too. Admins manage members from the **Users** tab.
+- **Allowlist storage:** roles live in a writable `data/users.json` (gitignored,
+  like the rest of `data/`), bootstrapped from `auth.admins` (those emails are
+  always admin and can't be removed in the UI).
+- **Open mode:** if the `auth` block is omitted (or `clientId`/`clientSecret`/
+  `cookieSecret` are blank) the site runs **open** — full access, no sign-in —
+  with a startup warning. So local dev/preview works before you set credentials.
+
+Two different Google credentials are involved, and they are **not** the same:
+`google.serviceAccount` is for the Drive **sync** only; the `auth` block is the
+web **sign-in** OAuth client.
+
+#### Where to get the credentials
+
+Add an `auth` block to `config.json` as a top-level sibling of `google`:
+
+```jsonc
+{
+  "dataDir": "data",
+  "sources": [ /* ...unchanged... */ ],
+  "google": { "serviceAccount": { /* ...unchanged... */ } },
+
+  "auth": {
+    "clientId": "1234567890-abcdef.apps.googleusercontent.com",
+    "clientSecret": "GOCSPX-xxxxxxxxxxxxxxxx",
+    "cookieSecret": "PASTE_A_LONG_RANDOM_STRING_HERE",
+    "admins": ["you@gmail.com"]
+  }
+}
+```
+
+Where each value comes from:
+
+| Field | How to get it |
+| --- | --- |
+| `clientId` / `clientSecret` | Google Cloud Console → **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Copy the two values it shows. |
+| `cookieSecret` | Any long random string (signs the session cookie). Generate with `openssl rand -base64 48`. Keep it stable — changing it logs everyone out. |
+| `admins` | Your email(s). These are always admin and can't be removed in the UI; grant everyone else from the **Users** tab. |
+
+**Leave `redirectUri` out** — it's optional and only overrides the auto value
+(`<origin>/auth/callback`), e.g. behind a proxy that rewrites the host.
+
+#### Redirect URI (required in the Google Console)
+
+This app uses the **server-side authorization-code flow** (browser → Google →
+back to `/auth/callback`, which the server exchanges). Google validates the
+redirect URI against the client's allowlist, so under the OAuth **Web
+application** client's *Authorized redirect URIs* you must add one per origin:
+
+```
+http://localhost:5173/auth/callback     # vite dev
+http://localhost:4173/auth/callback     # npm run preview (if used)
+https://your-prod-host/auth/callback    # production
+```
+
+(A client-side Google Identity Services / Firebase setup configures *JavaScript
+origins* instead and skips this — but this app intentionally uses the
+server-session model, so the redirect URI is required.)
+
+One-time, also configure the **OAuth consent screen** (External; scopes
+`openid`, `email`, `profile` — all non-sensitive, no Google verification
+needed). While it's in **Testing**, add each member as a *Test user*, or
+**Publish app** to allow any Google account (still gated by your allowlist —
+unlisted users land on `/pending`).
+
+For Railway, the same `auth` block goes inside the `MBBB_CONFIG_JSON` value, and
+`data/` (which holds `users.json`) needs persistent storage to retain granted
+roles across deploys.
+
 ## Open Questions
 
 - Which Google Drive folders or local paths are current import sources?
@@ -212,4 +293,3 @@ music.
   zip files, or a web/PWA performance view?
 - How complete and clean are the MuseScore source files compared with the PDF and
   MP3 collection?
-- What access model should the live site use for band members?
