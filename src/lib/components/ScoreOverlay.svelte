@@ -7,6 +7,7 @@
   import { activeScore, partsForFormat } from '$lib/resolve';
   import { instrumentDisplay, partLabel } from '$lib/format';
   import AudioPlayer from './AudioPlayer.svelte';
+  import PdfPager from './PdfPager.svelte';
 
   // The overlay is driven entirely by the URL: it's open when ?view=score, and
   // shows the PDF for ?song / ?instrument / ?format / ?part (each falling back to
@@ -21,9 +22,17 @@
   const partParam = $derived(params.get('part'));
   const part = $derived(partParam && /^\d+$/.test(partParam) ? Number(partParam) : null);
 
+  // Two ways to read a score (#1). Practice: chrome + the MP3 player on top, with
+  // the page scaled to fit below it. Performance: full-screen, no player, large
+  // page, paged by tapping the left/right edges (iPad on a music stand).
+  type Mode = 'practice' | 'performance';
+  const mode = $derived<Mode>(params.get('mode') === 'performance' ? 'performance' : 'practice');
+  // A plain boolean for template branching, so Svelte's TS narrowing doesn't
+  // collapse `mode` to a literal inside the {:else} block.
+  const isPerformance = $derived(mode === 'performance');
+
   const current = $derived(open && tune ? activeScore(tune, instrument, format, part) : null);
   const title = $derived(tune?.title ?? '');
-  const aspect = $derived(format === 'lyre' ? 7 / 5 : 8.5 / 11);
   const practiceAudio = $derived(tune?.audio[0] ?? null);
 
   // Instrument/part are switchable in-place: changing them updates the URL params
@@ -67,27 +76,47 @@
     goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
+  function setMode(m: Mode) {
+    const p = new URLSearchParams(page.url.search);
+    if (m === 'practice') p.delete('mode');
+    else p.set('mode', m);
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+  }
+
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape' && current) close();
   }
 
+  // Open the raw PDF in a new tab so the browser's own viewer handles a reliable
+  // full-document print (the on-screen view shows one rasterized page at a time).
   function print() {
-    if (browser) window.print();
+    if (browser && current) window.open(`/blob/${current.sha}`, '_blank', 'noopener');
   }
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 {#if current}
-  <div class="overlay">
+  <div class="overlay" class:performance={isPerformance}>
+    {#if isPerformance}
+      <!-- No chrome: a floating cluster (above the tap zones) holds the controls. -->
+      <div class="floating">
+        <button class="ghost" onclick={() => setMode('practice')}>Practice</button>
+        <button class="primary" onclick={close}>Done</button>
+      </div>
+    {:else}
     <header class="bar">
       <div class="info">
-        <p class="kicker perf">Performance view</p>
+        <p class="kicker perf">Score view</p>
         <h2>{title}</h2>
         <p class="sub">{current.label} · {format === 'lyre' ? 'Lyre' : 'Letter'}</p>
       </div>
 
       <div class="controls">
+        <div class="mode-toggle" role="group" aria-label="View mode">
+          <button class:on={mode === 'practice'} onclick={() => setMode('practice')}>Practice</button>
+          <button class:on={mode === 'performance'} onclick={() => setMode('performance')}>Performance</button>
+        </div>
         {#if instruments.length}
           <label class="fmt">
             <span class="eyebrow">Instrument</span>
@@ -126,13 +155,10 @@
     <div class="practice">
       <AudioPlayer sha={practiceAudio?.sha256 ?? null} title={title} />
     </div>
+    {/if}
 
-    <div class="stage" class:lyre={format === 'lyre'}>
-      <iframe
-        title={`${title} — ${current.label}`}
-        src={`/blob/${current.sha}#toolbar=0&view=FitH`}
-        style={`aspect-ratio:${aspect};`}
-      ></iframe>
+    <div class="stage">
+      <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} />
     </div>
   </div>
 {/if}
@@ -219,32 +245,67 @@
     border: 1px solid var(--accent-strong);
   }
 
+  .mode-toggle {
+    display: inline-flex;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    border-radius: 6px;
+    overflow: hidden;
+    align-self: flex-end;
+  }
+
+  .mode-toggle button {
+    min-height: 44px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #dfddd4;
+    padding: 0 14px;
+  }
+
+  .mode-toggle button.on {
+    background: var(--accent);
+    color: #fffdf7;
+  }
+
   .practice {
     padding: 14px 24px;
   }
 
   .stage {
     flex: 1;
+    min-height: 0;
     display: flex;
     justify-content: center;
-    padding: 8px 24px 28px;
+    padding: 8px 24px 24px;
   }
 
-  .stage iframe {
-    width: 100%;
-    max-width: 780px;
-    border: 0;
-    background: #fff;
-    box-shadow: var(--shadow);
+  /* Performance mode: no chrome, the page fills the whole screen. */
+  .overlay.performance {
+    overflow: hidden;
   }
 
-  .stage.lyre iframe {
-    max-width: 620px;
+  .overlay.performance .stage {
+    padding: 12px;
+  }
+
+  .floating {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+    display: flex;
+    gap: 10px;
+    opacity: 0.85;
+  }
+
+  .floating button {
+    padding: 0 16px;
   }
 
   @media print {
     .bar,
-    .practice {
+    .practice,
+    .floating {
       display: none;
     }
 

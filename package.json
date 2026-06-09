@@ -23,7 +23,8 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "google-auth-library": "9.15.1"
+    "google-auth-library": "9.15.1",
+    "pdfjs-dist": "6.0.227"
   },
   "license": "UNLICENSED",
   "devDependencies": {
