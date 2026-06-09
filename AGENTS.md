@@ -79,6 +79,34 @@ exercise it without Google credentials.
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
 
+## Isolated Changes With Git Worktrees
+
+To make an independent code change on its own branch/commit without disturbing
+other in-progress work in the main checkout, use a git worktree. A fresh
+worktree is an empty checkout, though — it does **not** contain the gitignored
+`data/` (manifest + content-addressed blobs), `config.json` (Drive credentials),
+or `node_modules/`. Symlink those three from the main checkout so a re-sync, the
+web server, and the test suite all work without re-fetching ~1000 files from
+Drive or reinstalling dependencies:
+
+```bash
+git worktree add -b <branch> ../mbbb-music-<name>
+cd ../mbbb-music-<name>
+ln -s ../mbbb-music/data data
+ln -s ../mbbb-music/config.json config.json
+ln -s ../mbbb-music/node_modules node_modules
+```
+
+Notes:
+
+- A re-sync in the worktree writes **through** the `data` symlink to the shared
+  real data, so the fix lands in the same manifest the running server reads —
+  this is intentional, not a leak.
+- `.gitignore` lists `data/` and `node_modules/` with trailing slashes, which do
+  **not** match a symlink, so they show as untracked. Stage only the files you
+  actually changed (`git add <paths>`) — never `git add -A` in such a worktree.
+- Clean up when done: `rm` the three symlinks, then `git worktree remove <path>`.
+
 ## Dependencies
 
 There is no blanket "no-dependency" rule for this project. Depending on
