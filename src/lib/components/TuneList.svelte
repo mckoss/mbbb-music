@@ -7,8 +7,10 @@
   import { songSearch, scoreSearch } from '$lib/nav';
   import { playSha } from '$lib/audio';
   import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
+  import TuneDetail from './TuneDetail.svelte';
 
-  let { tunes, selectedSlug }: { tunes: Tune[]; selectedSlug: string | null } = $props();
+  let { tunes, selected }: { tunes: Tune[]; selected: Tune | null } = $props();
+  const selectedSlug = $derived(selected?.slug ?? null);
 
   // Status filter chips. Archived songs are hidden by default; toggle a chip to
   // include/exclude that status. Ephemeral (resets per visit), like the search.
@@ -26,6 +28,13 @@
         show[t.status] &&
         (!$search.trim() || t.title.toLowerCase().includes($search.trim().toLowerCase()))
     )
+  );
+
+  // Expand the selected song — but only if it's visible under the current filter
+  // (e.g. the default selection might be an Archived song that's hidden). Fall
+  // back to the first visible song so the list always has one expanded entry.
+  const expandedSlug = $derived(
+    (filtered.find((t) => t.slug === selectedSlug) ?? filtered[0])?.slug ?? null
   );
 
   // Selecting a song updates the URL (?song=<slug>), adding a history entry so
@@ -87,38 +96,41 @@
 
   <ul class="tiles">
     {#each filtered as t (t.slug)}
-      <li class="tile" class:selected={selectedSlug === t.slug}>
-        <button class="title" onclick={() => selectTune(t)}>{t.title}</button>
-        <div class="actions">
-          <button class="act" onclick={() => openScore(t)} disabled={!hasPdf(t)}>Score</button>
-          <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>
-            Audio
-          </button>
-        </div>
-      </li>
+      {#if expandedSlug === t.slug}
+        <!-- The selected song expands in place: TuneDetail carries the title,
+             score image, part/format pickers, Open Score and the inline player —
+             replacing the old side panel. -->
+        <li class="tile selected">
+          <TuneDetail tune={t} instrumentSlug={$instrumentSlug} printFormat={$printFormat} />
+        </li>
+      {:else}
+        <li class="tile">
+          <button class="title" onclick={() => selectTune(t)}>{t.title}</button>
+          <div class="actions">
+            <button class="act" onclick={() => openScore(t)} disabled={!hasPdf(t)}>Score</button>
+            <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>
+              Audio
+            </button>
+          </div>
+        </li>
+      {/if}
     {/each}
     {#if filtered.length === 0}
-      <li class="empty">No titles match “{$search}”.</li>
+      <li class="empty">
+        {tunes.length === 0 ? 'No music in the library yet.' : `No titles match “${$search}”.`}
+      </li>
     {/if}
   </ul>
 </section>
 
 <style>
+  /* No card: the list sits directly on the page background (the old outer panel
+     dissolved). The page scrolls naturally so a selected song can expand in
+     place without an inner scroll region fighting the document. */
   .list-pane {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: var(--shadow);
-    padding: 22px;
     display: flex;
     flex-direction: column;
     gap: 14px;
-    /* Pin the list and bound it to the viewport so a long catalog scrolls
-       inside the pane (instead of leaving the card over-tall) while the detail
-       pane drives the page scroll. */
-    position: sticky;
-    top: 16px;
-    max-height: calc(100vh - 32px);
   }
 
   h2 {
@@ -168,30 +180,12 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    /* Fill the remaining pane height and scroll internally (min-height:0 lets a
-       flex child shrink below its content so overflow-y actually kicks in). */
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
 
-  /* On a stacked (single-column) layout, don't pin the list to the viewport —
-     let it sit in normal flow with a sensible cap so it doesn't fill the screen. */
-  @media (max-width: 980px) {
-    .list-pane {
-      position: static;
-      max-height: none;
-    }
-
-    .tiles {
-      flex: none;
-      max-height: 60vh;
-    }
-  }
-
+  /* A compact, clickable row for an unselected song. */
   .tile {
     display: flex;
     align-items: center;
@@ -203,9 +197,14 @@
     background: var(--panel);
   }
 
+  /* The selected song is bare: TuneDetail's own card provides the chrome, so it
+     reads as the expanded item. A little vertical breathing room sets it apart. */
   .tile.selected {
-    background: #edf4f3;
-    border-color: var(--accent);
+    display: block;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 6px 0;
   }
 
   .title {

@@ -202,6 +202,7 @@
 
   .controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-end;
     gap: 10px;
   }
