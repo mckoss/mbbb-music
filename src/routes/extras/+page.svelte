@@ -3,6 +3,7 @@
   import type { Catalog } from '$lib/types';
   import { stripCopyOf } from '$lib/format';
   import { audio, playSha, toggle } from '$lib/audio';
+  import { RENDER_REV } from '$lib/render-rev';
 
   const catalog = $derived(page.data.catalog as Catalog);
   const extras = $derived(catalog.extras ?? []);
@@ -55,13 +56,7 @@
             rel="noopener"
             title="View full screen"
           >
-            <iframe
-              title={e.name}
-              src={`/blob/${e.sha256}#toolbar=0&navpanes=0&view=FitH`}
-              tabindex="-1"
-              scrolling="no"
-            ></iframe>
-            <span class="thumb-veil" aria-hidden="true"></span>
+            <img src={`/render/${e.sha256}/1.webp?r=${RENDER_REV}`} alt={e.name} loading="lazy" />
           </a>
         {/if}
         <div class="meta">
@@ -189,18 +184,11 @@
     height: 280px;
   }
 
-  .thumb.pdf iframe {
-    width: 100%;
+  /* Fill the fixed-height thumb box and letterbox the whole first page. */
+  .thumb.pdf img {
     height: 100%;
-    border: 0;
-    pointer-events: none;
-  }
-
-  /* Transparent layer so a click anywhere over the PDF iframe follows the link
-     (the iframe itself swallows clicks). */
-  .thumb-veil {
-    position: absolute;
-    inset: 0;
+    max-height: none;
+    object-fit: contain;
   }
 
   .name {

@@ -5,6 +5,7 @@
   import { partLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { partsForFormat, activePdf, type ActivePdf } from '$lib/resolve';
   import { scoreSearch } from '$lib/nav';
+  import { RENDER_REV } from '$lib/render-rev';
   import AudioPlayer from './AudioPlayer.svelte';
 
   let {
@@ -160,11 +161,12 @@
     <button class="open-score" onclick={openScore}>Open Score</button>
 
     <div class="preview" class:lyre={printFormat === 'lyre'}>
-      <iframe
-        title={`${tune.title} — ${active.label}`}
-        src={`/blob/${active.sha}#toolbar=0&view=FitH`}
+      <img
+        alt={`${tune.title} — ${active.label}`}
+        src={`/render/${active.sha}/1.webp?r=${RENDER_REV}`}
         style={`aspect-ratio:${aspect};`}
-      ></iframe>
+        loading="lazy"
+      />
     </div>
   {/if}
 
@@ -312,15 +314,15 @@
     padding: 16px;
   }
 
-  .preview iframe {
+  .preview img {
     width: 100%;
     max-width: 460px;
-    border: 0;
+    object-fit: contain;
     background: #fff;
     box-shadow: var(--shadow);
   }
 
-  .preview.lyre iframe {
+  .preview.lyre img {
     max-width: 520px;
   }
 
