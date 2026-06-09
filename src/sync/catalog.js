@@ -317,6 +317,26 @@ export function songPrefixOf(name) {
 }
 
 /**
+ * The number of distinct "voices" in a prefix cluster of unfoldered files: each
+ * instrument part counts once (version copies of the same instrument/format/part
+ * collapse), and each instrument-less file (full score, audio, MuseScore) counts
+ * per unique blob. A real unfoldered song has 2+ voices (e.g. several instrument
+ * parts, or a part plus a full score); two versions of a single exercise (e.g.
+ * "Trumpet Blues Scales" base + v3) collapse to one voice and are NOT a song.
+ */
+function clusterVoiceCount(group) {
+  const voices = new Set();
+  for (const e of group) {
+    if (e.assetType === 'pdf' && e.instrumentSlug) {
+      voices.add(`p:${e.instrumentSlug}|${formatOf(e.originalName)}|${effectivePartNumber(e) ?? ''}`);
+    } else {
+      voices.add(`x:${e.sha256}`);
+    }
+  }
+  return voices.size;
+}
+
+/**
  * A catalog item for an unreachable shortcut (no content). Typed like a part
  * when an instrument was detected, and carries a Drive "request access" URL
  * built from the shortcut's target id.
@@ -454,7 +474,10 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     byPrefix.get(prefix).push(e);
   }
   for (const [prefix, group] of byPrefix) {
-    if (group.length >= 2) {
+    // Promote to a song only with 2+ distinct voices. A prefix shared by mere
+    // version copies of a single part (e.g. two "Trumpet Blues Scales" PDFs) is
+    // not a song — those files go to Extras.
+    if (clusterVoiceCount(group) >= 2) {
       const song = getSong(prefix, titleCaseSlug(prefix));
       for (const e of group) addAsset(song, e);
     } else {

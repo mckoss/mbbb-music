@@ -202,6 +202,28 @@ test('unfoldered files sharing a song prefix form a new song; a lone file stays 
   assert.equal(extras[0].originalName, 'Funkytown.pdf');
 });
 
+test('version copies of one instrument exercise are not a song, but go to Extras (#7)', () => {
+  // Two versions of one trumpet exercise share the prefix "blues-scales" but are
+  // a single voice — they must not be promoted to a phantom song.
+  const file = (sha, name) => ({
+    status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose',
+    originalName: name, instrumentSlug: 'trumpet', instrument: 'Trumpet',
+  });
+  const manifest = {
+    files: {
+      a: file('s1', 'Trumpet_Blues_Scales_Full.pdf'),
+      b: file('s2', 'Trumpet_Blues_Scales_Full-v3.pdf'),
+    },
+  };
+  const { tunes, extras } = buildCatalog(manifest, ['loose'], ['loose']);
+  assert.ok(!tunes.some((t) => t.slug === 'blues-scales'), 'no phantom "Blues Scales" song');
+  assert.deepEqual(
+    extras.map((e) => e.originalName).sort(),
+    ['Trumpet_Blues_Scales_Full-v3.pdf', 'Trumpet_Blues_Scales_Full.pdf'],
+    'both version copies fall to Extras',
+  );
+});
+
 test('parts carry print format, re-derive lyre part numbers, and dedupe version copies', () => {
   const p = (sha, name, mt) => ({
     status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,
