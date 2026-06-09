@@ -25,8 +25,10 @@
 
   interface CellItem {
     href: string;
-    label: string;
+    label: string; // the original source filename
     color: string; // popup link accent (red for unreachable)
+    chip: string; // source color swatch
+    chipName: string; // source name (tooltip)
     unreachable: boolean;
   }
   interface Cell {
@@ -71,12 +73,19 @@
       text: style.text,
       name: style.name,
       dot,
-      items: all.map(({ it, unreachable: un }) => ({
-        href: un ? (it.driveUrl ?? '#') : `/blob/${it.sha256}`,
-        label: un ? `${makeLabel(it)} — unreachable` : makeLabel(it),
-        color: un ? UNREACHABLE_STYLE.color : 'var(--accent-strong)',
-        unreachable: un,
-      })),
+      items: all.map(({ it, unreachable: un }) => {
+        const st = un ? UNREACHABLE_STYLE : sourceStyle(it.source);
+        // Show the file's real name from its source folder, not the derived label.
+        const name = it.originalName ? stripCopyOf(it.originalName) : makeLabel(it);
+        return {
+          href: un ? (it.driveUrl ?? '#') : `/blob/${it.sha256}`,
+          label: un ? `${name} — unreachable` : name,
+          color: un ? UNREACHABLE_STYLE.color : 'var(--accent-strong)',
+          chip: st.color,
+          chipName: st.name,
+          unreachable: un,
+        };
+      }),
     };
   }
 
@@ -370,7 +379,10 @@
               class:unreachable={it.unreachable}
               style:color={it.color}
               onclick={() => (popup = null)}
-            >{it.label}</a>
+            >
+              <span class="swatch" style:background={it.chip} title={it.chipName}></span>
+              <span class="fname">{it.label}</span>
+            </a>
           </li>
         {/each}
       </ul>
@@ -775,6 +787,7 @@
     display: flex;
     min-height: 44px;
     align-items: center;
+    gap: 10px;
     padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -782,6 +795,14 @@
     background: #f7f5ef;
     font-weight: 600;
     font-size: 0.85rem;
+  }
+
+  .modal-list .swatch {
+    flex: none;
+  }
+
+  .modal-list .fname {
+    word-break: break-word;
   }
 
   .modal-list a.unreachable {
