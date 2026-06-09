@@ -99,10 +99,13 @@
 {#if current}
   <div class="overlay" class:performance={isPerformance}>
     {#if isPerformance}
-      <!-- No chrome: a floating cluster (above the tap zones) holds the controls. -->
+      <!-- No chrome: a floating cluster (above the tap zones) holds the controls.
+           Returning to Practice is the common action, so it's the primary,
+           clearly-labelled button; the whole cluster is solid and fully opaque
+           so it stays obvious on a music stand. -->
       <div class="floating">
-        <button class="ghost" onclick={() => setMode('practice')}>Practice</button>
-        <button class="primary" onclick={close}>Done</button>
+        <button class="primary" onclick={() => setMode('practice')}>← Practice</button>
+        <button class="ghost" onclick={close}>Done</button>
       </div>
     {:else}
     <header class="bar">
@@ -293,14 +296,24 @@
     position: absolute;
     top: 12px;
     right: 12px;
-    z-index: 10;
+    z-index: 10; /* above PdfPager's tap zones (no z-index) so buttons win a tap */
     display: flex;
     gap: 10px;
-    opacity: 0.85;
+    /* A solid pill so the cluster reads clearly over both the dark stage and a
+       white score page, and fully opaque so it's never easy to miss. */
+    padding: 6px;
+    border-radius: 10px;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
   .floating button {
     padding: 0 16px;
+  }
+
+  /* The performance Practice button is opaque (no see-through ghost) for contrast. */
+  .floating .ghost {
+    background: rgba(255, 253, 247, 0.12);
   }
 
   @media print {
