@@ -33,7 +33,11 @@ export function authConfig(): { enabled: boolean; cfg: AuthConfig } {
     admins: (a.admins ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean),
     redirectUri: a.redirectUri,
   };
-  const enabled = Boolean(cfg.clientId && cfg.clientSecret && cfg.cookieSecret);
+  // Local/LAN dev escape hatch: MBBB_NO_AUTH=1 forces open mode (no sign-in)
+  // even when full auth config is present, so config.json stays production-ready
+  // and can be copied to the server as-is. See `npm run dev:no-auth`.
+  const forceOpen = /^(1|true|yes|on)$/i.test(process.env.MBBB_NO_AUTH ?? '');
+  const enabled = !forceOpen && Boolean(cfg.clientId && cfg.clientSecret && cfg.cookieSecret);
   return { enabled, cfg };
 }
 

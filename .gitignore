@@ -9,6 +9,7 @@ vite.config.ts.timestamp-*
 # Local sync config: Drive folder ids + Google credentials. Never committed.
 # (config.example.json documents the shape and IS committed.)
 config.json
+config.json.bak
 
 # Private music assets must not be committed to this public repository.
 music/
