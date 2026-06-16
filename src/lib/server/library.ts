@@ -7,8 +7,9 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { loadConfig } from '../../sync/config.js';
-import { buildCatalog, liveAssets } from '../../sync/catalog.js';
+import { buildCatalog, liveAssets, applyCorrections } from '../../sync/catalog.js';
 import { statusMap, statusMtimeMs } from './song-status.js';
+import { effectiveOverlay, revision as correctionsRevision } from './corrections.js';
 import { DEFAULT_STATUS } from '$lib/song-status';
 
 export interface AssetMeta {
@@ -24,6 +25,7 @@ type ServerCatalog = ReturnType<typeof buildCatalog> & { sourceUrls: Record<stri
 interface Loaded {
   mtimeMs: number;
   statusMtimeMs: number;
+  correctionsRev: string;
   catalog: ServerCatalog;
   assets: Map<string, AssetMeta>;
   casDir: string;
@@ -32,6 +34,7 @@ interface Loaded {
 const EMPTY: Loaded = {
   mtimeMs: -1,
   statusMtimeMs: -1,
+  correctionsRev: '',
   catalog: { tunes: [], instruments: [], extras: [], sources: [], sourceUrls: {}, uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
@@ -48,12 +51,24 @@ function load(): Loaded {
     // No manifest yet (no sync has run). Serve an empty catalog rather than 500.
     return EMPTY;
   }
-  // The catalog also depends on the admin status file, so a status change must
-  // invalidate the cache even when the manifest is untouched.
+  // The catalog also depends on the admin status file and the human-correction
+  // overlay, so a change to either must invalidate the cache even when the
+  // manifest is untouched.
   const sMtime = statusMtimeMs();
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.statusMtimeMs === sMtime) return cached;
+  const cRev = correctionsRevision();
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.statusMtimeMs === sMtime && cached.correctionsRev === cRev) {
+    return cached;
+  }
 
-  const manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
+  const rawManifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
+  // Overlay human corrections onto the manifest BEFORE building the catalog, so
+  // grouping/dedup/instrument columns reflect them. The on-disk manifest is never
+  // mutated — applyCorrections returns a copy with only touched entries cloned.
+  const overlay = effectiveOverlay();
+  // Only FILE corrections touch the manifest (and thus grouping). SONG corrections
+  // are presentation-only and applied to the tunes below, so the song's derived
+  // slug stays its stable identity (gig setlists + status key on it).
+  const manifest = applyCorrections(rawManifest, overlay);
   const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean }[];
   const sourceLabels = sources.map((s) => s.label).filter(Boolean);
   // Sources explicitly marked `foldered: false` aren't organized into per-song
@@ -69,7 +84,19 @@ function load(): Loaded {
   // server boundary, so the pure sync catalog stays decoupled from the store.
   const built = buildCatalog(manifest, sourceLabels, looseLabels);
   const statuses = statusMap();
-  const tunes = built.tunes.map((t) => ({ ...t, status: statuses[t.slug] ?? DEFAULT_STATUS }));
+  // Each tune's `slug` is its stable identity (used by status + gig setlists and
+  // never changed by a correction). A song correction overlays presentation only:
+  // `title` (display name) and `displaySlug` (slug-like, for download filenames /
+  // any user-facing slug), both keyed by that stable identity.
+  const tunes = built.tunes.map((t) => {
+    const sp = overlay.song[t.slug];
+    return {
+      ...t,
+      title: sp?.displayName || t.title,
+      displaySlug: sp?.displaySlug || t.slug,
+      status: statuses[t.slug] ?? DEFAULT_STATUS,
+    };
+  });
   const catalog: ServerCatalog = { ...built, tunes, sourceUrls };
 
   // Index every live blob's type/name so the blob endpoint can set the right
@@ -81,7 +108,7 @@ function load(): Loaded {
     }
   }
 
-  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, catalog, assets, casDir: resolve(cfg.dataDir, 'cas') };
+  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir: resolve(cfg.dataDir, 'cas') };
   return cached;
 }
 

@@ -37,6 +37,15 @@ const INSTRUMENTS = [
  */
 export const DEFAULT_KEY_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.slug, i.defaultKey]));
 
+/** Public {slug,label} list of correctable instruments (for UI dropdowns). */
+export const INSTRUMENT_CHOICES = INSTRUMENTS.map(({ slug, label }) => ({ slug, label }));
+
+/** Canonical display label for an instrument slug, or null if unknown. */
+export const LABEL_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.slug, i.label]));
+export function instrumentLabel(slug) {
+  return LABEL_BY_SLUG[slug] ?? null;
+}
+
 /**
  * Detect an instrument from a source filename (extension already stripped is
  * fine; the search is substring based and case-insensitive).

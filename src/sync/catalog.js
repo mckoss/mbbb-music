@@ -11,8 +11,75 @@
 // audio, and MuseScore sources.
 
 import { slugify, slugifyStem } from './slugify.js';
-import { DEFAULT_KEY_BY_SLUG, detectPartNumber } from './instruments.js';
+import { DEFAULT_KEY_BY_SLUG, detectPartNumber, instrumentLabel } from './instruments.js';
 import { isJunkName } from './classify.js';
+
+/**
+ * Apply manifest-affecting corrections, returning a NEW manifest whose entries
+ * carry the corrected fields. Applied BEFORE buildCatalog so grouping, dedup, and
+ * instrument columns reflect them; the machine-owned manifest on disk is never
+ * touched. Handles:
+ *   - file (by Drive file id): instrument/key/part, and `songSlug` to (re)assign
+ *     one file to a song;
+ *   - folder (by song-folder Drive id): `songSlug` to (re)assign a whole folder.
+ *
+ * A song's derived slug is its STABLE IDENTITY (gig setlists + status key on it),
+ * so SONG-scope display corrections are NOT applied here — those are presentation
+ * overlays applied at the tune level in library.ts. But (re)assigning a file/folder
+ * to a song IS a grouping change, applied here by repointing `songTitleSlug` to the
+ * target identity. A file-level assignment overrides its folder-level one.
+ *
+ * @param {object} manifest
+ * @param {{file:Object, folder:Object}} overlay
+ * @returns {object} a manifest with corrected entries (only touched entries cloned)
+ */
+export function applyCorrections(manifest, overlay) {
+  const file = overlay?.file || {};
+  const folder = overlay?.folder || {};
+  if (Object.keys(file).length === 0 && Object.keys(folder).length === 0) return manifest;
+
+  // Title to adopt when a file is reassigned to a song: the target song's existing
+  // title (so a moved file joins under the right label regardless of iteration
+  // order), or a title-cased slug for a brand-new song.
+  const titleBySlug = {};
+  for (const entry of Object.values(manifest.files || {})) {
+    const s = songSlugOf(entry);
+    if (s && !(s in titleBySlug)) titleBySlug[s] = entry.songTitle || s;
+  }
+  const reassign = (e, targetSlug) => {
+    e.songTitleSlug = targetSlug;
+    e.songTitle = titleBySlug[targetSlug] || titleCaseSlug(targetSlug);
+    // An explicit assignment must beat the folder/filename heuristic in buildCatalog
+    // (otherwise a file in an index/container folder would be re-grouped by name).
+    e.songAssigned = true;
+  };
+
+  const files = {};
+  for (const [id, entry] of Object.entries(manifest.files || {})) {
+    const fpatch = file[entry.driveFileId || id];
+    const folderPatch = entry.songFolderId ? folder[entry.songFolderId] : undefined;
+    let e = entry;
+    if (fpatch || folderPatch) {
+      e = { ...entry };
+      // Folder assignment first; a file-level assignment overrides it.
+      if (folderPatch?.songSlug) reassign(e, folderPatch.songSlug);
+      if (fpatch) {
+        if (fpatch.songSlug) reassign(e, fpatch.songSlug);
+        if (fpatch.instrumentSlug != null) {
+          e.instrumentSlug = fpatch.instrumentSlug || null;
+          e.instrument = instrumentLabel(fpatch.instrumentSlug) ?? e.instrument;
+        }
+        if ('key' in fpatch) e.key = fpatch.key || null;
+        if ('partNumber' in fpatch) {
+          const n = Number.parseInt(String(fpatch.partNumber), 10);
+          e.partNumber = Number.isInteger(n) && n >= 1 ? n : null;
+        }
+      }
+    }
+    files[id] = e;
+  }
+  return { ...manifest, files };
+}
 
 /** True for a manifest entry that still represents a present, downloaded asset. */
 export function isLive(entry) {
@@ -484,7 +551,14 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     if (e.modifiedTime && (!song.lastModified || e.modifiedTime > song.lastModified)) {
       song.lastModified = e.modifiedTime;
     }
-    const asset = { sha256: e.sha256, originalName: e.originalName || null, source: e.sourceFolderLabel || null };
+    const asset = {
+      sha256: e.sha256,
+      driveFileId: e.driveFileId,
+      folderId: e.songFolderId,
+      folder: e.originalFolder || null,
+      originalName: e.originalName || null,
+      source: e.sourceFolderLabel || null,
+    };
     if (e.assetType === 'pdf' && e.instrumentSlug) {
       song.parts.push({
         ...asset,
@@ -512,11 +586,12 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     }
   };
 
-  // Pass 1: foldered files go to their folder's song; an unfoldered file goes to
-  // a known song matched by its filename, else it's held for prefix-clustering.
+  // Pass 1: an explicit human assignment (songAssigned) wins outright; otherwise a
+  // foldered file goes to its folder's song, and an unfoldered file to a known song
+  // matched by its filename, else it's held for prefix-clustering.
   const pending = [];
   for (const e of canonical.values()) {
-    if (isRealSongFolder(e)) {
+    if (e.songAssigned || isRealSongFolder(e)) {
       addAsset(getSong(songSlugOf(e), e.songTitle || '(unknown)'), e);
       continue;
     }
