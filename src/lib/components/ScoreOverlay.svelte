@@ -5,7 +5,7 @@
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import type { Catalog } from '$lib/types';
   import { viewableDocs } from '$lib/resolve';
-  import { instrumentDisplay } from '$lib/format';
+  import { instrumentDisplay, audioLabel } from '$lib/format';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
@@ -39,7 +39,16 @@
   const docs = $derived(open && tune ? viewableDocs(tune, instrument, format) : []);
   const current = $derived(docs.find((d) => d.sha === partSha) ?? docs[0] ?? null);
   const title = $derived(tune?.title ?? '');
-  const practiceAudio = $derived(tune?.audio[0] ?? null);
+
+  // Recording picker for the practice player: default to the first take (the
+  // catalog orders the full-band mix first), reset when the song changes.
+  const audios = $derived(tune?.audio ?? []);
+  let chosenAudioSha = $state<string | null>(null);
+  $effect(() => {
+    void tune?.slug;
+    chosenAudioSha = audios[0]?.sha256 ?? null;
+  });
+  const practiceAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
 
   // Instrument/part are switchable in-place: changing them updates the URL params
   // (replaceState — no remount), which re-resolves the PDF below. Audio plays
@@ -161,6 +170,16 @@
     </header>
 
     <div class="practice">
+      {#if audios.length > 1}
+        <label class="fmt">
+          <span class="eyebrow">Recording</span>
+          <select value={chosenAudioSha} onchange={(e) => (chosenAudioSha = e.currentTarget.value)}>
+            {#each audios as a (a.sha256)}
+              <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <AudioPlayer sha={practiceAudio?.sha256 ?? null} title={title} />
     </div>
     {/if}
@@ -278,6 +297,9 @@
 
   .practice {
     padding: 14px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .stage {

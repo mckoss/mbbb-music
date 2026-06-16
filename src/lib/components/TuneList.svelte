@@ -90,9 +90,19 @@
     );
   }
 
+  // Which recording each multi-take song plays (keyed by slug; defaults to the
+  // first, which the catalog orders as the full-band mix). Picking one plays it.
+  let chosenAudio = $state<Record<string, string>>({});
+  function audioSha(t: Tune): string | null {
+    return chosenAudio[t.slug] ?? t.audio[0]?.sha256 ?? null;
+  }
   function playAudio(t: Tune) {
-    const a = t.audio[0];
-    if (a) playSha(a.sha256, t.title);
+    const sha = audioSha(t);
+    if (sha) playSha(sha, t.title);
+  }
+  function pickAudio(t: Tune, sha: string) {
+    chosenAudio[t.slug] = sha;
+    playSha(sha, t.title);
   }
 
   // Download filenames mirror the old detail view: the original name minus
@@ -164,6 +174,18 @@
         <div class="row-actions">
           <button class="act" onclick={() => openScore(t)} disabled={!active}>Score</button>
           <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>Audio</button>
+          {#if t.audio.length > 1}
+            <select
+              class="rec"
+              aria-label="Recording for {t.title}"
+              value={audioSha(t)}
+              onchange={(e) => pickAudio(t, e.currentTarget.value)}
+            >
+              {#each t.audio as a (a.sha256)}
+                <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+              {/each}
+            </select>
+          {/if}
           <button
             class="act ghost"
             aria-expanded={openDl === t.slug}
@@ -412,6 +434,18 @@
     color: var(--muted);
     background: var(--paper);
     cursor: not-allowed;
+  }
+
+  /* Recording picker — only shown for songs with more than one take. */
+  .rec {
+    max-width: 11rem;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0 8px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.74rem;
   }
 
   .downloads {
