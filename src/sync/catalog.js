@@ -286,15 +286,21 @@ function audioBaseKey(name) {
     .join('-');
 }
 
+/** Rank a copy by its source's priority (lower = higher priority); unknown last. */
+function sourceRank(asset, pri) {
+  return pri && pri.has(asset.source) ? pri.get(asset.source) : Number.MAX_SAFE_INTEGER;
+}
+
 /**
  * Order a tune's recordings so the full-band mix leads and, within one
- * recording, the newest version is the default — WITHOUT discarding any
- * distinct file. A unique blob is never hidden: older version copies and
- * distinct stems stay reachable via the recording chooser. Only byte-identical
- * duplicates (same content hash, e.g. the same mp3 mirrored across two sources)
- * collapse. Returns the fully ordered list; strips the transient `_mtime`.
+ * recording, the highest-priority source's copy is the default (newest as a
+ * tiebreak) — WITHOUT discarding any distinct file. A unique blob is never
+ * hidden: lower-priority copies, older versions, and distinct stems stay
+ * reachable via the recording chooser. Only byte-identical duplicates (same
+ * content hash, e.g. the same mp3 mirrored across two sources) collapse.
+ * Returns the fully ordered list; strips the transient `_mtime`.
  */
-function dedupeAudio(audio) {
+function dedupeAudio(audio, pri) {
   const bySha = new Map();
   for (const a of audio) if (!bySha.has(a.sha256)) bySha.set(a.sha256, a);
   const baseKey = (a) => audioBaseKey(a.originalName) || a.sha256;
@@ -305,8 +311,9 @@ function dedupeAudio(audio) {
     // ...versions of one recording grouped together...
     const bk = baseKey(a).localeCompare(baseKey(b));
     if (bk) return bk;
-    // ...newest first within a recording, then name desc ("V1.2" before "V1.0").
+    // ...highest-priority source first, then newest, then name desc ("V1.2"<"V1.0").
     return (
+      sourceRank(a, pri) - sourceRank(b, pri) ||
       (b._mtime || '').localeCompare(a._mtime || '') ||
       (b.originalName || '').localeCompare(a.originalName || '')
     );
@@ -316,20 +323,22 @@ function dedupeAudio(audio) {
 }
 
 /**
- * Order an instrument's parts so the newest copy of a given slot
- * (instrument/key/part/format) is the default shown first — WITHOUT discarding
- * any distinct file. A unique blob is never hidden: older versions, alternate
- * scans, and other genuinely-different copies of the same slot stay reachable
- * via the part chooser. Only byte-identical duplicates (same content hash)
- * collapse. Returns the fully ordered list; strips the transient `_mtime`.
+ * Order an instrument's parts so the highest-priority source's copy of a given
+ * slot (instrument/key/part/format) is the default shown first (newest as a
+ * tiebreak) — WITHOUT discarding any distinct file. A unique blob is never
+ * hidden: lower-priority copies, older versions, alternate scans, and other
+ * genuinely-different copies of the same slot stay reachable via the part
+ * chooser. Only byte-identical duplicates (same content hash) collapse.
+ * Returns the fully ordered list; strips the transient `_mtime`.
  */
-function dedupeParts(parts) {
+function dedupeParts(parts, pri) {
   const bySha = new Map();
   for (const p of parts) if (!bySha.has(p.sha256)) bySha.set(p.sha256, p);
   const out = [...bySha.values()].sort(
     (a, b) =>
       comparePart(a, b) ||
-      // Same slot: newest first, then name desc so "V1.2" precedes "V1.0".
+      // Same slot: highest-priority source first, then newest, then name desc.
+      sourceRank(a, pri) - sourceRank(b, pri) ||
       (b._mtime || '').localeCompare(a._mtime || '') ||
       (b.originalName || '').localeCompare(a.originalName || '')
   );
@@ -694,8 +703,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((s) => ({
       ...s,
-      parts: dedupeParts(s.parts),
-      audio: dedupeAudio(s.audio),
+      parts: dedupeParts(s.parts, pri),
+      audio: dedupeAudio(s.audio, pri),
     }));
 
   const instLabels = new Map();

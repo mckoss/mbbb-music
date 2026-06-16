@@ -344,6 +344,29 @@ test('parts carry print format, re-derive lyre part numbers, and keep all distin
   assert.ok(!tpt.some((x) => x.partNumber == null), 'no undifferentiated unnumbered duplicates');
 });
 
+test('distinct copies of one slot order by source priority, newest as tiebreak — none hidden', () => {
+  const p = (sha, name, source, mt) => ({
+    status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: source,
+    originalFolder: 'Iron Man', songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+    originalName: name, instrument: 'Trumpet', instrumentSlug: 'trumpet', key: 'bflat', modifiedTime: mt,
+  });
+  const manifest = {
+    files: {
+      // Two genuinely different files on the same euphonium-style slot: the
+      // higher-priority source's copy is OLDER than the lower-priority one.
+      a: p('a', 'Iron Man-Trumpet.pdf', 'secondary', '2026-05-01T00:00:00Z'), // newer, lower priority
+      b: p('b', 'Iron Man-Trumpet.pdf', 'primary', '2024-01-01T00:00:00Z'),   // older, higher priority
+    },
+  };
+  // 'primary' is listed first => higher priority than 'secondary'.
+  const tpt = buildCatalog(manifest, ['primary', 'secondary'])
+    .tunes.find((t) => t.slug === 'iron-man')
+    .parts.filter((x) => x.instrumentSlug === 'trumpet');
+  assert.equal(tpt.length, 2, 'both distinct copies are kept (neither is hidden)');
+  assert.equal(tpt[0].source, 'primary', 'higher-priority source is the default, even though it is older');
+  assert.equal(tpt[1].source, 'secondary', 'lower-priority copy stays reachable');
+});
+
 test('matchKnownSong matches by embedded title (both prefix directions)', () => {
   const known = [
     { slug: 'baile-inolvidable', title: 'BAILE INOLVIDABLE', tokens: ['baile', 'inolvidable'] },
