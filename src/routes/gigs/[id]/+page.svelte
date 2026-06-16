@@ -16,6 +16,7 @@
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import PdfPager from '$lib/components/PdfPager.svelte';
+  import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
@@ -67,6 +68,17 @@
     }
     return out;
   });
+
+  // Inputs for the offline-download control: the resolved chart hashes plus
+  // human labels for the chosen instrument/format.
+  const offlineShas = $derived(downloads.map((d) => d.sha));
+  const instLabel = $derived(
+    instrumentDisplay(
+      catalog.instruments.find((i) => i.slug === instrument)?.label ?? instrument,
+      catalog.instruments.find((i) => i.slug === instrument)?.key ?? null
+    )
+  );
+  const fmtLabel = $derived(format === 'lyre' ? 'Lyre' : 'Letter');
 
   // --- Perform-set mode -----------------------------------------------------
   // Driven by the URL (?perform=<setId>&i=<index>) so it's refresh-safe and the
@@ -339,6 +351,17 @@
       </form>
     {/if}
   </div>
+
+  <!-- Offline access -->
+  <OfflineGigButton
+    gigId={page.params.id ?? ''}
+    title={gig.name}
+    {instrument}
+    {format}
+    instrumentLabel={instLabel}
+    formatLabel={fmtLabel}
+    shas={offlineShas}
+  />
 
   <!-- Downloads -->
   {#if downloads.length > 0}

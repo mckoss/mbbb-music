@@ -1,0 +1,17 @@
+{
+  "name": "Mutiny Bay Brass Band",
+  "short_name": "MBBB Music",
+  "description": "The band's music library — charts, recordings, and gig setlists, available offline.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf8f2",
+  "theme_color": "#164e55",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
