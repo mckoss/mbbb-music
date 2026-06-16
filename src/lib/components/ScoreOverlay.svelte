@@ -5,7 +5,7 @@
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import type { Catalog } from '$lib/types';
   import { viewableDocs } from '$lib/resolve';
-  import { instrumentDisplay, audioLabel } from '$lib/format';
+  import { instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
@@ -17,6 +17,7 @@
   const catalog = $derived(page.data.catalog as Catalog);
   const assetIndex = $derived(assetIndexFor(catalog));
   const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
+  const dlUrl = (sha: string) => `${openUrl(sha)}?dl`;
   const params = $derived(page.url.searchParams);
   const open = $derived(params.get('view') === 'score');
   const tune = $derived(catalog?.tunes?.find((t) => t.slug === params.get('song')) ?? null);
@@ -52,6 +53,32 @@
     chosenAudioSha = audios[0]?.sha256 ?? null;
   });
   const practiceAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
+
+  // Downloads for this song, surfaced via a compact "Files" dropdown (the
+  // collection list no longer carries them). The currently-shown part comes
+  // first, then full scores, MuseScore, recordings, notes, and other files.
+  interface DlItem {
+    sha: string;
+    label: string;
+  }
+  let filesOpen = $state(false);
+  const downloads = $derived.by<DlItem[]>(() => {
+    if (!tune) return [];
+    const out: DlItem[] = [];
+    if (current && current.kind === 'part') out.push({ sha: current.sha, label: 'This part (PDF)' });
+    tune.scores.forEach((s, i) =>
+      out.push({ sha: s.sha256, label: `Full score${tune!.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)` })
+    );
+    if (tune.musescore[0]) out.push({ sha: tune.musescore[0].sha256, label: 'MuseScore' });
+    tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName)} (MP3)` }));
+    tune.notes.forEach((n) =>
+      out.push({ sha: n.sha256, label: `${n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)` })
+    );
+    tune.files.forEach((f) =>
+      out.push({ sha: f.sha256, label: f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download') })
+    );
+    return out;
+  });
 
   // Instrument/part are switchable in-place: changing them updates the URL params
   // (replaceState — no remount), which re-resolves the PDF below. Audio plays
@@ -101,7 +128,14 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && current) close();
+    if (e.key !== 'Escape' || !open) return;
+    if (filesOpen) filesOpen = false;
+    else close();
+  }
+
+  // Close the Files popover when clicking anywhere outside it.
+  function onWindowClick(e: MouseEvent) {
+    if (filesOpen && !(e.target as HTMLElement).closest('.files')) filesOpen = false;
   }
 
   // Open the raw PDF in a new tab so the browser's own viewer handles a reliable
@@ -111,25 +145,29 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onclick={onWindowClick} />
 
-{#if current}
+{#if open && tune}
   <div class="overlay" class:performance={isPerformance}>
     {#if isPerformance}
-      <!-- No chrome: a floating cluster (above the tap zones) holds the controls.
-           Returning to Practice is the common action, so it's the primary,
-           clearly-labelled button; the whole cluster is solid and fully opaque
-           so it stays obvious on a music stand. -->
+      <!-- No chrome on a music stand: a single floating Back arrow (top-left,
+           the same corner as Practice mode's) steps back to the full Score view.
+           It sits above the page-tap zones, so it always wins a tap. -->
       <div class="floating">
-        <button class="primary" onclick={() => setMode('practice')}>← Practice</button>
-        <button class="ghost" onclick={close}>Done</button>
+        <button
+          class="back"
+          onclick={() => setMode('practice')}
+          aria-label="Back to Score view"
+          title="Back to Score view">←</button
+        >
       </div>
     {:else}
     <header class="bar">
+      <button class="back" onclick={close} aria-label="Back to Collection" title="Back to Collection">←</button>
       <div class="info">
         <p class="kicker perf">Score view</p>
         <h2>{title}</h2>
-        <p class="sub">{current.label} · {format === 'lyre' ? 'Lyre' : 'Letter'}</p>
+        <p class="sub">{current?.label ?? 'No chart'} · {format === 'lyre' ? 'Lyre' : 'Letter'}</p>
       </div>
 
       <div class="controls">
@@ -167,8 +205,22 @@
             <option value="lyre">Lyre</option>
           </select>
         </label>
-        <button class="ghost" onclick={print}>Print</button>
-        <button class="primary" onclick={close}>Collection</button>
+        <button class="ghost" onclick={print} disabled={!current}>Print</button>
+        <div class="files">
+          <button class="ghost" onclick={() => (filesOpen = !filesOpen)} aria-expanded={filesOpen}>
+            Files ⤓
+          </button>
+          {#if filesOpen}
+            <div class="files-pop">
+              {#each downloads as d (d.sha + d.label)}
+                <a class="dl" href={dlUrl(d.sha)} download onclick={() => (filesOpen = false)}>⤓ {d.label}</a>
+              {/each}
+              {#if downloads.length === 0}
+                <span class="dl-empty">Nothing to download.</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
     </header>
 
@@ -188,7 +240,16 @@
     {/if}
 
     <div class="stage">
-      <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} openHref={openUrl(current.sha)} />
+      {#if current}
+        <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} openHref={openUrl(current.sha)} />
+      {:else}
+        <div class="no-chart">
+          <p>No chart for “{title}” in this instrument / format.</p>
+          <p class="hint">
+            Switch the instrument or format above{audios.length ? ', or play a recording below' : ''}.
+          </p>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -270,10 +331,90 @@
     border: 1px solid rgba(255, 253, 247, 0.35);
   }
 
-  .primary {
-    background: var(--accent);
+  /* Back arrow — the single, consistent "step out" affordance. Practice mode →
+     Collection; performance mode → the full Score view. Same top-left corner in
+     both, so it's muscle memory. */
+  .back {
+    min-width: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    line-height: 1;
+    background: rgba(255, 253, 247, 0.12);
     color: #fffdf7;
-    border: 1px solid var(--accent-strong);
+    border: 1px solid rgba(255, 253, 247, 0.35);
+    border-radius: 8px;
+  }
+
+  .back:hover {
+    background: rgba(255, 253, 247, 0.22);
+  }
+
+  .bar .back {
+    align-self: flex-start;
+  }
+
+  /* Files dropdown: a compact button revealing the song's downloads. */
+  .files {
+    position: relative;
+  }
+
+  .files-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 230px;
+    max-height: 60vh;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #2c2d31;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+
+  .dl {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #fffdf7;
+    background: rgba(255, 253, 247, 0.1);
+    border: 1px solid rgba(255, 253, 247, 0.2);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .dl:hover {
+    background: rgba(255, 253, 247, 0.18);
+  }
+
+  .dl-empty {
+    color: #b9b6ac;
+    font-size: 0.82rem;
+    padding: 6px;
+  }
+
+  /* Shown in the stage when the song has no chart for the chosen instrument/format. */
+  .no-chart {
+    margin: auto;
+    text-align: center;
+    color: #dfddd4;
+    padding: 24px;
+  }
+
+  .no-chart .hint {
+    color: #b9b6ac;
+    font-size: 0.85rem;
+    margin-top: 8px;
   }
 
   .mode-toggle {
@@ -325,25 +466,16 @@
   .floating {
     position: absolute;
     top: 12px;
-    right: 12px;
-    z-index: 10; /* above PdfPager's tap zones (no z-index) so buttons win a tap */
+    left: 12px; /* same corner as the practice-mode Back arrow */
+    z-index: 10; /* above PdfPager's tap zones (no z-index) so the button wins a tap */
     display: flex;
     gap: 10px;
-    /* A solid pill so the cluster reads clearly over both the dark stage and a
-       white score page, and fully opaque so it's never easy to miss. */
+    /* A solid pill so it reads clearly over both the dark stage and a white score
+       page, and fully opaque so it's never easy to miss on a music stand. */
     padding: 6px;
     border-radius: 10px;
     background: rgba(32, 33, 36, 0.92);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-  }
-
-  .floating button {
-    padding: 0 16px;
-  }
-
-  /* The performance Practice button is opaque (no see-through ghost) for contrast. */
-  .floating .ghost {
-    background: rgba(255, 253, 247, 0.12);
   }
 
   @media print {

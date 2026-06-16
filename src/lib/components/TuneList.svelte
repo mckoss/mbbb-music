@@ -1,26 +1,15 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import type { Catalog, Tune } from '$lib/types';
   import { search, instrumentSlug, printFormat } from '$lib/stores';
   import { activePdf, partsFor, type ActivePdf } from '$lib/resolve';
   import { scoreSearch } from '$lib/nav';
-  import { playSha, audio } from '$lib/audio';
-  import { instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
+  import { instrumentDisplay } from '$lib/format';
   import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
-  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
-  import AudioPlayer from './AudioPlayer.svelte';
 
   let { tunes }: { tunes: Tune[] } = $props();
 
   const catalog = $derived(page.data.catalog as Catalog);
-
-  // Friendly, slug-based download/open URLs keyed off the catalog (no raw sha in
-  // the link or the saved filename). `?dl` forces a download; the filename is
-  // the last path segment. Falls back to /blob only if a hash isn't indexed.
-  const assetIndex = $derived(assetIndexFor(catalog));
-  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
-  const dlUrl = (sha: string) => `${openUrl(sha)}?dl`;
 
   // Friendly name of the globally-selected instrument, for the "my part" line.
   const instLabel = $derived.by(() => {
@@ -45,10 +34,6 @@
         (!$search.trim() || t.title.toLowerCase().includes($search.trim().toLowerCase()))
     )
   );
-
-  // Which row has its Downloads panel open (at most one at a time, on demand —
-  // the row itself stays a compact summary by default).
-  let openDl = $state<string | null>(null);
 
   const FORMAT_ORDER = ['letter', 'lyre'] as const;
   const FORMAT_LABEL: Record<string, string> = { letter: 'Letter', lyre: 'Lyre' };
@@ -80,39 +65,19 @@
       : '';
   }
 
-  function getActive(t: Tune): ActivePdf | null {
-    return activePdf(t, $instrumentSlug, $printFormat);
+  // The whole row links into the Score view, where the chart, audio, parts,
+  // format, and downloads all live now. Defaults to the instrument's part (so a
+  // player lands on their chart); the score view falls back to the full score or
+  // notes when there's no part, and hosts audio even for chart-less songs.
+  function scoreHref(t: Tune): string {
+    const active: ActivePdf | null = activePdf(t, $instrumentSlug, $printFormat);
+    return scoreSearch({
+      song: t.slug,
+      instrument: $instrumentSlug,
+      format: $printFormat,
+      part: active && !active.isScore ? active.sha : null,
+    });
   }
-
-  function openScore(t: Tune) {
-    const active = getActive(t);
-    if (!active) return;
-    goto(
-      scoreSearch({
-        song: t.slug,
-        instrument: $instrumentSlug,
-        format: $printFormat,
-        part: active.isScore ? null : active.sha,
-      }),
-      { keepFocus: true, noScroll: true }
-    );
-  }
-
-  // Which recording each multi-take song plays (keyed by slug; defaults to the
-  // first, which the catalog orders as the full-band mix). Picking one plays it.
-  let chosenAudio = $state<Record<string, string>>({});
-  function audioSha(t: Tune): string | null {
-    return chosenAudio[t.slug] ?? t.audio[0]?.sha256 ?? null;
-  }
-  function playAudio(t: Tune) {
-    const sha = audioSha(t);
-    if (sha) playSha(sha, t.title);
-  }
-  function pickAudio(t: Tune, sha: string) {
-    chosenAudio[t.slug] = sha;
-    playSha(sha, t.title);
-  }
-
 </script>
 
 <section class="list-pane">
@@ -142,9 +107,8 @@
 
   <ul class="rows">
     {#each filtered as t (t.slug)}
-      {@const active = getActive(t)}
-      <li class="row">
-        <div class="row-body">
+      <li>
+        <a class="row" href={scoreHref(t)} data-sveltekit-noscroll>
           <div class="row-head">
             <span class="title">{t.title}</span>
             <span class="status s-{t.status}" title={STATUS_DESC[t.status]}>{t.status}</span>
@@ -161,66 +125,9 @@
               {#if t.images.length}<span class="badge" title="Images">🖼 {t.images.length}</span>{/if}
               {#if t.files.length}<span class="badge" title="Other files">📎 {t.files.length}</span>{/if}
             </span>
+            <span class="chevron" aria-hidden="true">›</span>
           </div>
-        </div>
-
-        <div class="row-actions">
-          <button class="act" onclick={() => openScore(t)} disabled={!active}>Score</button>
-          <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>Audio</button>
-          {#if t.audio.length > 1}
-            <select
-              class="rec"
-              aria-label="Recording for {t.title}"
-              value={audioSha(t)}
-              onchange={(e) => pickAudio(t, e.currentTarget.value)}
-            >
-              {#each t.audio as a (a.sha256)}
-                <option value={a.sha256}>{audioLabel(a.originalName)}</option>
-              {/each}
-            </select>
-          {/if}
-          <button
-            class="act ghost"
-            aria-expanded={openDl === t.slug}
-            onclick={() => (openDl = openDl === t.slug ? null : t.slug)}
-          >⤓ Files {openDl === t.slug ? '▴' : '▾'}</button>
-        </div>
-
-        {#if openDl === t.slug}
-          <div class="downloads">
-            {#if active && !active.isScore}
-              <a class="dl" href={dlUrl(active.sha)} download>
-                ⤓ Part (PDF)
-              </a>
-            {/if}
-            {#each t.scores as s, i (s.sha256)}
-              <a class="dl" href={dlUrl(s.sha256)} download>
-                ⤓ Full score{t.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)
-              </a>
-            {/each}
-            {#each t.notes as n (n.sha256)}
-              <a class="dl" href={dlUrl(n.sha256)} download>
-                ⤓ {n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)
-              </a>
-            {/each}
-            {#if t.musescore[0]}
-              <a class="dl" href={dlUrl(t.musescore[0].sha256)} download>⤓ MuseScore</a>
-            {/if}
-            {#each t.audio as a (a.sha256)}
-              <a class="dl" href={dlUrl(a.sha256)} download>
-                ⤓ {audioLabel(a.originalName)} (MP3)
-              </a>
-            {/each}
-            {#each t.files as f (f.sha256)}
-              <a class="dl" href={dlUrl(f.sha256)} download>
-                ⤓ {f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download')}
-              </a>
-            {/each}
-            {#if !active && t.scores.length === 0 && t.notes.length === 0 && !t.musescore[0] && t.audio.length === 0 && t.files.length === 0}
-              <span class="dl-empty">Nothing to download.</span>
-            {/if}
-          </div>
-        {/if}
+        </a>
       </li>
     {/each}
     {#if filtered.length === 0}
@@ -229,16 +136,6 @@
       </li>
     {/if}
   </ul>
-
-  <!-- Rows no longer expand to host a player, so the transport lives here as a
-       sticky bar that appears once something is playing and stays put as you
-       scroll the list. Bound to the shared store, so it continues a track
-       started from any row. -->
-  {#if $audio.sha}
-    <div class="now-playing">
-      <AudioPlayer sha={$audio.sha} title={$audio.title} />
-    </div>
-  {/if}
 </section>
 
 <style>
@@ -300,26 +197,25 @@
     gap: 6px;
   }
 
-  /* A folder-style summary row: title + status + date on top, the instrument's
-     part summary and content badges below, quick actions on the right. Always
-     visible — no expansion needed to read what a song contains. */
+  /* A folder-style summary row that is now a single tap target into the Score
+     view: title + status + date on top, the instrument's part summary and
+     content badges below, with a chevron hinting it opens. */
   .row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    column-gap: 12px;
-    row-gap: 8px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 8px 12px;
-    background: var(--panel);
-  }
-
-  .row-body {
-    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--panel);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .row:hover {
+    border-color: var(--accent);
+    background: #f7f5ef;
   }
 
   .row-head {
@@ -370,6 +266,15 @@
     white-space: nowrap;
   }
 
+  /* Chevron affordance pinned to the right edge of the sub-line. */
+  .chevron {
+    margin-left: auto;
+    color: var(--accent);
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
   /* Status chip, keyed to the song's lifecycle state. */
   .status {
     font-size: 0.68rem;
@@ -404,100 +309,9 @@
     border-color: var(--line);
   }
 
-  .row-actions {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .act {
-    min-height: 40px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #f7f5ef;
-    color: var(--accent-strong);
-    font-size: 0.74rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-  }
-
-  .act.ghost {
-    background: var(--panel);
-    color: var(--muted);
-  }
-
-  .act:disabled {
-    color: var(--muted);
-    background: var(--paper);
-    cursor: not-allowed;
-  }
-
-  /* Recording picker — only shown for songs with more than one take. */
-  .rec {
-    max-width: 11rem;
-    min-height: 40px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 0 8px;
-    background: var(--paper);
-    color: var(--ink);
-    font-size: 0.74rem;
-  }
-
-  .downloads {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding-top: 4px;
-    border-top: 1px dashed var(--line);
-  }
-
-  .dl {
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    text-decoration: none;
-    color: var(--accent-strong);
-    background: #f7f5ef;
-    font-weight: 600;
-    font-size: 0.8rem;
-  }
-
-  .dl-empty {
-    color: var(--muted);
-    font-size: 0.8rem;
-    padding: 8px 0;
-  }
-
   .empty {
     color: var(--muted);
     font-size: 0.85rem;
     padding: 12px;
-  }
-
-  /* Sticky transport: stays at the bottom of the viewport while the list
-     scrolls, so playback controls are always reachable without an expanded row. */
-  .now-playing {
-    position: sticky;
-    bottom: 8px;
-    margin-top: 6px;
-    box-shadow: var(--shadow);
-    border-radius: 8px;
-  }
-
-  @media (max-width: 560px) {
-    .row {
-      grid-template-columns: 1fr;
-    }
-    .row-actions {
-      justify-content: flex-start;
-    }
   }
 </style>
