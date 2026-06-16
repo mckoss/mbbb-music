@@ -6,8 +6,9 @@ import { error } from '@sveltejs/kit';
 import { ensureRenderedPage } from '$lib/server/render';
 
 const SHA_RE = /^[a-f0-9]{64}$/;
-// Scores are never more than 9 pages, so a single digit is the whole range.
-const PAGE_RE = /^([1-9])\.webp$/;
+// Any 1-based page number (no leading zeros). The actual upper bound is the
+// PDF's page count, range-checked in ensureRenderedPage (out-of-range → 404).
+const PAGE_RE = /^([1-9][0-9]*)\.webp$/;
 
 /**
  * A rasterized score page as lossless WebP, rendered on demand and cached on
