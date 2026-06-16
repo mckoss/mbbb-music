@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { audio, playSha, toggle, restart, seek } from '$lib/audio';
+  import { audio, playSha, prime, toggle, restart, seek } from '$lib/audio';
   import { formatTime } from '$lib/format';
 
   let { sha, title }: { sha: string | null; title: string } = $props();
@@ -120,6 +120,9 @@
     if (countIn && fromTop) {
       // Restart from the top so the count-in actually leads into the first note.
       if (isCurrent) restart();
+      // Warm the MP3 *inside this tap* so it buffers during the count-in and the
+      // downbeat starts instantly — otherwise a cold load stalls after the beats.
+      prime(sha, title);
       runCountIn(startPlayback);
     } else {
       startPlayback();

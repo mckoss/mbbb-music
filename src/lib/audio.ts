@@ -51,6 +51,39 @@ function element(): HTMLAudioElement | null {
   return el;
 }
 
+/**
+ * Select a blob and start buffering it *now*, without audible playback. Call
+ * this inside the Play tap so a count-in can overlap the network fetch — by the
+ * downbeat the file is warm and playback starts instantly instead of stalling
+ * on a cold load. The silent muted play/pause also blesses the element so the
+ * later programmatic `play()` is allowed on iOS (which only permits playback
+ * that traces back to a user gesture).
+ */
+export function prime(sha: string, title: string): void {
+  const a = element();
+  if (!a) return;
+  const changed = !a.src.endsWith(`/blob/${sha}`);
+  if (changed) {
+    a.src = `/blob/${sha}`;
+    a.currentTime = 0;
+    audio.update((s) => ({ ...s, sha, title, position: 0, duration: 0 }));
+  } else {
+    audio.update((s) => ({ ...s, sha, title }));
+  }
+  a.preload = 'auto';
+  a.muted = true;
+  void a
+    .play()
+    .then(() => {
+      a.pause();
+      a.currentTime = 0;
+      a.muted = false;
+    })
+    .catch(() => {
+      a.muted = false;
+    });
+}
+
 /** Play the given blob. Resets position only when the sha changes. */
 export function playSha(sha: string, title: string): void {
   const a = element();
