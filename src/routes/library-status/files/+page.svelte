@@ -1,8 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state';
   import type { Inventory, InvNode } from '$lib/server/inventory';
+  import type { Catalog } from '$lib/types';
+  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
 
   const inv = $derived(page.data.inventory as Inventory);
+
+  // Friendly open URL when the file is in the player catalog; otherwise fall
+  // back to the raw blob (this health view also lists duplicates / non-catalog
+  // files that have no slug name).
+  const assetIndex = $derived(assetIndexFor(page.data.catalog as Catalog));
+  const fileHref = (sha: string | null) =>
+    sha ? (urlForSha(assetIndex, sha) ?? `/blob/${sha}`) : '#';
 
   const primaryLoc = (p: { source: string | null; path: string[]; name: string | null }) =>
     [p.source, ...(p.path ?? []), p.name].filter(Boolean).join(' / ');
@@ -67,7 +76,7 @@
       {#each node.files as f, i (f.driveFileId + ':' + i)}
         <li class:dup={!f.isPrimary}>
           {#if f.viaShortcut}<span class="sc" title="Reached via a Drive shortcut">↗</span>{/if}
-          <a class="file" href={f.sha256 ? `/blob/${f.sha256}` : '#'} target="_blank" rel="noopener">{f.name}</a>
+          <a class="file" href={fileHref(f.sha256)} target="_blank" rel="noopener">{f.name}</a>
           {#if f.isPrimary}
             <span class="badge primary">Primary</span>
           {:else if f.primary}

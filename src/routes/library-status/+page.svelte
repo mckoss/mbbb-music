@@ -6,6 +6,7 @@
   import type { Catalog, Tune, CatalogPart, CatalogAsset, UnreachableItem } from '$lib/types';
   import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
   import { sourceStyle, UNREACHABLE_STYLE } from '$lib/sources';
+  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { ALL_STATUSES, STATUS_DESC } from '$lib/song-status';
   import { INSTRUMENT_CHOICES } from '../../sync/instruments.js';
   import { slugify } from '../../sync/slugify.js';
@@ -24,6 +25,11 @@
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
   const instruments = $derived(catalog.instruments ?? []);
+
+  // Friendly open URL (no raw sha leak), falling back to the blob for any sha
+  // not present in the player index.
+  const assetIndex = $derived(assetIndexFor(catalog));
+  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
   // Source labels in priority order (highest first); index is the rank.
   const sources = $derived(catalog.sources ?? []);
 
@@ -114,7 +120,7 @@
         // Show the file's real name from its source folder, not the derived label.
         const name = it.originalName ? stripCopyOf(it.originalName) : makeLabel(it);
         return {
-          href: un ? (it.driveUrl ?? '#') : `/blob/${it.sha256}`,
+          href: un ? (it.driveUrl ?? '#') : it.sha256 ? openUrl(it.sha256) : '#',
           label: un ? `${name} — unreachable` : name,
           color: un ? UNREACHABLE_STYLE.color : 'var(--accent-strong)',
           chip: st.color,

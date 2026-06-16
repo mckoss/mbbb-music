@@ -10,7 +10,12 @@
     sha,
     tap = false,
     title = '',
-  }: { sha: string; tap?: boolean; title?: string } = $props();
+    openHref,
+  }: { sha: string; tap?: boolean; title?: string; openHref?: string } = $props();
+
+  // Friendly URL for the "Open the PDF" fallback; defaults to the raw blob if a
+  // caller didn't supply a slug-based one.
+  const pdfHref = $derived(openHref ?? `/blob/${sha}`);
 
   let pageNum = $state(1);
   let numPages = $state(0);
@@ -103,7 +108,7 @@
     {:else if err}
       <p class="status error">
         Couldn't render the score{#if err}: <span class="errdetail">{err}</span>{/if}.
-        <a href={`/blob/${sha}`} target="_blank" rel="noopener">Open the PDF</a>
+        <a href={pdfHref} target="_blank" rel="noopener">Open the PDF</a>
       </p>
     {/if}
 
