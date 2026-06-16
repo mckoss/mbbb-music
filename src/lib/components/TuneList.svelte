@@ -144,8 +144,8 @@
       <li class="row">
         <div class="row-body">
           <div class="row-head">
-            <span class="status s-{t.status}" title={STATUS_DESC[t.status]}>{t.status}</span>
             <span class="title">{t.title}</span>
+            <span class="status s-{t.status}" title={STATUS_DESC[t.status]}>{t.status}</span>
             {#if t.lastModified}
               <time class="date" datetime={t.lastModified}>{dateLabel(t.lastModified)}</time>
             {/if}
@@ -315,6 +315,7 @@
   }
 
   .date {
+    margin-left: auto; /* push to the right edge; title + status stay flush left */
     color: var(--muted);
     font-size: 0.74rem;
     white-space: nowrap;
