@@ -10,7 +10,7 @@ test('classifies accepted asset types by mime', () => {
   assert.equal(classifyDriveFile({ name: 'x.mp3', mimeType: 'audio/mpeg' }).assetType, 'mp3');
 });
 
-test('accepts native Google editor files as PDFs fetched via export', () => {
+test('accepts native Google editor files as notes fetched via PDF export', () => {
   for (const mimeType of [
     'application/vnd.google-apps.document',
     'application/vnd.google-apps.spreadsheet',
@@ -19,7 +19,9 @@ test('accepts native Google editor files as PDFs fetched via export', () => {
   ]) {
     const c = classifyDriveFile({ name: 'Notes', mimeType });
     assert.equal(c.ignored, false, mimeType);
-    assert.equal(c.assetType, 'pdf', mimeType);
+    // Typed `notes`, not `pdf`: a Google Doc is never a score, but it still
+    // exports to PDF so it renders and downloads through the PDF path.
+    assert.equal(c.assetType, 'notes', mimeType);
     assert.equal(c.ext, 'pdf', mimeType);
     assert.deepEqual(c.download, { mode: 'export', mimeType: 'application/pdf' }, mimeType);
   }

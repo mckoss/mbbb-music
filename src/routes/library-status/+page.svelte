@@ -130,12 +130,20 @@
   const audioItemLabel = (a: Sourced) => audioLabel(a.originalName ?? null);
   const museItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'MuseScore file');
   const scoreItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'Full score');
+  const miscItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : (a.assetType ?? 'File'));
 
   const partsFor = (t: Tune, slug: string) => t.parts.filter((p) => p.instrumentSlug === slug);
+  // Everything in a song folder that isn't a part/score/audio/MuseScore: notes
+  // (Google Docs → PDF), images, and other downloadable files.
+  const miscFor = (t: Tune): Sourced[] => [...t.notes, ...t.images, ...t.files];
   // Route unreachable items to the same columns as their reachable counterparts.
   const unMusescore = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'musescore');
   const unAudio = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'mp3');
   const unScore = (t: Tune) => (t.unreachable ?? []).filter((u) => u.assetType === 'pdf' && !u.instrumentSlug);
+  const unMisc = (t: Tune) =>
+    (t.unreachable ?? []).filter(
+      (u) => !u.instrumentSlug && !['musescore', 'mp3', 'pdf'].includes(u.assetType)
+    );
   const unFor = (t: Tune, slug: string) => (t.unreachable ?? []).filter((u) => u.instrumentSlug === slug);
 
   // Columns, left to right: the master MuseScore source, audio, the whole-band
@@ -144,6 +152,7 @@
     { key: 'musescore', label: 'MuseScore (Master)' },
     { key: 'audio', label: 'Audio' },
     { key: 'score', label: 'Whole Band (PDF)' },
+    { key: 'misc', label: 'Misc Files' },
     ...instruments.map((i) => ({ key: i.slug, label: instrumentDisplay(i.label, i.key) })),
   ]);
 
@@ -157,6 +166,7 @@
         buildCell(t.musescore, unMusescore(t), museItemLabel),
         buildCell(t.audio, unAudio(t), audioItemLabel),
         buildCell(t.scores, unScore(t), scoreItemLabel),
+        buildCell(miscFor(t), unMisc(t), miscItemLabel),
         ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel)),
       ] as (Cell | null)[],
     }))
@@ -198,6 +208,7 @@
     const all = [
       ...editing.parts,
       ...editing.scores,
+      ...editing.notes,
       ...editing.audio,
       ...editing.musescore,
       ...editing.images,
@@ -214,7 +225,7 @@
     // folderId lives on the asset; re-derive (name -> id) from the raw parts/assets.
     const byName = new Map<string, string>();
     if (editing) {
-      for (const a of [...editing.parts, ...editing.scores, ...editing.audio, ...editing.musescore, ...editing.images, ...editing.files]) {
+      for (const a of [...editing.parts, ...editing.scores, ...editing.notes, ...editing.audio, ...editing.musescore, ...editing.images, ...editing.files]) {
         if (a.folder && a.folderId && !byName.has(a.folder)) byName.set(a.folder, a.folderId);
       }
     }
@@ -421,7 +432,9 @@
       and both Letter/Lyre formats. A square <strong>split</strong> on the diagonal
       means copies live in two source folders — the upper-left is the higher-priority
       one. <strong>Red</strong> flags a part that's only a
-      shortcut the sync can't read (a permissions gap to fix in Drive). Click a
+      shortcut the sync can't read (a permissions gap to fix in Drive). The
+      <strong>Misc Files</strong> column gathers everything else in a song's folder —
+      notes (Google Docs), images, and other documents. Click a
       square to open it (a single file opens full screen; several open a list).
       Blank means nothing is on file.
     </p>

@@ -1,6 +1,6 @@
 import type { Tune, CatalogPart } from './types';
 import type { PrintFormat } from './stores';
-import { partOptionLabel } from './format.js';
+import { partOptionLabel, stripCopyOf } from './format.js';
 
 export interface ActivePdf {
   sha: string;
@@ -70,6 +70,62 @@ export function activePdf(
     };
   }
   return null;
+}
+
+export type DocKind = 'part' | 'score' | 'notes';
+
+export interface ViewableDoc {
+  sha: string;
+  label: string;
+  kind: DocKind;
+}
+
+/** A filename trimmed to a short human label: drop "Copy of", the extension, underscores. */
+function cleanDocName(name: string | null): string {
+  if (!name) return '';
+  return stripCopyOf(name)
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Every PDF a song can show in the score viewer, in display/priority order: the
+ * current instrument's parts first, then the full-band score(s), then notes
+ * (Google Docs exported to PDF). De-duplicated by content sha. The first entry is
+ * the sensible default — a part if the instrument has one, otherwise a real
+ * score, and only a note when that's all there is. Each carries a label that
+ * disambiguates it within its kind, and the `part` sha addressing matches the
+ * URL's ?part handle so a selection is shareable.
+ */
+export function viewableDocs(
+  tune: Tune,
+  instrumentSlug: string,
+  printFormat: PrintFormat
+): ViewableDoc[] {
+  const out: ViewableDoc[] = [];
+  const seen = new Set<string>();
+  const push = (sha: string, label: string, kind: DocKind) => {
+    if (seen.has(sha)) return;
+    seen.add(sha);
+    out.push({ sha, label, kind });
+  };
+
+  const parts = partsForFormat(tune, instrumentSlug, printFormat);
+  for (const p of parts) push(p.sha256, partOptionLabel(p, parts), 'part');
+
+  const scores = tune.scores ?? [];
+  for (const s of scores) {
+    push(s.sha256, scores.length === 1 ? 'Full score' : `Full score — ${cleanDocName(s.originalName) || 'untitled'}`, 'score');
+  }
+
+  const notes = tune.notes ?? [];
+  for (const n of notes) {
+    push(n.sha256, notes.length === 1 ? 'Notes' : `Notes — ${cleanDocName(n.originalName) || 'untitled'}`, 'notes');
+  }
+
+  return out;
 }
 
 /**

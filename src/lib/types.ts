@@ -62,7 +62,8 @@ export interface Tune {
   status: SongStatus; // admin-assigned, or 'Unfiled' when unannotated
   lastModified: string | null;
   parts: CatalogPart[];
-  scores: CatalogAsset[];
+  scores: CatalogAsset[]; // instrument-less true PDFs (full/band scores)
+  notes: CatalogAsset[]; // Google Docs exported to PDF — viewable, never a printable score
   audio: CatalogAsset[];
   musescore: CatalogAsset[];
   images: CatalogAsset[];
