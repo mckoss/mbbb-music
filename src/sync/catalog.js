@@ -122,15 +122,19 @@ function partNumberOf(entry) {
 
 /**
  * Classify a print format from a page's physical size in points (1/72").
- * Nominal sizes: Letter 8.5×11, Lyre (flip-folio) ~5×7. A landscape page is read
- * as Lyre too (marching flip-folios are commonly landscape). Returns null when the
- * dimensions are missing/degenerate, so the caller can fall back to the filename.
+ * Nominal sizes (orientation-independent): Letter 8.5×11, Lyre (flip-folio) ~5×7.
+ *
+ * `landscapeIsLyre` adds the rule that ANY landscape page is Lyre — true only for
+ * individual instrument parts (marching flip-folios are commonly landscape), and
+ * false for whole-band scores, which are often landscape at full/letter size and
+ * must not be mistaken for flip-folio parts. Returns null for missing/degenerate
+ * dimensions, so the caller can fall back to the filename.
  */
-export function formatFromShape(widthPt, heightPt) {
+export function formatFromShape(widthPt, heightPt, landscapeIsLyre = false) {
   const w = widthPt / 72;
   const h = heightPt / 72;
   if (!(w > 0 && h > 0)) return null;
-  if (w > h * 1.02) return 'lyre'; // landscape (incl. flip-folio) — not letter
+  if (landscapeIsLyre && w > h * 1.02) return 'lyre'; // landscape part → flip-folio
   const longSide = Math.max(w, h);
   const shortSide = Math.min(w, h);
   const dLetter = Math.hypot(shortSide - 8.5, longSide - 11);
@@ -143,14 +147,18 @@ export function formatFromShape(widthPt, heightPt) {
  * time as pageWidthPt/pageHeightPt) — the ground truth of what prints — and falls
  * back to a 'lyre' token in the filename when the shape is unknown. Accepts a
  * manifest entry, or a bare filename string for filename-only callers/tests.
+ *
+ * The landscape-means-Lyre rule applies only to instrument parts (an entry with
+ * an instrumentSlug); a whole-band score in landscape stays size-classified.
  */
 export function formatOf(entry) {
   if (typeof entry === 'string' || entry == null) {
     return /\blyre\b/i.test(String(entry ?? '')) ? 'lyre' : 'letter';
   }
+  const isPart = Boolean(entry.instrumentSlug);
   const byShape =
     entry.pageWidthPt && entry.pageHeightPt
-      ? formatFromShape(entry.pageWidthPt, entry.pageHeightPt)
+      ? formatFromShape(entry.pageWidthPt, entry.pageHeightPt, isPart)
       : null;
   if (byShape) return byShape;
   return /\blyre\b/i.test(String(entry.originalName ?? '')) ? 'lyre' : 'letter';

@@ -1,6 +1,6 @@
 {
   "name": "mbbb-music",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "private": true,
   "description": "Mutiny Bay Brass Band music library tooling. Phase 1: Google Drive asset sync.",
   "type": "module",
