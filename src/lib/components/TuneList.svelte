@@ -118,6 +118,14 @@
   function audioDlName(t: Tune, a: { originalName: string | null }): string {
     return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}.mp3`;
   }
+  // Score / notes PDFs (notes are Google Docs exported to PDF): keep the original
+  // name, force a .pdf extension, fall back to a generated, kind-tagged name.
+  function pdfDlName(t: Tune, a: { originalName: string | null }, kind: string): string {
+    const base = a.originalName
+      ? stripCopyOf(a.originalName).replace(/\.[a-z0-9]+$/i, '')
+      : `mbbb-${t.slug}-${kind}`;
+    return `${base}.pdf`;
+  }
   function fileDlName(t: Tune, a: { originalName: string | null; assetType?: string }): string {
     return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}-${a.assetType ?? 'file'}`;
   }
@@ -165,6 +173,7 @@
             <span class="badges">
               {#if t.audio.length}<span class="badge" title="Recordings">▶ {t.audio.length}</span>{/if}
               {#if t.musescore.length}<span class="badge" title="MuseScore source">𝄞 MuseScore</span>{/if}
+              {#if t.notes.length}<span class="badge" title="Notes (Google Docs)">📝 {t.notes.length}</span>{/if}
               {#if t.images.length}<span class="badge" title="Images">🖼 {t.images.length}</span>{/if}
               {#if t.files.length}<span class="badge" title="Other files">📎 {t.files.length}</span>{/if}
             </span>
@@ -195,11 +204,21 @@
 
         {#if openDl === t.slug}
           <div class="downloads">
-            {#if active}
+            {#if active && !active.isScore}
               <a class="dl" href={`/blob/${active.sha}?dl=${encodeURIComponent(dlName(active, t))}`} download>
-                ⤓ {active.isScore ? 'Full score' : 'Part'} (PDF)
+                ⤓ Part (PDF)
               </a>
             {/if}
+            {#each t.scores as s, i (s.sha256)}
+              <a class="dl" href={`/blob/${s.sha256}?dl=${encodeURIComponent(pdfDlName(t, s, 'full-score'))}`} download>
+                ⤓ Full score{t.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)
+              </a>
+            {/each}
+            {#each t.notes as n (n.sha256)}
+              <a class="dl" href={`/blob/${n.sha256}?dl=${encodeURIComponent(pdfDlName(t, n, 'notes'))}`} download>
+                ⤓ {n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)
+              </a>
+            {/each}
             {#if t.musescore[0]}
               <a
                 class="dl"
@@ -217,7 +236,7 @@
                 ⤓ {f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download')}
               </a>
             {/each}
-            {#if !active && !t.musescore[0] && t.audio.length === 0 && t.files.length === 0}
+            {#if !active && t.scores.length === 0 && t.notes.length === 0 && !t.musescore[0] && t.audio.length === 0 && t.files.length === 0}
               <span class="dl-empty">Nothing to download.</span>
             {/if}
           </div>
