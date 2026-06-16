@@ -3,9 +3,16 @@
   import { enhance } from '$app/forms';
   import type { Gig } from '$lib/gig';
   import { formatGigDate, formatGigTimes, formatGigLocation } from '$lib/gig';
+  import { listDownloaded } from '$lib/offline';
 
   const gigs = $derived(page.data.gigs as Gig[]);
   const isAdmin = $derived(page.data.user?.role === 'admin');
+
+  // Which gigs are saved for offline, so the list can flag them.
+  let offlineIds = $state(new Set<string>());
+  $effect(() => {
+    void listDownloaded().then((m) => (offlineIds = new Set(m.map((g) => g.gigId))));
+  });
 
   // A short summary of the sets/song counts for a gig card.
   function setsSummary(gig: Gig): string {
@@ -41,7 +48,10 @@
         <li>
           <a class="card" href={`/gigs/${gig.id}`}>
             <div class="card-main">
-              <h3>{gig.name}</h3>
+              <h3>
+                {gig.name}
+                {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
+              </h3>
               <p class="when">{formatGigDate(gig.date)}</p>
               {#if formatGigTimes(gig.times)}
                 <p class="meta">{formatGigTimes(gig.times)}</p>
@@ -137,6 +147,19 @@
   .card-main h3 {
     font-size: 1.1rem;
     margin: 0 0 4px;
+  }
+
+  .offline-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--accent-strong);
+    background: #eaf1f1;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    margin-left: 6px;
+    white-space: nowrap;
   }
 
   .when {
