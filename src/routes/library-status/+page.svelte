@@ -49,6 +49,12 @@
     color: string; // square background (the principal's color; red if it's unreachable)
     text: string;
     name: string;
+    // When the cell's copies span two or more source folders, the square is split
+    // diagonally: `color` fills the upper-left (the principal/highest-priority
+    // folder), `color2` the lower-right (the next folder by priority). Null when a
+    // single folder supplies the cell, leaving the square a solid `color`.
+    color2: string | null;
+    name2: string | null;
     items: CellItem[];
     dot: boolean; // a non-red square that still hides an unreachable file
   }
@@ -80,11 +86,28 @@
     // dot, so a buried permissions gap is visible at a glance.
     const dot = !principal.unreachable && all.some((a) => a.unreachable);
 
+    // Distinct source folders feeding this cell, in priority order (highest
+    // first). With two or more, the square is split into folder-colored
+    // triangles; the principal (upper-left) is always distinctSources[0] since it
+    // minimizes rank, so we only need the next folder's color for the lower-right.
+    const distinctSources: (string | null)[] = [];
+    const seenSrc = new Set<string>();
+    for (const a of [...all].sort((x, y) => rank(x.it.source) - rank(y.it.source))) {
+      const key = a.it.source ?? '';
+      if (!seenSrc.has(key)) {
+        seenSrc.add(key);
+        distinctSources.push(a.it.source ?? null);
+      }
+    }
+    const second = distinctSources.length >= 2 ? sourceStyle(distinctSources[1]) : null;
+
     return {
       count: all.length,
       color: style.color,
       text: style.text,
       name: style.name,
+      color2: second ? second.color : null,
+      name2: second ? second.name : null,
       dot,
       items: all.map(({ it, unreachable: un }) => {
         const st = un ? UNREACHABLE_STYLE : sourceStyle(it.source);
@@ -395,7 +418,9 @@
     <p class="body">
       Each square marks where a score (or recording) exists and the color shows
       its primary source. The number counts every copy in the library — all parts
-      and both Letter/Lyre formats. <strong>Red</strong> flags a part that's only a
+      and both Letter/Lyre formats. A square <strong>split</strong> on the diagonal
+      means copies live in two source folders — the upper-left is the higher-priority
+      one. <strong>Red</strong> flags a part that's only a
       shortcut the sync can't read (a permissions gap to fix in Drive). Click a
       square to open it (a single file opens full screen; several open a list).
       Blank means nothing is on file.
@@ -506,11 +531,16 @@
                   {#if c}
                     <button
                       class="sq"
-                      style:background={c.color}
+                      class:split={!!c.color2}
+                      style:background={c.color2
+                        ? `linear-gradient(135deg, ${c.color} 0 50%, ${c.color2} 50% 100%)`
+                        : c.color}
                       style:color={c.text}
-                      title={c.dot
-                        ? `${c.count} × ${c.name} — includes an unreachable copy — click to open`
-                        : `${c.count} × ${c.name} — click to open`}
+                      title={c.color2
+                        ? `${c.count} × ${c.name} + ${c.name2}${c.dot ? ' — includes an unreachable copy' : ''} — click to open`
+                        : c.dot
+                          ? `${c.count} × ${c.name} — includes an unreachable copy — click to open`
+                          : `${c.count} × ${c.name} — click to open`}
                       onclick={() => openCell(c, columns[i].label, r.title)}
                     >
                       {c.count}
@@ -1029,6 +1059,14 @@
     line-height: 1;
     cursor: pointer;
     transition: transform 0.06s ease, box-shadow 0.06s ease;
+  }
+
+  /* Two-folder squares are split on the anti-diagonal; the centered digit sits on
+     the seam, so a thin contrasting halo keeps it legible over either color. */
+  .sq.split {
+    text-shadow:
+      0 0 2px rgba(0, 0, 0, 0.55),
+      0 0 2px rgba(0, 0, 0, 0.55);
   }
 
   /* Corner marker: this otherwise-OK square hides an unreachable copy. */
