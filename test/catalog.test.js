@@ -310,11 +310,14 @@ test('audio defaults to the newest version of the full-band mix (#4)', () => {
   const { tunes } = buildCatalog(manifest, ['primary']);
   const t = tunes.find((x) => x.slug === 'iron-man');
   assert.equal(t.audio[0].originalName, 'Iron Man-V1.2.mp3', 'newest full-band version is the default');
-  assert.ok(!t.audio.some((a) => a.originalName === 'Iron Man-V1.0.mp3'), 'older version copy is deduped away');
-  assert.equal(t.audio.length, 2, 'newest full mix + the distinct drum stem remain');
+  // The older version is distinct content, so it stays reachable (never hidden);
+  // it just sorts after the newer mix and before the isolated stem.
+  assert.equal(t.audio[1].originalName, 'Iron Man-V1.0.mp3', 'older version remains, right after the newest');
+  assert.equal(t.audio[2].originalName, 'Iron Man-Drum_Kit.mp3', 'isolated stem sorts last');
+  assert.equal(t.audio.length, 3, 'both full-mix versions and the drum stem are all present');
 });
 
-test('parts carry print format, re-derive lyre part numbers, and dedupe version copies', () => {
+test('parts carry print format, re-derive lyre part numbers, and keep all distinct versions', () => {
   const p = (sha, name, mt) => ({
     status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: 'loose', originalName: name,
     instrument: 'Trumpet', instrumentSlug: 'trumpet', key: 'bflat', modifiedTime: mt,
@@ -331,8 +334,11 @@ test('parts carry print format, re-derive lyre part numbers, and dedupe version 
   const tpt = tunes.find((t) => t.slug === 'iron-man').parts.filter((x) => x.instrumentSlug === 'trumpet');
 
   const letter1 = tpt.filter((x) => x.partNumber === 1 && x.format === 'letter');
-  assert.equal(letter1.length, 1, 'version copies of the same part/format collapse to one');
-  assert.equal(letter1[0].originalName, 'Iron Man-V1.2-Trumpet_1.pdf', 'keeps the newest version');
+  // Both versions are distinct content, so both stay reachable (a unique file is
+  // never hidden); the newest is the default shown first, the older follows.
+  assert.equal(letter1.length, 2, 'distinct version copies of one part/format are both kept');
+  assert.equal(letter1[0].originalName, 'Iron Man-V1.2-Trumpet_1.pdf', 'newest version is the default');
+  assert.equal(letter1[1].originalName, 'Iron Man-V1.0-Trumpet_1.pdf', 'older version stays reachable');
   assert.ok(tpt.some((x) => x.partNumber === 1 && x.format === 'lyre'), 'lyre part 1 keeps its number');
   assert.ok(tpt.some((x) => x.partNumber === 2 && x.format === 'letter'));
   assert.ok(!tpt.some((x) => x.partNumber == null), 'no undifferentiated unnumbered duplicates');
