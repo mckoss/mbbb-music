@@ -85,30 +85,42 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     }
   }
 
-  // A single Drive file can be reached from more than one source — most commonly
-  // its real home folder plus a shortcut to it from another source. The manifest
-  // is keyed by file id, so without deduping here the file would be processed
-  // once per source and the LAST source walked would silently overwrite its
-  // provenance (sourceFolderLabel/originalFolder). Keep one entry per id,
-  // attributed to the highest-priority source — the earliest in config.sources,
-  // which is the listing order above — so a real folder always wins over a
-  // shortcut from a lower-priority source.
-  const deduped = [];
-  const seenIds = new Set();
+  // A single Drive file can be reached from more than one location — most commonly
+  // its real home folder plus a shortcut to it from another source/folder. The
+  // manifest is keyed by file id, so we keep ONE entry per id, attributed to the
+  // highest-priority source (the earliest in config.sources, which is the listing
+  // order above) so a real folder always wins over a shortcut. But we no longer
+  // throw the other occurrences away: each one is a real place the file appears in
+  // Drive, so we collect every (source, folder path) into `appearances` on the kept
+  // entry. The File List replays these so a shortcut'd file shows up exactly where
+  // it lives — never hidden just because a higher-priority copy exists elsewhere.
+  const byId = new Map();
   let crossSourceDuplicates = 0;
   for (const item of current) {
     const id = item.file.id;
-    if (seenIds.has(id)) {
+    const appearance = {
+      source: item.file.sourceFolderLabel ?? null,
+      path: item.file.folderPath ?? [],
+      name: item.file.name,
+      viaShortcut: !!item.file.viaShortcut,
+    };
+    const existing = byId.get(id);
+    if (existing) {
       crossSourceDuplicates += 1;
-      continue;
+      existing.appearances.push(appearance);
+    } else {
+      byId.set(id, { item, appearances: [appearance] });
     }
-    seenIds.add(id);
-    deduped.push(item);
   }
+  const deduped = [...byId.values()].map(({ item, appearances }) => ({
+    ...item,
+    file: { ...item.file, appearances },
+  }));
   if (crossSourceDuplicates > 0) {
     logger.info(
-      `${crossSourceDuplicates} file(s) were reachable from more than one source (e.g. via ` +
-        `shortcuts); each is attributed to its highest-priority source.`,
+      `${crossSourceDuplicates} file(s) were reachable from more than one location (e.g. via ` +
+        `shortcuts); each is attributed to its highest-priority source and keeps every ` +
+        `appearance for the File List.`,
     );
   }
 
@@ -297,6 +309,8 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     originalName: file.name,
     originalFolder: file.folderName,
     songFolderId: file.folderId,
+    folderPath: file.folderPath,
+    appearances: file.appearances,
     mimeType: file.mimeType,
     modifiedTime: file.modifiedTime,
     version: file.version,
@@ -324,6 +338,8 @@ function buildUnreachableEntry(entry, meta, timestamp) {
     originalName: file.name,
     originalFolder: file.folderName,
     songFolderId: file.folderId,
+    folderPath: file.folderPath,
+    appearances: file.appearances,
     mimeType: file.mimeType,
     modifiedTime: file.modifiedTime,
     version: file.version,
@@ -351,6 +367,8 @@ function buildIgnoredEntry(entry, timestamp) {
     originalName: file.name,
     originalFolder: file.folderName,
     songFolderId: file.folderId,
+    folderPath: file.folderPath,
+    appearances: file.appearances,
     mimeType: file.mimeType,
     modifiedTime: file.modifiedTime,
     version: file.version,

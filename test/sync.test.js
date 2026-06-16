@@ -332,6 +332,15 @@ test('a file reachable from two sources is attributed to the higher-priority (ea
     const m = await loadManifest(resolve(dataDir, 'manifest.json'));
     assert.equal(m.files['shared'].sourceFolderLabel, 'primary');
     assert.equal(m.files['shared'].originalFolder, 'Bad Guy');
+    // But the replica shortcut is NOT thrown away: it is kept as a second
+    // appearance, so the File List can show the file where the shortcut sits.
+    assert.deepEqual(
+      m.files['shared'].appearances.map((a) => [a.source, a.viaShortcut]),
+      [
+        ['primary', false], // its real home (the primary, highest-priority)
+        ['replica', true], // the shortcut from the replica index
+      ],
+    );
     // The replica-only file keeps its replica attribution.
     assert.equal(m.files['only-replica'].sourceFolderLabel, 'replica');
     // The shortcut's own id is never a separate asset entry.

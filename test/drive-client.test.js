@@ -105,7 +105,9 @@ test('listFiles builds a folder-scoped, non-trashed query with manifest fields',
   const client = createGoogleDriveClient({}, { fetch: fetchImpl, authClient: fakeAuth('tok-123') });
 
   const files = await client.listFiles('folder-xyz');
-  assert.deepEqual(files, [{ id: 'a', name: 'A.pdf' }]);
+  // A root-level leaf carries its (empty) full folder path so the inventory can
+  // mirror the Drive hierarchy.
+  assert.deepEqual(files, [{ id: 'a', name: 'A.pdf', folderPath: [] }]);
 
   const { url, init } = fetchImpl.calls[0];
   const parsed = new URL(url);
@@ -150,6 +152,15 @@ test('listFiles recurses into subfolders and tags assets with their top-level so
   // Every asset (incl. the one nested under bg/parts) is tagged with its song.
   const byId = Object.fromEntries(files.map((f) => [f.id, f.folderName]));
   assert.deepEqual(byId, { p1: 'Bad Guy', p2: 'Bad Guy', m1: 'Bad Guy', m2: 'Track Suit' });
+  // …and with its FULL folder path, so the inventory can mirror the Drive tree
+  // instead of flattening nested folders onto the song name.
+  const pathById = Object.fromEntries(files.map((f) => [f.id, f.folderPath]));
+  assert.deepEqual(pathById, {
+    p1: ['Bad Guy'],
+    p2: ['Bad Guy', 'parts'],
+    m1: ['Bad Guy', 'parts'],
+    m2: ['Track Suit'],
+  });
 });
 
 test('listFiles descends into a shortcut-to-folder, attributing its subtree to a song', async () => {
@@ -197,6 +208,10 @@ test('listFiles resolves a shortcut-to-file, standing the target in at the short
   assert.equal(f.mimeType, 'application/pdf');
   assert.equal(f.folderName, 'Bad Guy'); // attributed to the song the shortcut sits in
   assert.equal(f.shortcutDetails, undefined); // resolved away
+  // The shortcut appearance is tagged so the inventory can show it where it sits.
+  assert.deepEqual(f.folderPath, ['Bad Guy']);
+  assert.equal(f.viaShortcut, true);
+  assert.equal(f.shortcutId, 'sc2'); // the pointer's own id (its Drive location)
 });
 
 test('listFiles degrades a shortcut whose target is unreadable to the (ignored) pointer', async () => {

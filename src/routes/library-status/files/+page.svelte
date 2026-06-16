@@ -1,10 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import type { Inventory } from '$lib/server/inventory';
+  import type { Inventory, InvNode } from '$lib/server/inventory';
 
   const inv = $derived(page.data.inventory as Inventory);
-  const loc = (p: { source: string | null; folder: string | null; name: string | null }) =>
-    [p.source, p.folder].filter(Boolean).join(' / ');
+
+  const primaryLoc = (p: { source: string | null; path: string[]; name: string | null }) =>
+    [p.source, ...(p.path ?? []), p.name].filter(Boolean).join(' / ');
+
+  /** Total files in a node and its descendants — for the folder summary count. */
+  function countFiles(node: InvNode): number {
+    return node.files.length + node.folders.reduce((n, f) => n + countFiles(f), 0);
+  }
 </script>
 
 <section class="files">
@@ -16,14 +22,17 @@
     </nav>
     <h2>File browser</h2>
     <p class="body">
-      Every scanned file, by its original Drive location. The same content can live
-      in several folders (a song folder, a by-instrument index, …); only one copy —
-      the <strong>Primary</strong> — is used by the library. Duplicates aren't hidden
-      here: each points at where its primary lives. A real song folder is always
-      preferred over an index/container folder as the primary.
+      Every scanned file, nested exactly as it sits in Drive — the full folder
+      hierarchy, not a flattened list. The same content can appear in several
+      places (a song folder, a by-instrument index, a shortcut from another
+      archive…); only one copy — the <strong>Primary</strong> — is used by the
+      library. Nothing is hidden: every other appearance, including
+      <span class="sc">↗ shortcuts</span>, is shown where it lives and points at its
+      primary. A real song folder is always preferred over an index/container as the
+      primary.
     </p>
     <p class="count">
-      {inv.totals.files} files · {inv.totals.primaries} primary · {inv.totals.duplicates} duplicate
+      {inv.totals.files} appearances · {inv.totals.primaries} primary · {inv.totals.duplicates} duplicate
     </p>
   </header>
 
@@ -32,31 +41,43 @@
   {:else}
     {#each inv.sources as src (src.source)}
       <div class="source">
-        <h3>{src.source}</h3>
-        {#each src.folders as fol (fol.folder)}
-          <details>
-            <summary>
-              <span class="fname">📁 {fol.folder}</span>
-              <span class="meta">{fol.files.length} file{fol.files.length === 1 ? '' : 's'}{fol.dupCount ? ` · ${fol.dupCount} dup` : ''}</span>
-            </summary>
-            <ul>
-              {#each fol.files as f (f.driveFileId)}
-                <li class:dup={!f.isPrimary}>
-                  <a class="file" href={f.sha256 ? `/blob/${f.sha256}` : '#'} target="_blank" rel="noopener">{f.name}</a>
-                  {#if f.isPrimary}
-                    <span class="badge primary">Primary</span>
-                  {:else if f.primary}
-                    <span class="badge dupof">↳ primary in {loc(f.primary)}</span>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-          </details>
-        {/each}
+        <h3>📦 {src.source} <span class="meta">{src.fileCount} file{src.fileCount === 1 ? '' : 's'}{src.dupCount ? ` · ${src.dupCount} dup` : ''}</span></h3>
+        <div class="tree">
+          {@render treeNode(src.root)}
+        </div>
       </div>
     {/each}
   {/if}
 </section>
+
+{#snippet treeNode(node: InvNode)}
+  {#each node.folders as fol (fol.name)}
+    <details open={countFiles(fol) <= 40}>
+      <summary>
+        <span class="fname">📁 {fol.name}</span>
+        <span class="meta">{countFiles(fol)} file{countFiles(fol) === 1 ? '' : 's'}</span>
+      </summary>
+      <div class="children">
+        {@render treeNode(fol)}
+      </div>
+    </details>
+  {/each}
+  {#if node.files.length}
+    <ul>
+      {#each node.files as f, i (f.driveFileId + ':' + i)}
+        <li class:dup={!f.isPrimary}>
+          {#if f.viaShortcut}<span class="sc" title="Reached via a Drive shortcut">↗</span>{/if}
+          <a class="file" href={f.sha256 ? `/blob/${f.sha256}` : '#'} target="_blank" rel="noopener">{f.name}</a>
+          {#if f.isPrimary}
+            <span class="badge primary">Primary</span>
+          {:else if f.primary}
+            <span class="badge dupof">↳ primary in {primaryLoc(f.primary)}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 <style>
   .files {
@@ -105,40 +126,62 @@
   }
   .source h3 {
     font-size: 0.95rem;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     color: var(--accent-strong);
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    flex-wrap: wrap;
   }
-  details {
+  .source h3 .meta {
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 400;
+  }
+  .tree {
     border: 1px solid var(--line);
     border-radius: 6px;
-    margin-bottom: 6px;
     background: var(--paper);
+    padding: 6px 8px;
+  }
+  details {
+    margin: 2px 0;
   }
   summary {
     cursor: pointer;
-    padding: 8px 12px;
+    padding: 4px 6px;
     display: flex;
     justify-content: space-between;
     gap: 12px;
     font-size: 0.85rem;
+    border-radius: 4px;
+  }
+  summary:hover {
+    background: var(--panel);
   }
   summary .meta {
     color: var(--muted);
     font-size: 0.76rem;
     white-space: nowrap;
   }
+  /* Indent nested folders/files, with a guide line down each level. */
+  .children {
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--line);
+  }
   ul {
     list-style: none;
     margin: 0;
-    padding: 0 12px 10px;
+    padding: 2px 0 4px 16px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
   }
   li {
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
     font-size: 0.82rem;
   }
@@ -149,6 +192,11 @@
     color: var(--accent-strong);
     text-decoration: none;
     word-break: break-word;
+  }
+  .sc {
+    color: var(--accent-strong);
+    font-weight: 700;
+    font-size: 0.8rem;
   }
   .badge {
     font-size: 0.7rem;
