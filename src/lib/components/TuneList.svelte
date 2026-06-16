@@ -6,10 +6,20 @@
   import { scoreSearch } from '$lib/nav';
   import { instrumentDisplay } from '$lib/format';
   import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
+  import { cachedRenderShas } from '$lib/offline';
 
   let { tunes }: { tunes: Tune[] } = $props();
 
   const catalog = $derived(page.data.catalog as Catalog);
+
+  // Hashes with pages saved offline on this device, so a row can flag when your
+  // instrument's chart is already cached. Reloads when we return here from a
+  // score view (viewing a score saves it), keyed on the URL.
+  let cachedShas = $state(new Set<string>());
+  $effect(() => {
+    void page.url.search;
+    void cachedRenderShas().then((s) => (cachedShas = s));
+  });
 
   // Friendly name of the globally-selected instrument, for the "my part" line.
   const instLabel = $derived.by(() => {
@@ -69,8 +79,7 @@
   // format, and downloads all live now. Defaults to the instrument's part (so a
   // player lands on their chart); the score view falls back to the full score or
   // notes when there's no part, and hosts audio even for chart-less songs.
-  function scoreHref(t: Tune): string {
-    const active: ActivePdf | null = activePdf(t, $instrumentSlug, $printFormat);
+  function scoreHref(t: Tune, active: ActivePdf | null): string {
     return scoreSearch({
       song: t.slug,
       instrument: $instrumentSlug,
@@ -107,11 +116,15 @@
 
   <ul class="rows">
     {#each filtered as t (t.slug)}
+      {@const active = activePdf(t, $instrumentSlug, $printFormat)}
       <li>
-        <a class="row" href={scoreHref(t)} data-sveltekit-noscroll>
+        <a class="row" href={scoreHref(t, active)} data-sveltekit-noscroll>
           <div class="row-head">
             <span class="title">{t.title}</span>
             <span class="status s-{t.status}" title={STATUS_DESC[t.status]}>{t.status}</span>
+            {#if active && cachedShas.has(active.sha)}
+              <span class="saved" title="Your {instLabel} chart is saved offline">⤓ offline</span>
+            {/if}
             {#if t.lastModified}
               <time class="date" datetime={t.lastModified}>{dateLabel(t.lastModified)}</time>
             {/if}
@@ -273,6 +286,20 @@
     font-size: 1.1rem;
     font-weight: 700;
     line-height: 1;
+  }
+
+  /* "Saved offline" flag — shown when the current instrument's chart is cached. */
+  .saved {
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent-strong);
+    background: #eaf1f1;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 1px 7px;
+    white-space: nowrap;
   }
 
   /* Status chip, keyed to the song's lifecycle state. */
