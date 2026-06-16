@@ -4,8 +4,8 @@
   import { goto } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import type { Catalog } from '$lib/types';
-  import { activeScore, partsForFormat } from '$lib/resolve';
-  import { instrumentDisplay, partLabel } from '$lib/format';
+  import { activePdf, partsForFormat } from '$lib/resolve';
+  import { instrumentDisplay, partOptionLabel } from '$lib/format';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
@@ -19,8 +19,10 @@
   const tune = $derived(catalog?.tunes?.find((t) => t.slug === params.get('song')) ?? null);
   const instrument = $derived(params.get('instrument') ?? $instrumentSlug);
   const format = $derived(((params.get('format') as PrintFormat) || $printFormat) as PrintFormat);
-  const partParam = $derived(params.get('part'));
-  const part = $derived(partParam && /^\d+$/.test(partParam) ? Number(partParam) : null);
+  // `part` is the chosen part's content sha (a unique handle), or null for the
+  // default/full score. Addressing by sha — not a part number — lets two variants
+  // that share an instrument/key (different arrangements) each be selected.
+  const partSha = $derived(params.get('part'));
 
   // Two ways to read a score (#1). Practice: chrome + the MP3 player on top, with
   // the page scaled to fit below it. Performance: full-screen, no player, large
@@ -31,7 +33,7 @@
   // collapse `mode` to a literal inside the {:else} block.
   const isPerformance = $derived(mode === 'performance');
 
-  const current = $derived(open && tune ? activeScore(tune, instrument, format, part) : null);
+  const current = $derived(open && tune ? activePdf(tune, instrument, format, partSha) : null);
   const title = $derived(tune?.title ?? '');
   const practiceAudio = $derived(tune?.audio[0] ?? null);
 
@@ -132,13 +134,13 @@
         {/if}
         {#if parts.length > 1}
           <label class="fmt">
-            <span class="eyebrow">Part</span>
+            <span class="eyebrow">Variant</span>
             <select
-              value={String(current?.partNumber ?? '')}
+              value={current?.sha ?? ''}
               onchange={(e) => setPart(e.currentTarget.value)}
             >
               {#each parts as p (p.sha256)}
-                <option value={String(p.partNumber ?? '')}>{partLabel(p)}</option>
+                <option value={p.sha256}>{partOptionLabel(p, parts)}</option>
               {/each}
             </select>
           </label>

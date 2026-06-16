@@ -52,7 +52,7 @@
         song: t.slug,
         instrument: $instrumentSlug,
         format: $printFormat,
-        part: active.isScore ? null : active.partNumber,
+        part: active.isScore ? null : active.sha,
       }),
       { keepFocus: true, noScroll: true }
     );

@@ -1,6 +1,6 @@
 import type { Tune, CatalogPart } from './types';
 import type { PrintFormat } from './stores';
-import { partLabel } from './format';
+import { partOptionLabel } from './format.js';
 
 export interface ActivePdf {
   sha: string;
@@ -49,7 +49,7 @@ export function activePdf(
     const part = matches.find((p) => p.sha256 === chosenSha) ?? matches[0];
     return {
       sha: part.sha256,
-      label: partLabel(part),
+      label: partOptionLabel(part, matches),
       instrumentSlug: part.instrumentSlug,
       key: part.key,
       partNumber: part.partNumber,

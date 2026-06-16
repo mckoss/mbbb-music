@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import type { Tune } from '$lib/types';
   import type { PrintFormat } from '$lib/stores';
-  import { partLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
+  import { partOptionLabel, instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { partsForFormat, activePdf, type ActivePdf } from '$lib/resolve';
   import { scoreSearch } from '$lib/nav';
   import { RENDER_REV } from '$lib/render-rev';
@@ -76,7 +76,7 @@
         song: tune.slug,
         instrument: instrumentSlug,
         format: printFormat,
-        part: active.isScore ? null : active.partNumber,
+        part: active.isScore ? null : active.sha,
       }),
       { keepFocus: true, noScroll: true }
     );
@@ -92,10 +92,10 @@
 
     {#if matches.length > 1}
       <label class="part-select">
-        <span class="eyebrow">Part</span>
+        <span class="eyebrow">Variant</span>
         <select bind:value={chosenSha}>
           {#each matches as p (p.sha256)}
-            <option value={p.sha256}>{partLabel(p)}</option>
+            <option value={p.sha256}>{partOptionLabel(p, matches)}</option>
           {/each}
         </select>
       </label>

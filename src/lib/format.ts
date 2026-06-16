@@ -36,6 +36,36 @@ export function partLabel(part: CatalogPart): string {
   return part.partNumber != null ? `${base} ${part.partNumber}` : base;
 }
 
+/**
+ * A short tag distinguishing one variant of an otherwise identically-labelled
+ * part — its own filename (minus Drive's "Copy of" and the extension), falling
+ * back to the source archive. Used only to break ties; see {@link partOptionLabel}.
+ */
+function variantTag(part: CatalogPart): string {
+  const name = part.originalName ? stripCopyOf(part.originalName) : '';
+  const cleaned = name
+    .replace(/\.[a-z0-9]+$/i, '') // drop extension
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || part.source || '';
+}
+
+/**
+ * A picker label that is unique within a set of sibling parts. Normally just
+ * {@link partLabel}, but when several parts share the same base label — e.g. two
+ * different "Trumpet (B♭)" arrangements that carry no part number — it appends a
+ * filename-derived tag so each option is distinguishable (and selectable). Without
+ * this, identical labels make the variants impossible to tell apart or address.
+ */
+export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): string {
+  const base = partLabel(part);
+  const collides = siblings.some((p) => p.sha256 !== part.sha256 && partLabel(p) === base);
+  if (!collides) return base;
+  const tag = variantTag(part);
+  return tag ? `${base} — ${tag}` : base;
+}
+
 /** Strip Drive's "Copy of " prefix (possibly repeated) from a filename. */
 export function stripCopyOf(name: string): string {
   return name.replace(/^(?:copy of\s+)+/i, '');
