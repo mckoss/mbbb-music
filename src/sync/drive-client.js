@@ -212,7 +212,7 @@ export function createGoogleDriveClient(config = {}, options = {}) {
   // shortcut's location: the target's id/mime/checksum/bytes, but tagged with the
   // song folder the shortcut lives in. If the target can't be read or is itself a
   // pointer, fall back to the shortcut entry (the classifier ignores it).
-  async function resolveFileShortcut(shortcut, song) {
+  async function resolveFileShortcut(shortcut, song, songId) {
     const targetId = shortcut.shortcutDetails.targetId;
     let meta = null;
     try {
@@ -228,10 +228,10 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       );
       // Stand the pointer in, flagged unreachable + carrying the target id so the
       // sync records the permission gap (and the UI can link to "request access").
-      const stand = song ? { ...shortcut, folderName: song } : { ...shortcut };
+      const stand = song ? { ...shortcut, folderName: song, folderId: songId } : { ...shortcut };
       return { ...stand, unreachable: true, shortcutTarget: targetId };
     }
-    return song ? { ...meta, folderName: song } : meta;
+    return song ? { ...meta, folderName: song, folderId: songId } : meta;
   }
 
   return {
@@ -246,9 +246,9 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       const seen = options.visited ?? new Set();
       // Breadth-first walk. `song` is the top-level folder under the configured
       // root that this folder descends from (null while still at the root).
-      const queue = [{ id: folderId, song: null, viaShortcut: false, label: null }];
+      const queue = [{ id: folderId, song: null, songId: null, viaShortcut: false, label: null }];
       while (queue.length) {
-        const { id, song, viaShortcut, label } = queue.shift();
+        const { id, song, songId, viaShortcut, label } = queue.shift();
         if (seen.has(id)) continue;
         seen.add(id);
         let children;
@@ -268,18 +268,20 @@ export function createGoogleDriveClient(config = {}, options = {}) {
         for (const child of children) {
           const target = child.shortcutDetails;
           if (child.mimeType === FOLDER_MIME) {
-            // Descend; the song is fixed at the first folder below the root.
-            queue.push({ id: child.id, song: song ?? child.name, viaShortcut: false, label: null });
+            // Descend; the song (name + folder id) is fixed at the first folder
+            // below the root.
+            queue.push({ id: child.id, song: song ?? child.name, songId: songId ?? child.id, viaShortcut: false, label: null });
           } else if (target?.targetMimeType === FOLDER_MIME && target.targetId) {
             // Shortcut to a folder: descend into the target as if it lived here.
-            queue.push({ id: target.targetId, song: song ?? child.name, viaShortcut: true, label: child.name });
+            queue.push({ id: target.targetId, song: song ?? child.name, songId: songId ?? target.targetId, viaShortcut: true, label: child.name });
           } else if (target?.targetId) {
             // Shortcut to a file: stand its target in at this location.
-            out.push(await resolveFileShortcut(child, song));
+            out.push(await resolveFileShortcut(child, song, songId));
           } else {
             // Asset/leaf (Docs the classifier exports, others it ignores).
-            // Tag it with its song folder so the sync groups it correctly.
-            out.push(song ? { ...child, folderName: song } : child);
+            // Tag it with its song folder (name + Drive id) so the sync groups it
+            // correctly and folder-level corrections can key on the stable id.
+            out.push(song ? { ...child, folderName: song, folderId: songId } : child);
           }
         }
       }

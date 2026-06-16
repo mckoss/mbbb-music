@@ -7,6 +7,19 @@
   import { instrumentDisplay, partLabel, audioLabel, stripCopyOf } from '$lib/format';
   import { sourceStyle, UNREACHABLE_STYLE } from '$lib/sources';
   import { ALL_STATUSES, STATUS_DESC } from '$lib/song-status';
+  import { INSTRUMENT_CHOICES } from '../../sync/instruments.js';
+  import { slugify } from '../../sync/slugify.js';
+
+  // Written-key choices a part can be corrected to ('' = the instrument default).
+  const KEY_CHOICES = [
+    { slug: '', label: '(default)' },
+    { slug: 'bflat', label: 'B♭' },
+    { slug: 'eflat', label: 'E♭' },
+    { slug: 'aflat', label: 'A♭' },
+    { slug: 'fsharp', label: 'F♯' },
+    { slug: 'f', label: 'F' },
+    { slug: 'c', label: 'C (concert)' },
+  ];
 
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
@@ -142,6 +155,97 @@
 
   // --- Admin: run the Drive sync with live progress (SSE) ------------------
   const isAdmin = $derived(page.data.user?.role === 'admin');
+  // Any approved member may propose a metadata correction.
+  const canEdit = $derived(Boolean(page.data.user?.role));
+  // The slug-text rename (display slug) is limited to admins and organizers.
+  const canEditSlug = $derived(page.data.user?.role === 'admin' || page.data.user?.role === 'organizer');
+
+  // --- Metadata correction editor (per song) -------------------------------
+  let editing = $state<Tune | null>(null);
+  function openEditor(slug: string) {
+    editing = tunes.find((t) => t.slug === slug) ?? null;
+  }
+  // Songs a file/folder can be reassigned to (alphabetical), for the move pickers.
+  const songOptions = $derived(
+    [...tunes].map((t) => ({ slug: t.slug, title: t.title })).sort((a, b) => a.title.localeCompare(b.title))
+  );
+  // Every file in the open song (parts + other assets) that carries a Drive id.
+  const editingFiles = $derived.by(() => {
+    if (!editing) return [];
+    const all = [
+      ...editing.parts,
+      ...editing.scores,
+      ...editing.audio,
+      ...editing.musescore,
+      ...editing.images,
+      ...editing.files,
+    ];
+    return all
+      .filter((a) => a.driveFileId)
+      .map((a) => ({ driveFileId: a.driveFileId!, name: a.originalName ?? a.driveFileId!, folder: a.folder ?? null }));
+  });
+  // Distinct source folders feeding the open song, for whole-folder reassignment.
+  const editingFolders = $derived.by(() => {
+    const m = new Map<string, string>();
+    for (const f of editingFiles) if (f.folder && !m.has(f.folder)) m.set(f.folder, f.folder);
+    // folderId lives on the asset; re-derive (name -> id) from the raw parts/assets.
+    const byName = new Map<string, string>();
+    if (editing) {
+      for (const a of [...editing.parts, ...editing.scores, ...editing.audio, ...editing.musescore, ...editing.images, ...editing.files]) {
+        if (a.folder && a.folderId && !byName.has(a.folder)) byName.set(a.folder, a.folderId);
+      }
+    }
+    return [...m.keys()].filter((name) => byName.has(name)).map((name) => ({ folderId: byName.get(name)!, folder: name }));
+  });
+
+  async function correctPost(fields: Record<string, string>): Promise<boolean> {
+    const res = await fetch('/library-status?/correct', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-sveltekit-action': 'true' },
+      body: new URLSearchParams(fields),
+    });
+    return res.ok;
+  }
+  async function refreshEditor() {
+    const slug = editing?.slug;
+    await invalidateAll();
+    editing = tunes.find((t) => t.slug === slug) ?? null; // stays open (or closes if emptied)
+  }
+  // Reassign a file ('file') or whole folder ('folder') to an existing song.
+  async function assignTo(scope: 'file' | 'folder', targetId: string, songSlug: string) {
+    await correctPost({ scope, targetId, field: 'songSlug', value: songSlug });
+    await refreshEditor();
+  }
+  // Create a brand-new song (name + slug) and move the file/folder into it.
+  async function assignToNew(scope: 'file' | 'folder', targetId: string) {
+    const name = window.prompt('New song name:')?.trim();
+    if (!name) return;
+    const slug = slugify(name);
+    if (!slug) return;
+    await correctPost({ scope: 'song', targetId: slug, field: 'displayName', value: name });
+    await correctPost({ scope, targetId, field: 'songSlug', value: slug });
+    await refreshEditor();
+  }
+  function onMove(scope: 'file' | 'folder', targetId: string, e: Event) {
+    const sel = e.currentTarget as HTMLSelectElement;
+    const v = sel.value;
+    sel.selectedIndex = 0; // reset the picker
+    if (v === '__new__') assignToNew(scope, targetId);
+    else if (v) assignTo(scope, targetId, v);
+  }
+
+  // Refresh the catalog after a correction (the overlay revision busts the cache),
+  // and re-point the open editor at the (possibly renamed) song so it stays live.
+  const afterCorrect =
+    (prevSlug: string) =>
+    () =>
+    async ({ result, update }: { result: { type: string }; update: (opts?: { reset?: boolean }) => Promise<void> }) => {
+      await update({ reset: false });
+      await invalidateAll();
+      if (result.type === 'success' && editing) {
+        editing = tunes.find((t) => t.slug === prevSlug || t.title === editing?.title) ?? editing;
+      }
+    };
 
   interface SyncLine {
     t: number;
@@ -272,7 +376,9 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && popup) popup = null;
+    if (e.key !== 'Escape') return;
+    if (popup) popup = null;
+    else if (editing) editing = null;
   }
 </script>
 
@@ -291,6 +397,8 @@
       Blank means nothing is on file.
     </p>
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
+
+    <p class="back"><a href="/corrections">View recent metadata edits →</a></p>
 
     <ul class="legend">
       {#each legend as l (l.key)}
@@ -369,6 +477,9 @@
             <tr>
               <th class="row-head" scope="row">
                 <span class="row-title">{r.title}</span>
+                {#if canEdit}
+                  <button class="edit-link" onclick={() => openEditor(r.slug)} title="Correct metadata for this song">✎ edit</button>
+                {/if}
                 {#if isAdmin}
                   <form method="POST" action="?/setStatus" use:enhance>
                     <input type="hidden" name="slug" value={r.slug} />
@@ -439,6 +550,140 @@
           </li>
         {/each}
       </ul>
+      <p class="modal-hint">Press Esc to close</p>
+    </div>
+  </div>
+{/if}
+
+{#if editing}
+  <div class="modal-backdrop">
+    <div class="modal editor" role="dialog" aria-modal="true" aria-label={`Edit ${editing.title}`}>
+      <header class="modal-head">
+        <h3>Edit metadata — {editing.title}</h3>
+        <button class="x" onclick={() => (editing = null)} aria-label="Close">×</button>
+      </header>
+
+      <p class="editor-note">
+        Edits are live immediately for everyone. Manage or revert them on the
+        <a href="/corrections">Recent edits</a> page.
+      </p>
+
+      <section class="editor-block">
+        <h4>Song</h4>
+        <form class="field-row" method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+          <input type="hidden" name="scope" value="song" />
+          <input type="hidden" name="targetId" value={editing.slug} />
+          <input type="hidden" name="field" value="displayName" />
+          <label>Display name<input name="value" value={editing.title} /></label>
+          <button type="submit">Save</button>
+        </form>
+        {#if canEditSlug}
+          <form class="field-row" method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+            <input type="hidden" name="scope" value="song" />
+            <input type="hidden" name="targetId" value={editing.slug} />
+            <input type="hidden" name="field" value="displaySlug" />
+            <label
+              >Display slug (filenames)<input name="value" value={editing.displaySlug ?? editing.slug} /></label
+            >
+            <button type="submit">Save</button>
+          </form>
+          <p class="muted">The song's stable id is <code>{editing.slug}</code> — used by gigs &amp; status, never changed.</p>
+        {/if}
+      </section>
+
+      <section class="editor-block">
+        <h4>Parts</h4>
+        {#if editing.parts.length === 0}
+          <p class="muted">No instrument parts in this song.</p>
+        {:else}
+          <ul class="part-list">
+            {#each editing.parts as p (p.driveFileId ?? p.sha256)}
+              <li>
+                <span class="pname" title={p.originalName ?? ''}>{p.originalName ?? p.instrument}</span>
+                {#if p.driveFileId}
+                  <div class="part-fields">
+                    <form method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+                      <input type="hidden" name="scope" value="file" />
+                      <input type="hidden" name="targetId" value={p.driveFileId} />
+                      <input type="hidden" name="field" value="instrumentSlug" />
+                      <select name="value" aria-label="Instrument" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+                        {#each INSTRUMENT_CHOICES as inst (inst.slug)}
+                          <option value={inst.slug} selected={inst.slug === p.instrumentSlug}>{inst.label}</option>
+                        {/each}
+                      </select>
+                    </form>
+                    <form method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+                      <input type="hidden" name="scope" value="file" />
+                      <input type="hidden" name="targetId" value={p.driveFileId} />
+                      <input type="hidden" name="field" value="key" />
+                      <select name="value" aria-label="Key" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+                        {#each KEY_CHOICES as k (k.slug)}
+                          <option value={k.slug} selected={k.slug === (p.key ?? '')}>{k.label}</option>
+                        {/each}
+                      </select>
+                    </form>
+                    <form method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+                      <input type="hidden" name="scope" value="file" />
+                      <input type="hidden" name="targetId" value={p.driveFileId} />
+                      <input type="hidden" name="field" value="partNumber" />
+                      <input
+                        class="part-num"
+                        name="value"
+                        type="number"
+                        min="1"
+                        placeholder="#"
+                        value={p.partNumber ?? ''}
+                        aria-label="Part number"
+                        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                      />
+                    </form>
+                  </div>
+                {:else}
+                  <span class="muted">no id — re-sync to enable editing</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+
+      {#if canEditSlug}
+        <section class="editor-block">
+          <h4>Reassign to another song</h4>
+          <p class="muted">Fix a wrong grouping, or pull a stray file into the right song. Pick a song or create a new one.</p>
+
+          {#if editingFolders.length > 0}
+            <p class="reassign-label">Whole folder</p>
+            {#each editingFolders as fol (fol.folderId)}
+              <div class="reassign-row">
+                <span class="rname" title={fol.folder}>📁 {fol.folder}</span>
+                <select aria-label={`Move folder ${fol.folder}`} onchange={(e) => onMove('folder', fol.folderId, e)}>
+                  <option value="">Move to…</option>
+                  {#each songOptions as s (s.slug)}
+                    {#if s.slug !== editing.slug}<option value={s.slug}>{s.title}</option>{/if}
+                  {/each}
+                  <option value="__new__">＋ New song…</option>
+                </select>
+              </div>
+            {/each}
+          {/if}
+
+          <p class="reassign-label">Individual file</p>
+          {#each editingFiles as f (f.driveFileId)}
+            <div class="reassign-row">
+              <span class="rname" title={f.name}>{f.name}</span>
+              <select aria-label={`Move file ${f.name}`} onchange={(e) => onMove('file', f.driveFileId, e)}>
+                <option value="">Move to…</option>
+                {#each songOptions as s (s.slug)}
+                  {#if s.slug !== editing.slug}<option value={s.slug}>{s.title}</option>{/if}
+                {/each}
+                <option value="__new__">＋ New song…</option>
+              </select>
+            </div>
+          {/each}
+        </section>
+      {/if}
+
       <p class="modal-hint">Press Esc to close</p>
     </div>
   </div>
@@ -874,5 +1119,153 @@
     color: var(--muted);
     font-size: 0.78rem;
     text-align: right;
+  }
+
+  .back a {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    font-size: 0.82rem;
+  }
+
+  .edit-link {
+    margin-left: 8px;
+    border: 0;
+    background: none;
+    color: var(--accent-strong);
+    font-size: 0.72rem;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* Per-song correction editor */
+  .modal.editor {
+    width: min(560px, 100%);
+  }
+
+  .editor-note {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .editor-note a {
+    color: var(--accent-strong);
+    text-decoration: underline;
+  }
+
+  .editor-block {
+    margin-bottom: 16px;
+  }
+  .editor-block h4 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .field-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .field-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.74rem;
+    color: var(--muted);
+    flex: 1;
+  }
+  .field-row input {
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.85rem;
+  }
+  .field-row button,
+  .editor-block button[type='submit'] {
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--accent-strong);
+    background: var(--accent);
+    color: #fffdf7;
+    border-radius: 5px;
+    font-weight: 700;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+
+  .part-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .part-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pname {
+    font-size: 0.78rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .part-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .part-fields select,
+  .part-fields .part-num {
+    padding: 4px 6px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.78rem;
+  }
+  .part-fields .part-num {
+    width: 56px;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: 0.76rem;
+  }
+  .reassign-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 10px 0 4px;
+  }
+  .reassign-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .reassign-row .rname {
+    flex: 1;
+    font-size: 0.78rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .reassign-row select {
+    padding: 4px 6px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.76rem;
+    max-width: 45%;
   }
 </style>

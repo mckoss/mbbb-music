@@ -17,6 +17,9 @@ export interface SessionUser {
 
 export interface CatalogPart {
   sha256: string;
+  driveFileId?: string; // canonical Drive file id, for targeting metadata corrections
+  folderId?: string; // song-folder Drive id, for folder-level song reassignment
+  folder?: string | null; // song-folder name (display)
   instrumentSlug: string;
   instrument: string | null;
   key: string | null;
@@ -28,6 +31,9 @@ export interface CatalogPart {
 
 export interface CatalogAsset {
   sha256: string;
+  driveFileId?: string; // canonical Drive file id, for targeting metadata corrections
+  folderId?: string; // song-folder Drive id, for folder-level song reassignment
+  folder?: string | null; // song-folder name (display)
   originalName: string | null;
   source: string | null; // canonical source label this copy came from
   assetType?: string;
@@ -50,7 +56,8 @@ export interface UnreachableItem {
 }
 
 export interface Tune {
-  slug: string;
+  slug: string; // stable identity (derived from the sync); gig setlists + status key on it
+  displaySlug?: string; // slug-like, for download filenames / user-facing slug uses
   title: string;
   status: SongStatus; // admin-assigned, or 'Unfiled' when unannotated
   lastModified: string | null;
