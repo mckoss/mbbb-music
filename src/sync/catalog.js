@@ -12,7 +12,19 @@
 
 import { slugify, slugifyStem } from './slugify.js';
 import { DEFAULT_KEY_BY_SLUG, detectPartNumber, instrumentLabel } from './instruments.js';
-import { isJunkName } from './classify.js';
+import { isJunkName, NATIVE_PDF_EXPORT } from './classify.js';
+
+/**
+ * Effective asset type for routing, tolerant of older manifests. Native Google
+ * editor files (Docs/Sheets/…) are exported to PDF and were historically stored
+ * as `assetType: 'pdf'`; re-read them as `notes` from their mime type so a Google
+ * Doc never lands in the score column (a score is always a real PDF). New syncs
+ * already write `notes`, which passes straight through.
+ */
+function effectiveAssetType(e) {
+  if (e.assetType === 'pdf' && NATIVE_PDF_EXPORT.has(e.mimeType)) return 'notes';
+  return e.assetType;
+}
 
 /**
  * Apply manifest-affecting corrections, returning a NEW manifest whose entries
@@ -406,7 +418,9 @@ function dedupeParts(parts, pri) {
  * @property {string} title
  * @property {string|null} lastModified
  * @property {CatalogPart[]} parts        Per-instrument PDF parts.
- * @property {CatalogAsset[]} scores      Instrument-less PDFs (full scores, notes).
+ * @property {CatalogAsset[]} scores      Instrument-less true PDFs (full/band scores).
+ * @property {CatalogAsset[]} notes       Google Docs/Sheets exported to PDF — viewable
+ *                                        notes/chord sheets, never a printable score.
  * @property {CatalogAsset[]} audio       MP3 practice/reference tracks.
  * @property {CatalogAsset[]} musescore   MuseScore source files.
  * @property {CatalogAsset[]} images      Images (JPEG) embeddable in the view.
@@ -639,7 +653,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
     if (!song) {
-      song = { slug, title, lastModified: null, parts: [], scores: [], audio: [], musescore: [], images: [], files: [], unreachable: [] };
+      song = { slug, title, lastModified: null, parts: [], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [] };
       bySong.set(slug, song);
     }
     return song;
@@ -657,7 +671,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       originalName: e.originalName || null,
       source: e.sourceFolderLabel || null,
     };
-    if (e.assetType === 'pdf' && e.instrumentSlug) {
+    const at = effectiveAssetType(e);
+    if (at === 'pdf' && e.instrumentSlug) {
       song.parts.push({
         ...asset,
         instrument: e.instrument || null,
@@ -667,9 +682,13 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
         format: formatOf(e),
         _mtime: e.modifiedTime || '', // transient, used for version dedup
       });
-    } else if (e.assetType === 'pdf') {
+    } else if (at === 'pdf') {
       song.scores.push(asset);
-    } else if (e.assetType === 'mp3') {
+    } else if (at === 'notes') {
+      // A Google Doc exported to PDF — viewable (rendered like any PDF) and
+      // downloadable, but kept out of the score column and never the default.
+      song.notes.push({ ...asset, assetType: 'notes' });
+    } else if (at === 'mp3') {
       // Carry the detected instrument so the full-band mix (no instrument) can be
       // ordered ahead of isolated parts (drums, a single horn) as the default;
       // `_mtime` (transient) lets version copies of one recording dedupe to newest.

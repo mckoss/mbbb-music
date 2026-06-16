@@ -36,9 +36,11 @@ export function isJunkName(name) {
 // Native Google editor types that have no binary form but export cleanly to PDF.
 // A PDF export drops straight into the existing content-addressable PDF path:
 // the exported bytes are downloaded, hashed, and stored/served like any other
-// PDF asset. Other google-apps types (forms, sites, scripts, …) have no useful
-// PDF export and remain ignored.
-const NATIVE_PDF_EXPORT = new Set([
+// PDF asset (so they remain viewable). They are typed `notes`, NOT `pdf`: a real
+// score is always an uploaded PDF file, never a Google Doc — so these never land
+// in the score column or become a song's default printable. Other google-apps
+// types (forms, sites, scripts, …) have no useful PDF export and remain ignored.
+export const NATIVE_PDF_EXPORT = new Set([
   'application/vnd.google-apps.document',
   'application/vnd.google-apps.spreadsheet',
   'application/vnd.google-apps.presentation',
@@ -99,7 +101,7 @@ function extensionOf(name) {
 
 /**
  * @typedef {Object} Classification
- * @property {string|null} assetType  One of 'pdf' | 'mp3' | 'musescore', or null when ignored.
+ * @property {string|null} assetType  One of 'pdf' | 'notes' | 'mp3' | 'musescore' | 'image' | 'doc' | 'archive', or null when ignored.
  * @property {string|null} ext        Canonical extension for the asset, or null.
  * @property {boolean} ignored        True when the file should not be downloaded.
  * @property {string|null} ignoreReason  Human-readable reason when ignored.
@@ -149,8 +151,10 @@ export function classifyDriveFile(file) {
   // google-apps types have no useful export and stay ignored.
   if (mimeType.startsWith('application/vnd.google-apps')) {
     if (NATIVE_PDF_EXPORT.has(mimeType)) {
+      // Exported to PDF (so it renders/downloads), but typed `notes` — a Google
+      // Doc is never a score. The bytes still flow through the PDF path.
       return {
-        assetType: 'pdf',
+        assetType: 'notes',
         ext: 'pdf',
         ignored: false,
         ignoreReason: null,
