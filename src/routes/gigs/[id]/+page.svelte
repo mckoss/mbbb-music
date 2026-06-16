@@ -14,11 +14,16 @@
   import { activeScore } from '$lib/resolve';
   import { instrumentDisplay } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
+  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import PdfPager from '$lib/components/PdfPager.svelte';
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
   const isAdmin = $derived(page.data.user?.role === 'admin');
+
+  // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).
+  const assetIndex = $derived(assetIndexFor(catalog));
+  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
 
   // Global instrument/format (cookie/URL backed) drive every chart we resolve.
   const instrument = $derived($instrumentSlug);
@@ -144,6 +149,7 @@
             sha={performScore.sha}
             title={`${performSlug ? titleOf(performSlug) : ''} — ${performScore.label}`}
             tap={true}
+            openHref={openUrl(performScore.sha)}
           />
         {/key}
       {/if}
@@ -275,7 +281,7 @@
                 <span class="song-title">{titleOf(slug)}</span>
                 <span class="song-tools">
                   {#if sc}
-                    <a class="dl" href={`/blob/${sc.sha}`} target="_blank" rel="noopener" title={sc.label}>
+                    <a class="dl" href={openUrl(sc.sha)} target="_blank" rel="noopener" title={sc.label}>
                       Chart ↓
                     </a>
                   {:else}
@@ -349,7 +355,7 @@
       <ul class="dl-list">
         {#each downloads as d (d.sha)}
           <li>
-            <a href={`/blob/${d.sha}`} target="_blank" rel="noopener">
+            <a href={openUrl(d.sha)} target="_blank" rel="noopener">
               {d.title} <span class="dl-label">— {d.label}</span>
             </a>
           </li>

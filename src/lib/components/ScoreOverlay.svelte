@@ -6,6 +6,7 @@
   import type { Catalog } from '$lib/types';
   import { viewableDocs } from '$lib/resolve';
   import { instrumentDisplay, audioLabel } from '$lib/format';
+  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
@@ -14,6 +15,8 @@
   // the cookie-persisted store when absent). This makes it shareable and survive
   // a refresh, and the browser Back button closes it.
   const catalog = $derived(page.data.catalog as Catalog);
+  const assetIndex = $derived(assetIndexFor(catalog));
+  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
   const params = $derived(page.url.searchParams);
   const open = $derived(params.get('view') === 'score');
   const tune = $derived(catalog?.tunes?.find((t) => t.slug === params.get('song')) ?? null);
@@ -104,7 +107,7 @@
   // Open the raw PDF in a new tab so the browser's own viewer handles a reliable
   // full-document print (the on-screen view shows one rasterized page at a time).
   function print() {
-    if (browser && current) window.open(`/blob/${current.sha}`, '_blank', 'noopener');
+    if (browser && current) window.open(openUrl(current.sha), '_blank', 'noopener');
   }
 </script>
 
@@ -185,7 +188,7 @@
     {/if}
 
     <div class="stage">
-      <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} />
+      <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} openHref={openUrl(current.sha)} />
     </div>
   </div>
 {/if}

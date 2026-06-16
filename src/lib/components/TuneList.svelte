@@ -8,11 +8,19 @@
   import { playSha, audio } from '$lib/audio';
   import { instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
+  import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import AudioPlayer from './AudioPlayer.svelte';
 
   let { tunes }: { tunes: Tune[] } = $props();
 
   const catalog = $derived(page.data.catalog as Catalog);
+
+  // Friendly, slug-based download/open URLs keyed off the catalog (no raw sha in
+  // the link or the saved filename). `?dl` forces a download; the filename is
+  // the last path segment. Falls back to /blob only if a hash isn't indexed.
+  const assetIndex = $derived(assetIndexFor(catalog));
+  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
+  const dlUrl = (sha: string) => `${openUrl(sha)}?dl`;
 
   // Friendly name of the globally-selected instrument, for the "my part" line.
   const instLabel = $derived.by(() => {
@@ -105,30 +113,6 @@
     playSha(sha, t.title);
   }
 
-  // Download filenames mirror the old detail view: the original name minus
-  // Drive's "Copy of", falling back to a generated, instrument-tagged name.
-  function dlName(active: ActivePdf, t: Tune): string {
-    if (active.isScore) return `mbbb-${t.slug}-full-score.pdf`;
-    const parts = [`mbbb-${t.slug}`, active.instrumentSlug];
-    if (active.key) parts.push(active.key);
-    let name = parts.filter(Boolean).join('-');
-    if (active.partNumber != null) name += `-part${active.partNumber}`;
-    return `${name}.pdf`;
-  }
-  function audioDlName(t: Tune, a: { originalName: string | null }): string {
-    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}.mp3`;
-  }
-  // Score / notes PDFs (notes are Google Docs exported to PDF): keep the original
-  // name, force a .pdf extension, fall back to a generated, kind-tagged name.
-  function pdfDlName(t: Tune, a: { originalName: string | null }, kind: string): string {
-    const base = a.originalName
-      ? stripCopyOf(a.originalName).replace(/\.[a-z0-9]+$/i, '')
-      : `mbbb-${t.slug}-${kind}`;
-    return `${base}.pdf`;
-  }
-  function fileDlName(t: Tune, a: { originalName: string | null; assetType?: string }): string {
-    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}-${a.assetType ?? 'file'}`;
-  }
 </script>
 
 <section class="list-pane">
@@ -205,34 +189,30 @@
         {#if openDl === t.slug}
           <div class="downloads">
             {#if active && !active.isScore}
-              <a class="dl" href={`/blob/${active.sha}?dl=${encodeURIComponent(dlName(active, t))}`} download>
+              <a class="dl" href={dlUrl(active.sha)} download>
                 ⤓ Part (PDF)
               </a>
             {/if}
             {#each t.scores as s, i (s.sha256)}
-              <a class="dl" href={`/blob/${s.sha256}?dl=${encodeURIComponent(pdfDlName(t, s, 'full-score'))}`} download>
+              <a class="dl" href={dlUrl(s.sha256)} download>
                 ⤓ Full score{t.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)
               </a>
             {/each}
             {#each t.notes as n (n.sha256)}
-              <a class="dl" href={`/blob/${n.sha256}?dl=${encodeURIComponent(pdfDlName(t, n, 'notes'))}`} download>
+              <a class="dl" href={dlUrl(n.sha256)} download>
                 ⤓ {n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)
               </a>
             {/each}
             {#if t.musescore[0]}
-              <a
-                class="dl"
-                href={`/blob/${t.musescore[0].sha256}?dl=${encodeURIComponent(`mbbb-${t.slug}-full-score.mscz`)}`}
-                download
-              >⤓ MuseScore</a>
+              <a class="dl" href={dlUrl(t.musescore[0].sha256)} download>⤓ MuseScore</a>
             {/if}
             {#each t.audio as a (a.sha256)}
-              <a class="dl" href={`/blob/${a.sha256}?dl=${encodeURIComponent(audioDlName(t, a))}`} download>
+              <a class="dl" href={dlUrl(a.sha256)} download>
                 ⤓ {audioLabel(a.originalName)} (MP3)
               </a>
             {/each}
             {#each t.files as f (f.sha256)}
-              <a class="dl" href={`/blob/${f.sha256}?dl=${encodeURIComponent(fileDlName(t, f))}`} download>
+              <a class="dl" href={dlUrl(f.sha256)} download>
                 ⤓ {f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download')}
               </a>
             {/each}
