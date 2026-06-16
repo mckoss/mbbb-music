@@ -1,16 +1,24 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import type { Tune } from '$lib/types';
+  import type { Catalog, Tune } from '$lib/types';
   import { search, instrumentSlug, printFormat } from '$lib/stores';
-  import { activePdf } from '$lib/resolve';
-  import { songSearch, scoreSearch } from '$lib/nav';
-  import { playSha } from '$lib/audio';
+  import { activePdf, partsFor, type ActivePdf } from '$lib/resolve';
+  import { scoreSearch } from '$lib/nav';
+  import { playSha, audio } from '$lib/audio';
+  import { instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
-  import TuneDetail from './TuneDetail.svelte';
+  import AudioPlayer from './AudioPlayer.svelte';
 
-  let { tunes, selected }: { tunes: Tune[]; selected: Tune | null } = $props();
-  const selectedSlug = $derived(selected?.slug ?? null);
+  let { tunes }: { tunes: Tune[] } = $props();
+
+  const catalog = $derived(page.data.catalog as Catalog);
+
+  // Friendly name of the globally-selected instrument, for the "my part" line.
+  const instLabel = $derived.by(() => {
+    const inst = catalog.instruments.find((i) => i.slug === $instrumentSlug);
+    return inst ? instrumentDisplay(inst.label, inst.key) : $instrumentSlug;
+  });
 
   // Status filter chips. Archived songs are hidden by default; toggle a chip to
   // include/exclude that status. Ephemeral (resets per visit), like the search.
@@ -30,22 +38,46 @@
     )
   );
 
-  // Expand the selected song — but only if it's visible under the current filter
-  // (e.g. the default selection might be an Archived song that's hidden). Fall
-  // back to the first visible song so the list always has one expanded entry.
-  const expandedSlug = $derived(
-    (filtered.find((t) => t.slug === selectedSlug) ?? filtered[0])?.slug ?? null
-  );
+  // Which row has its Downloads panel open (at most one at a time, on demand —
+  // the row itself stays a compact summary by default).
+  let openDl = $state<string | null>(null);
 
-  // Selecting a song updates the URL (?song=<slug>), adding a history entry so
-  // Back/Forward move between songs and the choice survives a refresh.
-  function selectTune(t: Tune) {
-    if (t.slug === selectedSlug) return; // no-op: avoid a duplicate history entry
-    goto(songSearch(page.url.searchParams, t.slug), { keepFocus: true, noScroll: true });
+  const FORMAT_ORDER = ['letter', 'lyre'] as const;
+  const FORMAT_LABEL: Record<string, string> = { letter: 'Letter', lyre: 'Lyre' };
+
+  // Instrument-aware one-liner: how many parts the current instrument has and in
+  // which formats — or a clear note when there's only the full score to fall
+  // back on. Answers "can I play this on my instrument?" at a glance.
+  function partLine(t: Tune): string {
+    const parts = partsFor(t, $instrumentSlug);
+    if (parts.length === 0) {
+      return t.scores.length ? `No ${instLabel} part — full score only` : `No ${instLabel} part`;
+    }
+    const fmts = FORMAT_ORDER.filter((f) => parts.some((p) => p.format === f)).map(
+      (f) => FORMAT_LABEL[f]
+    );
+    const n = `${parts.length} part${parts.length === 1 ? '' : 's'}`;
+    return fmts.length ? `${instLabel} · ${n} · ${fmts.join(' + ')}` : `${instLabel} · ${n}`;
+  }
+
+  // Max modified date across the song's files (catalog already rolls this up),
+  // shown with the year per the folder-listing feel.
+  function dateLabel(iso: string | null): string {
+    return iso
+      ? new Date(iso).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : '';
+  }
+
+  function getActive(t: Tune): ActivePdf | null {
+    return activePdf(t, $instrumentSlug, $printFormat);
   }
 
   function openScore(t: Tune) {
-    const active = activePdf(t, $instrumentSlug, $printFormat);
+    const active = getActive(t);
     if (!active) return;
     goto(
       scoreSearch({
@@ -59,13 +91,25 @@
   }
 
   function playAudio(t: Tune) {
-    selectTune(t);
     const a = t.audio[0];
     if (a) playSha(a.sha256, t.title);
   }
 
-  function hasPdf(t: Tune): boolean {
-    return activePdf(t, $instrumentSlug, $printFormat) != null;
+  // Download filenames mirror the old detail view: the original name minus
+  // Drive's "Copy of", falling back to a generated, instrument-tagged name.
+  function dlName(active: ActivePdf, t: Tune): string {
+    if (active.isScore) return `mbbb-${t.slug}-full-score.pdf`;
+    const parts = [`mbbb-${t.slug}`, active.instrumentSlug];
+    if (active.key) parts.push(active.key);
+    let name = parts.filter(Boolean).join('-');
+    if (active.partNumber != null) name += `-part${active.partNumber}`;
+    return `${name}.pdf`;
+  }
+  function audioDlName(t: Tune, a: { originalName: string | null }): string {
+    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}.mp3`;
+  }
+  function fileDlName(t: Tune, a: { originalName: string | null; assetType?: string }): string {
+    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${t.slug}-${a.assetType ?? 'file'}`;
   }
 </script>
 
@@ -94,26 +138,69 @@
     </div>
   </header>
 
-  <ul class="tiles">
+  <ul class="rows">
     {#each filtered as t (t.slug)}
-      {#if expandedSlug === t.slug}
-        <!-- The selected song expands in place: TuneDetail carries the title,
-             score image, part/format pickers, Open Score and the inline player —
-             replacing the old side panel. -->
-        <li class="tile selected">
-          <TuneDetail tune={t} instrumentSlug={$instrumentSlug} printFormat={$printFormat} />
-        </li>
-      {:else}
-        <li class="tile">
-          <button class="title" onclick={() => selectTune(t)}>{t.title}</button>
-          <div class="actions">
-            <button class="act" onclick={() => openScore(t)} disabled={!hasPdf(t)}>Score</button>
-            <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>
-              Audio
-            </button>
+      {@const active = getActive(t)}
+      <li class="row">
+        <div class="row-body">
+          <div class="row-head">
+            <span class="status s-{t.status}" title={STATUS_DESC[t.status]}>{t.status}</span>
+            <span class="title">{t.title}</span>
+            {#if t.lastModified}
+              <time class="date" datetime={t.lastModified}>{dateLabel(t.lastModified)}</time>
+            {/if}
           </div>
-        </li>
-      {/if}
+          <div class="row-sub">
+            <span class="part-line">{partLine(t)}</span>
+            <span class="badges">
+              {#if t.audio.length}<span class="badge" title="Recordings">▶ {t.audio.length}</span>{/if}
+              {#if t.musescore.length}<span class="badge" title="MuseScore source">𝄞 MuseScore</span>{/if}
+              {#if t.images.length}<span class="badge" title="Images">🖼 {t.images.length}</span>{/if}
+              {#if t.files.length}<span class="badge" title="Other files">📎 {t.files.length}</span>{/if}
+            </span>
+          </div>
+        </div>
+
+        <div class="row-actions">
+          <button class="act" onclick={() => openScore(t)} disabled={!active}>Score</button>
+          <button class="act" onclick={() => playAudio(t)} disabled={t.audio.length === 0}>Audio</button>
+          <button
+            class="act ghost"
+            aria-expanded={openDl === t.slug}
+            onclick={() => (openDl = openDl === t.slug ? null : t.slug)}
+          >⤓ Files {openDl === t.slug ? '▴' : '▾'}</button>
+        </div>
+
+        {#if openDl === t.slug}
+          <div class="downloads">
+            {#if active}
+              <a class="dl" href={`/blob/${active.sha}?dl=${encodeURIComponent(dlName(active, t))}`} download>
+                ⤓ {active.isScore ? 'Full score' : 'Part'} (PDF)
+              </a>
+            {/if}
+            {#if t.musescore[0]}
+              <a
+                class="dl"
+                href={`/blob/${t.musescore[0].sha256}?dl=${encodeURIComponent(`mbbb-${t.slug}-full-score.mscz`)}`}
+                download
+              >⤓ MuseScore</a>
+            {/if}
+            {#each t.audio as a (a.sha256)}
+              <a class="dl" href={`/blob/${a.sha256}?dl=${encodeURIComponent(audioDlName(t, a))}`} download>
+                ⤓ {audioLabel(a.originalName)} (MP3)
+              </a>
+            {/each}
+            {#each t.files as f (f.sha256)}
+              <a class="dl" href={`/blob/${f.sha256}?dl=${encodeURIComponent(fileDlName(t, f))}`} download>
+                ⤓ {f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download')}
+              </a>
+            {/each}
+            {#if !active && !t.musescore[0] && t.audio.length === 0 && t.files.length === 0}
+              <span class="dl-empty">Nothing to download.</span>
+            {/if}
+          </div>
+        {/if}
+      </li>
     {/each}
     {#if filtered.length === 0}
       <li class="empty">
@@ -121,12 +208,19 @@
       </li>
     {/if}
   </ul>
+
+  <!-- Rows no longer expand to host a player, so the transport lives here as a
+       sticky bar that appears once something is playing and stays put as you
+       scroll the list. Bound to the shared store, so it continues a track
+       started from any row. -->
+  {#if $audio.sha}
+    <div class="now-playing">
+      <AudioPlayer sha={$audio.sha} title={$audio.title} />
+    </div>
+  {/if}
 </section>
 
 <style>
-  /* No card: the list sits directly on the page background (the old outer panel
-     dissolved). The page scrolls naturally so a selected song can expand in
-     place without an inner scroll region fighting the document. */
   .list-pane {
     display: flex;
     flex-direction: column;
@@ -176,7 +270,7 @@
     color: #fffdf7;
   }
 
-  .tiles {
+  .rows {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -185,43 +279,113 @@
     gap: 6px;
   }
 
-  /* A compact, clickable row for an unselected song. */
-  .tile {
-    display: flex;
+  /* A folder-style summary row: title + status + date on top, the instrument's
+     part summary and content badges below, quick actions on the right. Always
+     visible — no expansion needed to read what a song contains. */
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
     align-items: center;
-    gap: 8px;
-    min-height: 48px;
+    column-gap: 12px;
+    row-gap: 8px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 4px 8px 4px 12px;
+    padding: 8px 12px;
     background: var(--panel);
   }
 
-  /* The selected song is bare: TuneDetail's own card provides the chrome, so it
-     reads as the expanded item. A little vertical breathing room sets it apart. */
-  .tile.selected {
-    display: block;
-    border: 0;
-    background: transparent;
-    padding: 0;
-    margin: 6px 0;
+  .row-body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .row-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
   .title {
-    flex: 1;
-    text-align: left;
-    border: 0;
-    background: none;
+    font-size: 0.95rem;
+    font-weight: 700;
     color: var(--ink);
-    font-size: 0.84rem;
-    font-weight: 600;
-    padding: 8px 0;
-    min-height: 44px;
   }
 
-  .actions {
+  .date {
+    color: var(--muted);
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .row-sub {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .part-line {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .badges {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+
+  /* Status chip, keyed to the song's lifecycle state. */
+  .status {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    padding: 2px 9px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    background: var(--paper);
+    white-space: nowrap;
+  }
+  .status.s-Always {
+    color: #1f6f43;
+    background: #e6f4ea;
+    border-color: #b6dcc4;
+  }
+  .status.s-Active {
+    color: #1b4f9c;
+    background: #e7eefb;
+    border-color: #bcd0f2;
+  }
+  .status.s-Learning {
+    color: #8a5a00;
+    background: #fbf0d8;
+    border-color: #ecd9a8;
+  }
+  .status.s-Archive {
+    color: var(--muted);
+    background: var(--paper);
+    border-color: var(--line);
+  }
+
+  .row-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
   }
 
   .act {
@@ -235,6 +399,12 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .act.ghost {
+    background: var(--panel);
+    color: var(--muted);
   }
 
   .act:disabled {
@@ -243,9 +413,57 @@
     cursor: not-allowed;
   }
 
+  .downloads {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--line);
+  }
+
+  .dl {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--accent-strong);
+    background: #f7f5ef;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .dl-empty {
+    color: var(--muted);
+    font-size: 0.8rem;
+    padding: 8px 0;
+  }
+
   .empty {
     color: var(--muted);
     font-size: 0.85rem;
     padding: 12px;
+  }
+
+  /* Sticky transport: stays at the bottom of the viewport while the list
+     scrolls, so playback controls are always reachable without an expanded row. */
+  .now-playing {
+    position: sticky;
+    bottom: 8px;
+    margin-top: 6px;
+    box-shadow: var(--shadow);
+    border-radius: 8px;
+  }
+
+  @media (max-width: 560px) {
+    .row {
+      grid-template-columns: 1fr;
+    }
+    .row-actions {
+      justify-content: flex-start;
+    }
   }
 </style>
