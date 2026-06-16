@@ -182,7 +182,7 @@
     ];
     return all
       .filter((a) => a.driveFileId)
-      .map((a) => ({ driveFileId: a.driveFileId!, name: a.originalName ?? a.driveFileId!, folder: a.folder ?? null }));
+      .map((a) => ({ driveFileId: a.driveFileId!, name: a.originalName ? stripCopyOf(a.originalName) : a.driveFileId!, folder: a.folder ?? null }));
   });
   // Distinct source folders feeding the open song, for whole-folder reassignment.
   const editingFolders = $derived.by(() => {
@@ -603,7 +603,7 @@
           <ul class="part-list">
             {#each editing.parts as p (p.driveFileId ?? p.sha256)}
               <li>
-                <span class="pname" title={p.originalName ?? ''}>{p.originalName ?? p.instrument}</span>
+                <span class="pname" title={p.originalName ?? ''}>{p.originalName ? stripCopyOf(p.originalName) : p.instrument}</span>
                 {#if p.driveFileId}
                   <div class="part-fields">
                     <form method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
