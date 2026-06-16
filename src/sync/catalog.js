@@ -498,6 +498,48 @@ function titleCaseSlug(slug) {
     .join(' ');
 }
 
+/** Stable, collision-proof key for a (source, folder) pair (NUL-delimited). */
+export const folderKey = (e) => `${e.sourceFolderLabel ?? ''}\u0000${e.originalFolder ?? ''}`;
+
+/**
+ * Detect "collection folders": a folder that holds parts for MANY different songs
+ * (a by-player/by-instrument collection like "Trombone for Joseph"), rather than
+ * being one song's folder. Filenames are too inconsistent to judge this by text —
+ * the same song is titled differently across instruments, and many files are
+ * instrument-only with no song at all — so we use CONTENT instead: where does each
+ * file's canonical (primary) copy live? A real song folder's files all resolve to
+ * one song; a collection's files scatter across many. A folder is flagged when its
+ * files resolve to 2+ distinct song folders with no single dominant home.
+ *
+ * @param {object} manifest
+ * @param {Map<string, object>} canonical  sha (or id) -> canonical entry, from canonicalByContent.
+ * @returns {Set<string>} folderKey()s of collection folders.
+ */
+export function detectCollectionFolders(manifest, canonical) {
+  const keyOf = (e) => e.sha256 || `id:${e.driveFileId}`;
+  const byFolder = new Map(); // folderKey -> Map(targetFolderKey -> count)
+  for (const e of liveAssets(manifest)) {
+    if (!e.originalFolder) continue;
+    const canon = canonical.get(keyOf(e)) || e;
+    const counts = byFolder.get(folderKey(e)) || byFolder.set(folderKey(e), new Map()).get(folderKey(e));
+    const t = folderKey(canon);
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  const collections = new Set();
+  for (const [fkey, counts] of byFolder) {
+    let total = 0;
+    let top = 0;
+    for (const c of counts.values()) {
+      total += c;
+      if (c > top) top = c;
+    }
+    // Several files, spread across 2+ song folders, with no folder holding the
+    // majority => a collection, not a song.
+    if (total >= 3 && counts.size >= 2 && top < total / 2) collections.add(fkey);
+  }
+  return collections;
+}
+
 /**
  * Build the player-facing catalog: tunes grouped by song, each with its
  * per-instrument parts, full scores, audio, and MuseScore sources. Every unique
@@ -519,11 +561,18 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const pri = sourcePriority(sourceLabels, manifest);
   const { canonical, liveCount } = canonicalByContent(manifest, pri);
   const loose = new Set(looseSourceLabels || []);
+  // Folders that hold parts for many different songs (a by-player/by-instrument
+  // collection) — detected by content, not folder/file names. Their files are
+  // grouped by the song each one's content belongs to, not by the folder.
+  const collections = detectCollectionFolders(manifest, canonical);
 
   // A real per-song folder: not a loose (unfoldered) source, has a folder, and
-  // that folder isn't an index/admin container.
+  // that folder isn't an index/admin container or a multi-song collection.
   const isRealSongFolder = (e) =>
-    !loose.has(e.sourceFolderLabel) && e.originalFolder && !isContainerFolder(e.originalFolder);
+    !loose.has(e.sourceFolderLabel) &&
+    e.originalFolder &&
+    !isContainerFolder(e.originalFolder) &&
+    !collections.has(folderKey(e));
 
   // Known songs are the real per-song folders; loose/container files match into
   // these by filename. Longest slug first so the most specific song wins.

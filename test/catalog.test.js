@@ -1,7 +1,45 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf, sourcePriority, canonicalByContent } from '../src/sync/catalog.js';
+import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf, sourcePriority, canonicalByContent, detectCollectionFolders, folderKey } from '../src/sync/catalog.js';
+
+// A folder of one song's parts (their content is canonical in itself) vs a
+// by-instrument collection folder (its files' content is canonical in several
+// different song folders). Detection is by CONTENT, immune to filename noise.
+const song = (over) => ({ status: 'synced', assetType: 'pdf', instrumentSlug: 'trombone', ...over });
+const COLLECTION_MANIFEST = {
+  files: {
+    // "Song A" — a real song folder with three of its own parts.
+    a1: song({ driveFileId: 'a1', sha256: 'a', sourceFolderLabel: 'home', originalFolder: 'Song A', songTitle: 'Song A', songTitleSlug: 'song-a', instrumentSlug: 'trumpet', originalName: 'Song A-Trumpet.pdf' }),
+    a2: song({ driveFileId: 'a2', sha256: 'b', sourceFolderLabel: 'home', originalFolder: 'Song A', songTitle: 'Song A', songTitleSlug: 'song-a', originalName: 'Song A-Trombone.pdf' }),
+    a3: song({ driveFileId: 'a3', sha256: 'c', sourceFolderLabel: 'home', originalFolder: 'Song A', songTitle: 'Song A', songTitleSlug: 'song-a', instrumentSlug: 'tuba', originalName: 'Song A-Tuba.pdf' }),
+    // Real homes for three different songs.
+    hx: song({ driveFileId: 'hx', sha256: 'x', sourceFolderLabel: 'home', originalFolder: 'X Song', songTitle: 'X Song', songTitleSlug: 'x-song', originalName: 'X Song-Trombone.pdf' }),
+    hy: song({ driveFileId: 'hy', sha256: 'y', sourceFolderLabel: 'home', originalFolder: 'Y Song', songTitle: 'Y Song', songTitleSlug: 'y-song', originalName: 'Y Song-Trombone.pdf' }),
+    hz: song({ driveFileId: 'hz', sha256: 'z', sourceFolderLabel: 'home', originalFolder: 'Z Song', songTitle: 'Z Song', songTitleSlug: 'z-song', originalName: 'Z Song-Trombone.pdf' }),
+    // "Trombone Box" — a collection: copies of X/Y/Z trombone parts (lower-priority
+    // source, so the home copies win canonical).
+    b1: song({ driveFileId: 'b1', sha256: 'x', sourceFolderLabel: 'box', originalFolder: 'Trombone Box', songTitle: 'Trombone Box', songTitleSlug: 'trombone-box', originalName: 'X Song-Trombone.pdf' }),
+    b2: song({ driveFileId: 'b2', sha256: 'y', sourceFolderLabel: 'box', originalFolder: 'Trombone Box', songTitle: 'Trombone Box', songTitleSlug: 'trombone-box', originalName: 'Y Song-Trombone.pdf' }),
+    b3: song({ driveFileId: 'b3', sha256: 'z', sourceFolderLabel: 'box', originalFolder: 'Trombone Box', songTitle: 'Trombone Box', songTitleSlug: 'trombone-box', originalName: 'Z Song-Trombone.pdf' }),
+  },
+};
+
+test('detectCollectionFolders flags a multi-song folder, not a real song folder', () => {
+  const pri = sourcePriority(['home', 'box'], COLLECTION_MANIFEST); // home outranks box
+  const { canonical } = canonicalByContent(COLLECTION_MANIFEST, pri);
+  const cols = detectCollectionFolders(COLLECTION_MANIFEST, canonical);
+  assert.ok(cols.has(folderKey({ sourceFolderLabel: 'box', originalFolder: 'Trombone Box' })), 'the by-instrument box is a collection');
+  assert.ok(!cols.has(folderKey({ sourceFolderLabel: 'home', originalFolder: 'Song A' })), 'a one-song folder is not a collection');
+});
+
+test('buildCatalog: a collection folder does not become a bogus song', () => {
+  const cat = buildCatalog(COLLECTION_MANIFEST, ['home', 'box']);
+  assert.ok(!cat.tunes.some((t) => t.slug === 'trombone-box'), 'no "Trombone Box" song');
+  assert.ok(cat.tunes.some((t) => t.slug === 'song-a'), 'the real one-song folder survives');
+  // The box copies are duplicates that dedupe into the real X/Y/Z songs.
+  assert.ok(cat.tunes.some((t) => t.slug === 'x-song'), 'real song X survives');
+});
 
 test('canonical pick: a real song folder beats an index folder even from a higher-priority source', () => {
   const manifest = {
