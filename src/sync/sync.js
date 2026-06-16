@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import { classifyDriveFile } from './classify.js';
 import { detectAssetMetadata } from './metadata.js';
 import { loadManifest, saveManifest, diffManifest, findDuplicates } from './manifest.js';
+import { originsDirFor, recordOrigin, buildOriginRecord } from './origins.js';
 
 const noopLogger = { info() {}, warn() {}, error() {} };
 
@@ -43,6 +44,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   const timestamp = now().toISOString();
   const manifest = await loadManifest(config.manifestPath);
   const casDir = resolve(config.dataDir, 'cas');
+  const originsDir = originsDirFor(casDir);
 
   // 1. List + classify across all configured source folders. One shared
   // visited-folder set spans every source, so a folder reached again through a
@@ -227,6 +229,20 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   }
 
   await persist(); // final write captures any trailing entries
+
+  // Reconcile per-blob provenance for every asset whose bytes are now in the store
+  // (freshly downloaded or already cached). recordOrigin is write-once for a known
+  // origin, so this is cheap on a steady-state re-sync; its real job is to (a) seed
+  // a sidecar the first time a blob is stored, and (b) UPGRADE a blob previously
+  // recorded as "unknown" (an orphan) the moment a real Drive file matches it.
+  if (!dryRun) {
+    const storedIds = new Set([...actions.downloaded, ...actions.cached].map((a) => a.id));
+    for (const id of storedIds) {
+      const e = manifest.files[id];
+      if (!e?.sha256) continue;
+      await recordOrigin(originsDir, e.sha256, buildOriginRecord(e, { createdAt: timestamp, provenance: 'sync' }));
+    }
+  }
 
   // Report files whose content is duplicated (same SHA-256 across Drive
   // locations). Informational only — they already share one blob in the store.

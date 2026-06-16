@@ -57,8 +57,9 @@ test('full fixture sync stores assets by hash in cas/, recording metadata in the
     assert.ok(await exists(resolve(dataDir, 'cas', trumpet)));
     assert.equal(await readFile(resolve(dataDir, 'cas', trumpet), 'utf8'), 'SYNTHETIC-PDF: bad guy trumpet part 1');
 
-    // The store holds exactly the 12 unique asset blobs (no nested dirs).
-    const blobs = await readdir(resolve(dataDir, 'cas'));
+    // The store holds exactly the 12 unique asset blobs (sha-named files; the
+    // sibling origins/ provenance subdir is not a blob).
+    const blobs = (await readdir(resolve(dataDir, 'cas'))).filter((n) => /^[0-9a-f]{64}$/.test(n));
     assert.equal(blobs.length, 12);
 
     // Manifest records provenance, hash, cas path, metadata, and status.
@@ -156,7 +157,7 @@ test('duplicate content is stored once; both Drive files point at the same blob'
     // Two unique contents -> two blobs; the identical copy is not downloaded again.
     assert.equal(report.summary.downloaded, 2);
     assert.equal(report.summary.cached, 1);
-    const blobs = await readdir(resolve(dataDir, 'cas'));
+    const blobs = (await readdir(resolve(dataDir, 'cas'))).filter((n) => /^[0-9a-f]{64}$/.test(n));
     assert.equal(blobs.length, 2);
 
     const m = await loadManifest(resolve(dataDir, 'manifest.json'));
