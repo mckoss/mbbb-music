@@ -11,8 +11,8 @@
   } from '$lib/gig';
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
-  import { activeScore } from '$lib/resolve';
-  import { instrumentDisplay } from '$lib/format';
+  import { activeScore, partsForFormat } from '$lib/resolve';
+  import { instrumentDisplay, partOptionLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import PdfPager from '$lib/components/PdfPager.svelte';
@@ -91,16 +91,34 @@
   );
   const iParam = $derived(params.get('i'));
   const performIndex = $derived(iParam && /^\d+$/.test(iParam) ? Number(iParam) : 0);
-  // Songs in the set that actually resolve to a score (skip any with none).
-  const performSongs = $derived(
-    performSet ? performSet.songSlugs.filter((slug) => scoreFor(slug)) : []
-  );
+  // The full set list, in order. We keep songs with no chart in the chosen part/
+  // format rather than dropping them — a player needs to see every song in the
+  // set, and switching part/format must never change the count or your position
+  // (a missing chart shows a placeholder, not a gap).
+  const performSongs = $derived(performSet ? performSet.songSlugs : []);
   const clampedIndex = $derived(
     Math.min(Math.max(0, performIndex), Math.max(0, performSongs.length - 1))
   );
   const performSlug = $derived(performSongs[clampedIndex] ?? null);
-  const performScore = $derived(performSlug ? scoreFor(performSlug) : null);
+  const performTune = $derived(performSlug ? bySlug.get(performSlug) ?? null : null);
+
+  // Perform-mode Part + Format pickers. Instrument stays the player's global
+  // choice (they're playing their instrument); here they only pick which part of
+  // it and the print format. The part preference is a part number so it carries
+  // song-to-song, falling back to the song's default when it has no such part.
+  let performPart = $state<number | null>(null);
+  const performParts = $derived(performTune ? partsForFormat(performTune, instrument, format) : []);
+  const performScore = $derived(
+    performTune ? activeScore(performTune, instrument, format, performPart) : null
+  );
   const performing = $derived(Boolean(performSet && performSongs.length > 0));
+
+  function setPerformPart(sha: string) {
+    performPart = performParts.find((p) => p.sha256 === sha)?.partNumber ?? null;
+  }
+  function setPerformFormat(value: PrintFormat) {
+    printFormat.set(value);
+  }
 
   function startPerform(setId: string) {
     const p = new URLSearchParams(page.url.search);
@@ -151,6 +169,23 @@
         onclick={nextSong}
         disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button
       >
+      {#if performParts.length > 1}
+        <label class="sel">
+          <span class="eyebrow">Part</span>
+          <select value={performScore?.sha ?? ''} onchange={(e) => setPerformPart(e.currentTarget.value)}>
+            {#each performParts as p (p.sha256)}
+              <option value={p.sha256}>{partOptionLabel(p, performParts)}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <label class="sel">
+        <span class="eyebrow">Format</span>
+        <select value={format} onchange={(e) => setPerformFormat(e.currentTarget.value as PrintFormat)}>
+          <option value="letter">Letter</option>
+          <option value="lyre">Lyre</option>
+        </select>
+      </label>
       <button class="primary" onclick={donePerform}>Done</button>
     </div>
     <div class="now-playing">{performSlug ? titleOf(performSlug) : ''}</div>
@@ -164,6 +199,11 @@
             openHref={openUrl(performScore.sha)}
           />
         {/key}
+      {:else}
+        <div class="no-chart">
+          <p>No {instLabel} chart for “{performSlug ? titleOf(performSlug) : ''}”{format === 'lyre' ? ' in Lyre' : ''}.</p>
+          <p class="hint">Try the Format dropdown, or switch your instrument from the main menu.</p>
+        </div>
       {/if}
     </div>
   </div>
@@ -850,6 +890,49 @@
     background: var(--accent);
     color: #fffdf7;
     border: 1px solid var(--accent-strong);
+  }
+
+  /* Part / Format pickers, styled for the dark cluster. */
+  .floating .sel {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .floating .sel .eyebrow {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #b9b6ac;
+  }
+
+  .floating .sel select {
+    min-height: 40px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: rgba(255, 253, 247, 0.12);
+    color: #fffdf7;
+    border: 1px solid rgba(255, 253, 247, 0.35);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .floating .sel select option {
+    color: #202124;
+  }
+
+  /* Shown when a song has no chart for the chosen instrument/part/format. */
+  .no-chart {
+    margin: auto;
+    text-align: center;
+    color: #dfddd4;
+    padding: 24px;
+  }
+
+  .no-chart .hint {
+    font-size: 0.85rem;
+    color: #b9b6ac;
+    margin-top: 8px;
   }
 
   .now-playing {
