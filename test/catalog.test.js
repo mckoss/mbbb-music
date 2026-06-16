@@ -1,7 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf } from '../src/sync/catalog.js';
+import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf, sourcePriority, canonicalByContent } from '../src/sync/catalog.js';
+
+test('canonical pick: a real song folder beats an index folder even from a higher-priority source', () => {
+  const manifest = {
+    files: {
+      idx: { driveFileId: 'i', sha256: 'x', status: 'synced', assetType: 'pdf', sourceFolderLabel: 'high', originalFolder: '50 Indexed By Instrument (INCOMPLETE)', originalName: 'Copy of Trumpet Song.pdf' },
+      real: { driveFileId: 'r', sha256: 'x', status: 'synced', assetType: 'pdf', sourceFolderLabel: 'low', originalFolder: 'Song', originalName: 'Trumpet Song.pdf' },
+    },
+  };
+  const pri = sourcePriority(['high', 'low'], manifest); // 'high' outranks 'low'
+  const { canonical } = canonicalByContent(manifest, pri);
+  assert.equal(canonical.get('x').driveFileId, 'r'); // real-folder copy is primary, not the index copy
+});
 
 // A small synthetic manifest exercising dedup, source priority, and bucketing.
 const MANIFEST = {

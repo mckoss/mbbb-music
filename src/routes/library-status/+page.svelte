@@ -386,7 +386,11 @@
 
 <section class="status">
   <header>
-    <p class="kicker">Library Health</p>
+    <p class="kicker">Library Info</p>
+    <nav class="tabs">
+      <a class="active" aria-current="page" href="/library-status">Coverage</a>
+      <a href="/library-status/files">Files</a>
+    </nav>
     <h2>Coverage by song &amp; instrument</h2>
     <p class="body">
       Each square marks where a score (or recording) exists and the color shows
@@ -717,6 +721,28 @@
   .count {
     color: var(--muted);
     font-size: 0.82rem;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin: 6px 0;
+  }
+  .tabs a {
+    padding: 5px 14px;
+    border: 1px solid var(--line);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-decoration: none;
+    background: var(--paper);
+  }
+  .tabs a.active {
+    color: var(--ink);
+    background: var(--panel);
+    border-color: var(--accent-strong);
   }
 
   .legend {

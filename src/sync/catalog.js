@@ -213,15 +213,18 @@ export function sourcePriority(sourceLabels, manifest) {
 }
 
 /**
- * Pick the canonical location for one content blob: the copy in the
- * highest-priority source wins; within a source, a real song folder beats an
- * index/admin container; otherwise keep the first seen.
+ * Pick the canonical location for one content blob. A copy in a real song folder
+ * ALWAYS beats one in an index/admin container (e.g. "50 Indexed By Instrument"),
+ * regardless of source priority — otherwise a duplicate filed under a by-instrument
+ * index in a high-priority source would outrank the properly-filed song-folder
+ * copy. Among copies of the same kind, the higher-priority source wins; ties keep
+ * the first seen.
  */
 function isMoreCanonical(candidate, current, pri) {
-  const rank = (e) => (pri.has(e.sourceFolderLabel) ? pri.get(e.sourceFolderLabel) : Number.MAX_SAFE_INTEGER);
-  if (rank(candidate) !== rank(current)) return rank(candidate) < rank(current);
   const container = (e) => (isContainerFolder(e.originalFolder) ? 1 : 0);
   if (container(candidate) !== container(current)) return container(candidate) < container(current);
+  const rank = (e) => (pri.has(e.sourceFolderLabel) ? pri.get(e.sourceFolderLabel) : Number.MAX_SAFE_INTEGER);
+  if (rank(candidate) !== rank(current)) return rank(candidate) < rank(current);
   return false;
 }
 
