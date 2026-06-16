@@ -37,3 +37,58 @@ export function urlsToDelete(target: GigManifest, others: GigManifest[]): string
   for (const m of others) for (const u of m.urls) keep.add(u);
   return target.urls.filter((u) => !keep.has(u));
 }
+
+/** The content hash in a `/render/<sha>/…` path, or null if it isn't one. */
+export function shaFromRenderPath(pathname: string): string | null {
+  return /^\/render\/([a-f0-9]{64})\//.exec(pathname)?.[1] ?? null;
+}
+
+// Minimal catalog shapes (a structural subset — both player and server catalogs
+// satisfy them). Mirrors the approach in asset-urls.ts.
+interface PartLike {
+  sha256: string;
+  instrumentSlug: string;
+  instrument: string | null;
+  key: string | null;
+  partNumber: number | null;
+}
+interface AssetLike {
+  sha256: string;
+  originalName: string | null;
+}
+interface TuneLike {
+  slug: string;
+  title: string;
+  parts: PartLike[];
+  scores: AssetLike[];
+  notes: AssetLike[];
+}
+
+export interface ShaSong {
+  songSlug: string;
+  songTitle: string;
+  /** A short label for the specific chart this hash is (e.g. "Trumpet (B♭) 2"). */
+  label: string;
+}
+
+function partLabel(p: PartLike): string {
+  return [p.instrument || p.instrumentSlug, p.key, p.partNumber].filter(Boolean).join(' ');
+}
+
+/**
+ * Map every renderable PDF hash (instrument parts, full scores, notes) to the
+ * song it belongs to, so a flat list of cached `/render/<sha>` pages can be
+ * grouped and labelled by song. Pure — fed the catalog's tunes.
+ */
+export function buildShaSongMap(catalog: { tunes: TuneLike[] }): Map<string, ShaSong> {
+  const map = new Map<string, ShaSong>();
+  for (const t of catalog.tunes) {
+    const add = (sha: string, label: string) => {
+      if (!map.has(sha)) map.set(sha, { songSlug: t.slug, songTitle: t.title, label });
+    };
+    for (const p of t.parts) add(p.sha256, partLabel(p));
+    t.scores.forEach((s, i) => add(s.sha256, t.scores.length > 1 ? `Full score ${i + 1}` : 'Full score'));
+    t.notes.forEach((n, i) => add(n.sha256, t.notes.length > 1 ? `Notes ${i + 1}` : 'Notes'));
+  }
+  return map;
+}

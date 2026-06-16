@@ -106,6 +106,7 @@
     <a href="/" class:active={path === '/'}>Collection</a>
     <a href="/extras" class:active={path.startsWith('/extras')}>Extra Files</a>
     <a href="/gigs" class:active={path.startsWith('/gigs')}>Gig Packets</a>
+    <a href="/offline" class:active={path.startsWith('/offline')}>Offline</a>
     <a href="/library-status" class:active={path.startsWith('/library-status')}>Library Status</a>
     {#if isAdmin}
       <a href="/admin/users" class:active={path.startsWith('/admin')}>Users</a>

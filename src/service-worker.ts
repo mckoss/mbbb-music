@@ -73,6 +73,24 @@ async function fromCache(cacheName: string, request: Request): Promise<Response 
   return cache.match(request);
 }
 
+/**
+ * Cache-first, but populate on a miss: serve the stored copy if present, else
+ * fetch and store it. This is what makes any score you *view* available offline
+ * automatically. A failed network fetch (offline, uncached) yields a 504.
+ */
+async function cacheFirstStore(cacheName: string, request: Request): Promise<Response> {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  try {
+    const res = await fetch(request);
+    if (res.ok) cache.put(request, res.clone());
+    return res;
+  } catch {
+    return new Response(null, { status: 504 });
+  }
+}
+
 /** Network-first; store a successful copy in `cacheName`, else fall back to it. */
 async function networkFirst(cacheName: string, request: Request): Promise<Response> {
   const cache = await caches.open(cacheName);
@@ -110,15 +128,11 @@ sw.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2) Score pages: cache-first from the durable, user-managed scores cache.
-  //    On a miss we go to the network but DO NOT store — only an explicit
-  //    download populates this cache, so it never grows from casual browsing.
+  // 2) Score pages: cache-first, and store on a miss — so anything you view is
+  //    saved offline automatically. Growth is bounded by the library's scores
+  //    and managed on the Offline page (per-song eject + clear-all).
   if (isRenderRequest(url)) {
-    event.respondWith(
-      fromCache(SCORES_CACHE, request).then(
-        (r) => r ?? fetch(request).catch(() => new Response(null, { status: 504 })),
-      ),
-    );
+    event.respondWith(cacheFirstStore(SCORES_CACHE, request));
     return;
   }
 

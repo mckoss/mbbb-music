@@ -7,7 +7,14 @@
 
 import { browser } from '$app/environment';
 
-import { scoreUrls, gigPageUrls, urlsToDelete, type GigManifest } from './offline-urls';
+import {
+  scoreUrls,
+  gigPageUrls,
+  urlsToDelete,
+  shaFromRenderPath,
+  buildShaSongMap,
+  type GigManifest,
+} from './offline-urls';
 
 export { scoreUrls, gigPageUrls, urlsToDelete, type GigManifest };
 
@@ -134,4 +141,79 @@ export async function storageEstimate(): Promise<{ usage: number; quota: number 
   if (!available() || !navigator.storage?.estimate) return null;
   const { usage = 0, quota = 0 } = await navigator.storage.estimate();
   return { usage, quota };
+}
+
+// --- Cached-scores management (the Offline page) ----------------------------
+
+/** Catalog shape needed to group/label cached pages by song. */
+type GroupCatalog = Parameters<typeof buildShaSongMap>[0];
+
+/** The set of score hashes that have at least one page cached on this device. */
+export async function cachedRenderShas(): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!available()) return out;
+  const cache = await caches.open(SCORES_CACHE);
+  for (const req of await cache.keys()) {
+    const sha = shaFromRenderPath(new URL(req.url).pathname);
+    if (sha) out.add(sha);
+  }
+  return out;
+}
+
+export interface CachedSong {
+  songSlug: string;
+  songTitle: string;
+  shas: string[];
+  /** Cached page images (excludes the small `info` sidecars). */
+  pages: number;
+  /** Total cached bytes for the song, from response Content-Length. */
+  bytes: number;
+}
+
+/**
+ * Every cached score, grouped by song and ordered by title. Hashes not found in
+ * the catalog (e.g. a viewed extra PDF) collect under a synthetic "Other" group.
+ */
+export async function listCachedScores(catalog: GroupCatalog): Promise<CachedSong[]> {
+  if (!available()) return [];
+  const songMap = buildShaSongMap(catalog);
+  const cache = await caches.open(SCORES_CACHE);
+  const groups = new Map<string, CachedSong>();
+
+  for (const req of await cache.keys()) {
+    const url = new URL(req.url);
+    const sha = shaFromRenderPath(url.pathname);
+    if (!sha) continue;
+    const song = songMap.get(sha);
+    const slug = song?.songSlug ?? 'other';
+    let g = groups.get(slug);
+    if (!g) {
+      g = { songSlug: slug, songTitle: song?.songTitle ?? 'Other files', shas: [], pages: 0, bytes: 0 };
+      groups.set(slug, g);
+    }
+    if (!g.shas.includes(sha)) g.shas.push(sha);
+    if (url.pathname.endsWith('.webp')) g.pages += 1;
+    const res = await cache.match(req);
+    const len = Number(res?.headers.get('content-length') ?? 0);
+    if (Number.isFinite(len)) g.bytes += len;
+  }
+
+  return [...groups.values()].sort((a, b) => a.songTitle.localeCompare(b.songTitle));
+}
+
+/** Eject all cached pages for the given score hashes (a whole song's set). */
+export async function ejectShas(shas: string[]): Promise<void> {
+  if (!available() || shas.length === 0) return;
+  const want = new Set(shas);
+  const cache = await caches.open(SCORES_CACHE);
+  for (const req of await cache.keys()) {
+    const sha = shaFromRenderPath(new URL(req.url).pathname);
+    if (sha && want.has(sha)) await cache.delete(req);
+  }
+}
+
+/** Drop the entire cached-scores store (does not touch the app shell). */
+export async function clearCachedScores(): Promise<void> {
+  if (!available()) return;
+  await caches.delete(SCORES_CACHE);
 }
