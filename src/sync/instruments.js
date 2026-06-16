@@ -10,24 +10,31 @@
  * instruments must precede the generic families they contain (e.g. "baritone
  * saxophone" before "baritone").
  *
+ * `match` also carries foreign-language names, because MuseScore exports the band
+ * actually uses name parts in French/Spanish/Italian/German (e.g. "Trompette_en_Sib",
+ * "Flûte", "Saxophone_Baryton", "Batterie"). Accented forms are listed verbatim
+ * since matching is a plain lowercase substring test (no accent folding). One trap:
+ * bare French "Baryton" means the baritone horn (euphonium), so only the QUALIFIED
+ * "saxophone baryton" maps to bari sax — never bare "baryton".
+ *
  * @typedef {{ label: string, slug: string, defaultKey: string|null, match: string[] }} Instrument
  * @type {Instrument[]}
  */
 const INSTRUMENTS = [
-  { label: 'Alto saxophone', slug: 'alto-sax', defaultKey: 'eflat', match: ['alto saxophone', 'alto sax', 'altosax', 'alto'] },
-  { label: 'Soprano saxophone', slug: 'soprano-sax', defaultKey: 'bflat', match: ['soprano saxophone', 'soprano sax', 'soprano'] },
-  { label: 'Tenor saxophone', slug: 'tenor-sax', defaultKey: 'bflat', match: ['tenor saxophone', 'tenor sax', 'tenorsax'] },
-  { label: 'Baritone saxophone', slug: 'bari-sax', defaultKey: 'eflat', match: ['baritone saxophone', 'baritone sax', 'bari saxophone', 'bari sax', 'bari-sax'] },
-  { label: 'Clarinet', slug: 'clarinet', defaultKey: 'bflat', match: ['clarinet'] },
-  { label: 'Flute', slug: 'flute', defaultKey: null, match: ['flute'] },
-  { label: 'Trumpet', slug: 'trumpet', defaultKey: 'bflat', match: ['trumpet', 'cornet'] },
+  { label: 'Alto saxophone', slug: 'alto-sax', defaultKey: 'eflat', match: ['alto saxophone', 'alto sax', 'altosax', 'saxophone alto', 'saxofon alto', 'saxo alto', 'alto'] },
+  { label: 'Soprano saxophone', slug: 'soprano-sax', defaultKey: 'bflat', match: ['soprano saxophone', 'soprano sax', 'saxophone soprano', 'saxofon soprano', 'soprano'] },
+  { label: 'Tenor saxophone', slug: 'tenor-sax', defaultKey: 'bflat', match: ['tenor saxophone', 'tenor sax', 'tenorsax', 'saxophone tenor', 'sax tenor', 'saxofon tenor', 'saxo tenor'] },
+  { label: 'Baritone saxophone', slug: 'bari-sax', defaultKey: 'eflat', match: ['baritone saxophone', 'baritone sax', 'bari saxophone', 'bari sax', 'saxophone baryton', 'sax baryton', 'saxofon baritono', 'saxo baritono'] },
+  { label: 'Clarinet', slug: 'clarinet', defaultKey: 'bflat', match: ['clarinet', 'clarinette', 'clarinete', 'klarinette', 'clarinetto'] },
+  { label: 'Flute', slug: 'flute', defaultKey: null, match: ['flute', 'flauta', 'flote', 'flauto', 'traversiere'] },
+  { label: 'Trumpet', slug: 'trumpet', defaultKey: 'bflat', match: ['trumpet', 'cornet', 'trompette', 'trompeta', 'trompete', 'tromba'] },
   { label: 'Mellophone', slug: 'mellophone', defaultKey: 'f', match: ['mellophone'] },
   { label: 'French horn', slug: 'french-horn', defaultKey: 'f', match: ['french horn', 'horn in f', 'mellophonium'] },
-  { label: 'Trombone', slug: 'trombone', defaultKey: 'bflat', match: ['trombone'] },
-  { label: 'Euphonium', slug: 'euphonium', defaultKey: 'bflat', match: ['euphonium', 'baritone horn', 'baritone'] },
+  { label: 'Trombone', slug: 'trombone', defaultKey: 'bflat', match: ['trombone', 'posaune', 'trombon', 'trombone tenore'] },
+  { label: 'Euphonium', slug: 'euphonium', defaultKey: 'bflat', match: ['euphonium', 'baritone horn', 'baritone', 'bombardino', 'euphonion'] },
   { label: 'Tuba', slug: 'tuba', defaultKey: 'bflat', match: ['sousaphone', 'tuba'] },
   { label: 'Melodica', slug: 'melodica', defaultKey: null, match: ['melodica'] },
-  { label: 'Drums / percussion', slug: 'drums', defaultKey: null, match: ['drum set', 'drumset', 'drum kit', 'snare drum', 'bass drum', 'tenor drum', 'marching tenor', 'cymbal', 'congas', 'percussion', 'drums', 'drum'] },
+  { label: 'Drums / percussion', slug: 'drums', defaultKey: null, match: ['drum set', 'drumset', 'drum kit', 'snare drum', 'bass drum', 'tenor drum', 'marching tenor', 'cymbal', 'congas', 'percussion', 'percusion', 'percussione', 'batterie', 'bateria', 'tamburo', 'drums', 'drum'] },
 ];
 
 /**
@@ -47,22 +54,36 @@ export function instrumentLabel(slug) {
 }
 
 /**
+ * Fold a string for matching: strip diacritics (so MuseScore's "Trompette",
+ * "Flûte", "Saxophone Ténor" — often stored with decomposed accents — match plain
+ * ASCII needles), lowercase, and collapse underscores AND hyphens to single
+ * spaces. The separator collapse is why multi-word matchers like "tenor saxophone"
+ * hit "Tenor_Saxophone" and "hot-to-go-tenor-saxophone" alike; without it
+ * "Baritone_Sax" would also slip past bari-sax into Euphonium's generic "baritone".
+ *
+ * @param {string} s
+ * @returns {string}
+ */
+function foldForMatch(s) {
+  return String(s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // drop the combining accent marks
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/**
  * Detect an instrument from a source filename (extension already stripped is
- * fine; the search is substring based and case-insensitive).
+ * fine; the search is substring based, case- and accent-insensitive).
  *
  * @param {string} text
  * @returns {Instrument | null}
  */
 export function detectInstrument(text) {
-  // Normalize underscores to spaces (exported filenames often use them, e.g.
-  // "Baritone_Sax") so multi-word matchers like "baritone sax" still hit; without
-  // this, "Baritone_Sax" slips past bari-sax and is caught by Euphonium's
-  // generic "baritone".
-  const haystack = String(text ?? '')
-    .toLowerCase()
-    .replace(/_/g, ' ');
+  const haystack = foldForMatch(text);
   for (const inst of INSTRUMENTS) {
-    if (inst.match.some((needle) => haystack.includes(needle))) {
+    if (inst.match.some((needle) => haystack.includes(foldForMatch(needle)))) {
       return inst;
     }
   }
