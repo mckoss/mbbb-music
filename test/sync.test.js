@@ -334,11 +334,13 @@ test('a file reachable from two sources is attributed to the higher-priority (ea
     assert.equal(m.files['shared'].originalFolder, 'Bad Guy');
     // But the replica shortcut is NOT thrown away: it is kept as a second
     // appearance, so the File List can show the file where the shortcut sits.
+    // Each appearance carries the name as it shows in Drive at that spot: the
+    // real filename at its home, the (possibly renamed) shortcut name at the link.
     assert.deepEqual(
-      m.files['shared'].appearances.map((a) => [a.source, a.viaShortcut]),
+      m.files['shared'].appearances.map((a) => [a.source, a.viaShortcut, a.name]),
       [
-        ['primary', false], // its real home (the primary, highest-priority)
-        ['replica', true], // the shortcut from the replica index
+        ['primary', false, 'Bad Guy - Trumpet.pdf'], // its real home (the primary)
+        ['replica', true, 'Bad Guy - Trumpet (shortcut).pdf'], // the shortcut's own name
       ],
     );
     // The replica-only file keeps its replica attribution.

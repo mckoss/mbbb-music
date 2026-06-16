@@ -103,7 +103,9 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     const appearance = {
       source: item.file.sourceFolderLabel ?? null,
       path: item.file.folderPath ?? [],
-      name: item.file.name,
+      // The name as it appears at THIS spot in Drive: a shortcut's own
+      // (possibly renamed) display name, else the file's real name.
+      name: item.file.displayName ?? item.file.name,
       viaShortcut: !!item.file.viaShortcut,
     };
     const existing = byId.get(id);

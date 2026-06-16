@@ -61,7 +61,7 @@ export function createFixtureDriveClient({ files = [], contents = {} } = {}) {
   function resolveFixtureFile(file) {
     const sc = file.shortcutDetails;
     if (!sc?.targetId) return { ...file, folderPath: pathOf(file) };
-    const here = { folderPath: pathOf(file), viaShortcut: true, shortcutId: file.id };
+    const here = { folderPath: pathOf(file), viaShortcut: true, shortcutId: file.id, displayName: file.name };
     const target = byId.get(sc.targetId);
     if (!target || target.mimeType === SHORTCUT_MIME || target.shortcutDetails) {
       // Target absent/unresolvable — stand the pointer in, flagged unreachable so
@@ -224,7 +224,16 @@ export function createGoogleDriveClient(config = {}, options = {}) {
   // entry (the classifier ignores it).
   async function resolveFileShortcut(shortcut, song, songId, path) {
     const targetId = shortcut.shortcutDetails.targetId;
-    const here = { folderPath: path, viaShortcut: true, shortcutId: shortcut.id };
+    // `displayName` is the shortcut's own name — what you see at this spot in
+    // Drive — kept separate from the target's filename so the inventory can show
+    // the file as it actually appears here (members often rename a shortcut to
+    // standardize it), while metadata detection still keys off the real target name.
+    const here = {
+      folderPath: path,
+      viaShortcut: true,
+      shortcutId: shortcut.id,
+      displayName: shortcut.name,
+    };
     let meta = null;
     try {
       meta = await getFileMeta(targetId);
