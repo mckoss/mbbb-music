@@ -4,8 +4,8 @@
   import { goto } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import type { Catalog } from '$lib/types';
-  import { activePdf, partsForFormat } from '$lib/resolve';
-  import { instrumentDisplay, partOptionLabel } from '$lib/format';
+  import { viewableDocs } from '$lib/resolve';
+  import { instrumentDisplay } from '$lib/format';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
@@ -33,7 +33,11 @@
   // collapse `mode` to a literal inside the {:else} block.
   const isPerformance = $derived(mode === 'performance');
 
-  const current = $derived(open && tune ? activePdf(tune, instrument, format, partSha) : null);
+  // Every PDF this song can show — the instrument's parts, the full-band
+  // score(s), and notes — in priority order. The chosen one is addressed by sha
+  // (?part); absent/stale, fall back to the first (a part, else a real score).
+  const docs = $derived(open && tune ? viewableDocs(tune, instrument, format) : []);
+  const current = $derived(docs.find((d) => d.sha === partSha) ?? docs[0] ?? null);
   const title = $derived(tune?.title ?? '');
   const practiceAudio = $derived(tune?.audio[0] ?? null);
 
@@ -41,7 +45,6 @@
   // (replaceState — no remount), which re-resolves the PDF below. Audio plays
   // through a global singleton element, so swapping the score never interrupts it.
   const instruments = $derived(catalog?.instruments ?? []);
-  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format) : []);
 
   function close() {
     if (!browser) return;
@@ -132,15 +135,15 @@
             </select>
           </label>
         {/if}
-        {#if parts.length > 1}
+        {#if docs.length > 1}
           <label class="fmt">
-            <span class="eyebrow">Variant</span>
+            <span class="eyebrow">Document</span>
             <select
               value={current?.sha ?? ''}
               onchange={(e) => setPart(e.currentTarget.value)}
             >
-              {#each parts as p (p.sha256)}
-                <option value={p.sha256}>{partOptionLabel(p, parts)}</option>
+              {#each docs as d (d.sha)}
+                <option value={d.sha}>{d.label}</option>
               {/each}
             </select>
           </label>
