@@ -272,12 +272,6 @@ function isIsolatedAudio(a) {
   return tokens.length > 0 && isVoiceToken(tokens[tokens.length - 1]);
 }
 
-function compareAudio(a, b) {
-  const iso = (isIsolatedAudio(a) ? 1 : 0) - (isIsolatedAudio(b) ? 1 : 0);
-  if (iso) return iso;
-  return (a.originalName || '').localeCompare(b.originalName || '');
-}
-
 /**
  * A recording's identity, ignoring version tokens, so "Iron Man-V1.0" and
  * "Iron Man-V1.2" share a key but distinct recordings ("…cadillacs" vs
@@ -293,50 +287,54 @@ function audioBaseKey(name) {
 }
 
 /**
- * Collapse version copies of the same recording down to one, keeping the newest
- * by modified time (so "Iron Man-V1.0" doesn't outrank "Iron Man-V1.2" as the
- * default). Distinct recordings are untouched. Strips the transient `_mtime`.
+ * Order a tune's recordings so the full-band mix leads and, within one
+ * recording, the newest version is the default — WITHOUT discarding any
+ * distinct file. A unique blob is never hidden: older version copies and
+ * distinct stems stay reachable via the recording chooser. Only byte-identical
+ * duplicates (same content hash, e.g. the same mp3 mirrored across two sources)
+ * collapse. Returns the fully ordered list; strips the transient `_mtime`.
  */
 function dedupeAudio(audio) {
-  const best = new Map();
-  for (const a of audio) {
-    const key = audioBaseKey(a.originalName) || a.sha256;
-    const cur = best.get(key);
-    // Prefer the newer modifiedTime; tiebreak on name so "V1.2" beats "V1.0".
-    if (
-      !cur ||
-      (a._mtime || '') > (cur._mtime || '') ||
-      ((a._mtime || '') === (cur._mtime || '') && (a.originalName || '') > (cur.originalName || ''))
-    ) {
-      best.set(key, a);
-    }
-  }
+  const bySha = new Map();
+  for (const a of audio) if (!bySha.has(a.sha256)) bySha.set(a.sha256, a);
+  const baseKey = (a) => audioBaseKey(a.originalName) || a.sha256;
+  const out = [...bySha.values()].sort((a, b) => {
+    // Full-band mix before isolated stems (the default recording, #4)...
+    const iso = (isIsolatedAudio(a) ? 1 : 0) - (isIsolatedAudio(b) ? 1 : 0);
+    if (iso) return iso;
+    // ...versions of one recording grouped together...
+    const bk = baseKey(a).localeCompare(baseKey(b));
+    if (bk) return bk;
+    // ...newest first within a recording, then name desc ("V1.2" before "V1.0").
+    return (
+      (b._mtime || '').localeCompare(a._mtime || '') ||
+      (b.originalName || '').localeCompare(a.originalName || '')
+    );
+  });
   // eslint-disable-next-line no-unused-vars
-  return [...best.values()].map(({ _mtime, ...rest }) => rest);
+  return out.map(({ _mtime, ...rest }) => rest);
 }
 
 /**
- * Collapse parts that are the same instrument/key/part/format down to one,
- * keeping the newest by modified time (so older version copies — "V1.0" vs
- * "V1.2" — don't show as undifferentiated duplicates). Strips the transient
- * `_mtime` used for the comparison.
+ * Order an instrument's parts so the newest copy of a given slot
+ * (instrument/key/part/format) is the default shown first — WITHOUT discarding
+ * any distinct file. A unique blob is never hidden: older versions, alternate
+ * scans, and other genuinely-different copies of the same slot stay reachable
+ * via the part chooser. Only byte-identical duplicates (same content hash)
+ * collapse. Returns the fully ordered list; strips the transient `_mtime`.
  */
 function dedupeParts(parts) {
-  const best = new Map();
-  for (const p of parts) {
-    const key = `${p.instrumentSlug}|${p.key ?? ''}|${p.partNumber ?? ''}|${p.format}`;
-    const cur = best.get(key);
-    // Prefer the newer modifiedTime; tiebreak on name so "V1.2" beats "V1.0".
-    if (
-      !cur ||
-      (p._mtime || '') > (cur._mtime || '') ||
-      ((p._mtime || '') === (cur._mtime || '') && (p.originalName || '') > (cur.originalName || ''))
-    ) {
-      best.set(key, p);
-    }
-  }
+  const bySha = new Map();
+  for (const p of parts) if (!bySha.has(p.sha256)) bySha.set(p.sha256, p);
+  const out = [...bySha.values()].sort(
+    (a, b) =>
+      comparePart(a, b) ||
+      // Same slot: newest first, then name desc so "V1.2" precedes "V1.0".
+      (b._mtime || '').localeCompare(a._mtime || '') ||
+      (b.originalName || '').localeCompare(a.originalName || '')
+  );
   // eslint-disable-next-line no-unused-vars
-  return [...best.values()].map(({ _mtime, ...rest }) => rest);
+  return out.map(({ _mtime, ...rest }) => rest);
 }
 
 /**
@@ -696,8 +694,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((s) => ({
       ...s,
-      parts: dedupeParts(s.parts).sort(comparePart),
-      audio: dedupeAudio(s.audio).sort(compareAudio),
+      parts: dedupeParts(s.parts),
+      audio: dedupeAudio(s.audio),
     }));
 
   const instLabels = new Map();
