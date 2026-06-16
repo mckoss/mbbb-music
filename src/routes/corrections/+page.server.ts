@@ -8,6 +8,7 @@ import { error, fail } from '@sveltejs/kit';
 
 import { loadConfig } from '../../sync/config.js';
 import { recentEdits, deleteEdit, restoreEdit, getEdit } from '$lib/server/corrections';
+import { stripCopyOf } from '$lib/format';
 
 /** driveFileId -> a friendly "name (song)" label, read from the manifest. */
 function fileLabels(): Record<string, string> {
@@ -16,7 +17,7 @@ function fileLabels(): Record<string, string> {
     const manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
     const out: Record<string, string> = {};
     for (const e of Object.values(manifest.files ?? {}) as Array<Record<string, string>>) {
-      if (e.driveFileId) out[e.driveFileId] = e.originalName || e.driveFileId;
+      if (e.driveFileId) out[e.driveFileId] = e.originalName ? stripCopyOf(e.originalName) : e.driveFileId;
     }
     return out;
   } catch {

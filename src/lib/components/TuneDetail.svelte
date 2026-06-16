@@ -51,9 +51,9 @@
   }
 
   // Download name for a misc asset: keep the original filename (it carries the
-  // right extension); fall back to a generated name if absent.
+  // right extension) minus Drive's "Copy of" prefix; fall back if absent.
   function fileDlName(a: { originalName: string | null; assetType?: string }): string {
-    return a.originalName ?? `mbbb-${tune.slug}-${a.assetType ?? 'file'}`;
+    return (a.originalName && stripCopyOf(a.originalName)) || `mbbb-${tune.slug}-${a.assetType ?? 'file'}`;
   }
 
   const modified = $derived(
@@ -175,9 +175,9 @@
       {#each images as img (img.sha256)}
         <figure>
           <a href={`/blob/${img.sha256}`} target="_blank" rel="noopener">
-            <img src={`/blob/${img.sha256}`} alt={img.originalName ?? 'Image'} loading="lazy" />
+            <img src={`/blob/${img.sha256}`} alt={img.originalName ? stripCopyOf(img.originalName) : 'Image'} loading="lazy" />
           </a>
-          {#if img.originalName}<figcaption>{img.originalName}</figcaption>{/if}
+          {#if img.originalName}<figcaption>{stripCopyOf(img.originalName)}</figcaption>{/if}
         </figure>
       {/each}
     </div>
@@ -189,7 +189,7 @@
       <div class="downloads">
         {#each files as f (f.sha256)}
           <a class="dl" href={`/blob/${f.sha256}?dl=${encodeURIComponent(fileDlName(f))}`} download>
-            {f.originalName ?? f.assetType ?? 'Download'}
+            {f.originalName ? stripCopyOf(f.originalName) : (f.assetType ?? 'Download')}
           </a>
         {/each}
       </div>

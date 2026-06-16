@@ -60,7 +60,7 @@ export function fileInventory(): Inventory {
 
     const rec: InvFile = {
       driveFileId: e.driveFileId,
-      name: e.originalName ?? e.driveFileId,
+      name: e.originalName ?? e.driveFileId, // the true Drive name (incl. "Copy of") — this is a faithful inventory
       sha256: e.sha256 ?? null,
       assetType: e.assetType ?? null,
       isPrimary,
