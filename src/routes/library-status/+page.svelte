@@ -216,6 +216,44 @@
     return `Sync complete — ${parts.join(', ')}.`;
   }
 
+  // --- Admin: recover per-blob provenance sidecars (data/cas/origins) -------
+  interface OriginsResult {
+    blobs: number;
+    written: number;
+    recovered: number;
+    orphans: number;
+    upgraded: number;
+    skipped: number;
+  }
+
+  let recovering = $state(false);
+  let originsResult = $state<OriginsResult | null>(null);
+  let originsError = $state<string | null>(null);
+
+  async function recoverOrigins() {
+    recovering = true;
+    originsResult = null;
+    originsError = null;
+    try {
+      const res = await fetch('/admin/origins', { method: 'POST' });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      originsResult = (await res.json()) as OriginsResult;
+    } catch (e) {
+      originsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      recovering = false;
+    }
+  }
+
+  function originsText(r: OriginsResult): string {
+    return (
+      `Origins recovered — ${r.written} sidecar(s) written ` +
+      `(${r.recovered} from manifest, ${r.upgraded} upgraded from unknown, ` +
+      `${r.orphans} orphan(s) with no recoverable origin), ` +
+      `${r.skipped} already recorded · ${r.blobs} blobs total.`
+    );
+  }
+
   onDestroy(closeEs);
 
   // Clicking a square: a lone file opens (full screen for a reachable file, or
@@ -276,7 +314,22 @@
           {#if syncing}<span class="spinner" aria-hidden="true"></span>{/if}
           {#if !syncing && syncSummary}<span class="ok">✓ done</span>{/if}
           {#if !syncing && syncError}<span class="bad">✗ failed</span>{/if}
+
+          <button
+            class="sync-btn ghost"
+            onclick={recoverOrigins}
+            disabled={recovering || syncing}
+            title="Write a provenance sidecar (data/cas/origins/<sha>.json) for every stored blob that lacks one"
+          >
+            {recovering ? 'Recovering…' : 'Recover Origins'}
+          </button>
+          {#if recovering}<span class="spinner" aria-hidden="true"></span>{/if}
+          {#if !recovering && originsResult}<span class="ok">✓ done</span>{/if}
+          {#if !recovering && originsError}<span class="bad">✗ failed</span>{/if}
         </div>
+
+        {#if originsResult}<p class="sync-result">{originsText(originsResult)}</p>{/if}
+        {#if originsError}<p class="sync-result bad-text">Recover Origins failed: {originsError}</p>{/if}
 
         {#if syncing && syncLines.length}
           <div class="sync-log" aria-live="polite">
@@ -475,6 +528,12 @@
   .sync-btn:disabled {
     opacity: 0.7;
     cursor: progress;
+  }
+
+  /* Secondary action (Recover Origins): same shape, muted/outline look. */
+  .sync-btn.ghost {
+    background: var(--paper);
+    color: var(--accent-strong);
   }
 
   .spinner {
