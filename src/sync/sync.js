@@ -19,6 +19,8 @@ import { classifyDriveFile } from './classify.js';
 import { detectAssetMetadata } from './metadata.js';
 import { loadManifest, saveManifest, diffManifest, findDuplicates } from './manifest.js';
 import { originsDirFor, recordOrigin, buildOriginRecord } from './origins.js';
+import { pdfPageSizePt } from './pdf-shape.js';
+import { readFile } from 'node:fs/promises';
 
 const noopLogger = { info() {}, warn() {}, error() {} };
 
@@ -256,6 +258,35 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     }
   }
 
+  // Record each PDF's first-page size so the catalog can classify Letter vs Lyre
+  // from the physical page shape, not just a filename token. Page geometry is a
+  // property of the content hash, so we compute once per sha and skip any entry
+  // that already carries it (buildAssetEntry preserves it across unchanged
+  // re-syncs) — steady-state runs read no PDFs here.
+  if (!dryRun) {
+    const sizeBySha = new Map();
+    let measured = 0;
+    for (const e of Object.values(manifest.files)) {
+      if (e.assetType !== 'pdf' || !e.sha256 || e.status === 'deleted') continue;
+      if (e.pageWidthPt && e.pageHeightPt) continue;
+      let size = sizeBySha.get(e.sha256);
+      if (size === undefined) {
+        const blobPath = resolve(casDir, e.sha256);
+        size = existsSync(blobPath) ? await pdfPageSizePt(await readFile(blobPath)) : null;
+        sizeBySha.set(e.sha256, size);
+        if (size) measured += 1;
+      }
+      if (size) {
+        e.pageWidthPt = size.widthPt;
+        e.pageHeightPt = size.heightPt;
+      }
+    }
+    if (measured > 0) {
+      logger.info(`Measured page shape for ${measured} PDF(s) (Letter/Lyre detection).`);
+      await persist();
+    }
+  }
+
   // Report files whose content is duplicated (same SHA-256 across Drive
   // locations). Informational only — they already share one blob in the store.
   const duplicates = findDuplicates(manifest);
@@ -302,6 +333,10 @@ function compact(obj) {
 
 function buildAssetEntry(entry, meta, classification, sha, timestamp) {
   const { file } = entry;
+  // Page geometry is a property of the content hash, so carry it forward when the
+  // bytes are unchanged — the post-sync shape pass then only measures genuinely
+  // new content instead of re-reading every PDF each run.
+  const samePrev = entry.prev && entry.prev.sha256 === sha;
   return compact({
     driveFileId: entry.id,
     sourceFolderId: file.sourceFolderId,
@@ -317,6 +352,8 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     sha256: sha,
     size: file.size,
     assetType: classification.assetType,
+    pageWidthPt: samePrev ? entry.prev.pageWidthPt : undefined,
+    pageHeightPt: samePrev ? entry.prev.pageHeightPt : undefined,
     songTitle: meta.songTitle,
     songTitleSlug: meta.songTitleSlug,
     instrument: meta.instrument,

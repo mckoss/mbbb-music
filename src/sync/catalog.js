@@ -120,9 +120,40 @@ function partNumberOf(entry) {
   return Number.isInteger(entry.partNumber) && entry.partNumber >= 1 ? entry.partNumber : null;
 }
 
-/** The print format of a PDF from its filename: 'lyre' for lyre-size, else 'letter'. */
-export function formatOf(name) {
-  return /\blyre\b/i.test(String(name ?? '')) ? 'lyre' : 'letter';
+/**
+ * Classify a print format from a page's physical size in points (1/72").
+ * Nominal sizes: Letter 8.5×11, Lyre (flip-folio) ~5×7. A landscape page is read
+ * as Lyre too (marching flip-folios are commonly landscape). Returns null when the
+ * dimensions are missing/degenerate, so the caller can fall back to the filename.
+ */
+export function formatFromShape(widthPt, heightPt) {
+  const w = widthPt / 72;
+  const h = heightPt / 72;
+  if (!(w > 0 && h > 0)) return null;
+  if (w > h * 1.02) return 'lyre'; // landscape (incl. flip-folio) — not letter
+  const longSide = Math.max(w, h);
+  const shortSide = Math.min(w, h);
+  const dLetter = Math.hypot(shortSide - 8.5, longSide - 11);
+  const dLyre = Math.hypot(shortSide - 5, longSide - 7);
+  return dLyre < dLetter ? 'lyre' : 'letter';
+}
+
+/**
+ * The print format of a PDF. Prefers the physical page shape (recorded at sync
+ * time as pageWidthPt/pageHeightPt) — the ground truth of what prints — and falls
+ * back to a 'lyre' token in the filename when the shape is unknown. Accepts a
+ * manifest entry, or a bare filename string for filename-only callers/tests.
+ */
+export function formatOf(entry) {
+  if (typeof entry === 'string' || entry == null) {
+    return /\blyre\b/i.test(String(entry ?? '')) ? 'lyre' : 'letter';
+  }
+  const byShape =
+    entry.pageWidthPt && entry.pageHeightPt
+      ? formatFromShape(entry.pageWidthPt, entry.pageHeightPt)
+      : null;
+  if (byShape) return byShape;
+  return /\blyre\b/i.test(String(entry.originalName ?? '')) ? 'lyre' : 'letter';
 }
 
 /**
@@ -468,7 +499,7 @@ function clusterVoiceCount(group) {
   const voices = new Set();
   for (const e of group) {
     if (e.assetType === 'pdf' && e.instrumentSlug) {
-      voices.add(`p:${e.instrumentSlug}|${formatOf(e.originalName)}|${effectivePartNumber(e) ?? ''}`);
+      voices.add(`p:${e.instrumentSlug}|${formatOf(e)}|${effectivePartNumber(e) ?? ''}`);
     } else {
       voices.add(`x:${e.sha256}`);
     }
@@ -489,7 +520,7 @@ function unreachableItem(e) {
     instrument: e.instrument || null,
     key: hasInstrument ? effectiveKey(e) : null,
     partNumber: hasInstrument ? effectivePartNumber(e) : null,
-    format: formatOf(e.originalName),
+    format: formatOf(e),
     originalName: e.originalName || null,
     source: e.sourceFolderLabel || null,
     driveUrl: e.shortcutTarget ? `https://drive.google.com/file/d/${e.shortcutTarget}/view` : null,
@@ -625,7 +656,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
         instrumentSlug: e.instrumentSlug,
         key: effectiveKey(e),
         partNumber: effectivePartNumber(e),
-        format: formatOf(e.originalName),
+        format: formatOf(e),
         _mtime: e.modifiedTime || '', // transient, used for version dedup
       });
     } else if (e.assetType === 'pdf') {
