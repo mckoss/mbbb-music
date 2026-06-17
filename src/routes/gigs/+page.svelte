@@ -2,11 +2,11 @@
   import { page } from '$app/state';
   import { enhance } from '$app/forms';
   import type { Gig } from '$lib/gig';
-  import { formatGigDate, formatGigTimes, formatGigLocation } from '$lib/gig';
+  import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation } from '$lib/gig';
   import { listDownloaded } from '$lib/offline';
 
   const gigs = $derived(page.data.gigs as Gig[]);
-  const isAdmin = $derived(page.data.user?.role === 'admin');
+  const canEdit = $derived(canEditGigs(page.data.user?.role));
 
   // Which gigs are saved for offline, so the list can flag them.
   let offlineIds = $state(new Set<string>());
@@ -33,7 +33,7 @@
         set in performance mode.
       </p>
     </div>
-    {#if isAdmin}
+    {#if canEdit}
       <form method="POST" action="?/create" use:enhance>
         <button type="submit" class="new">+ New gig</button>
       </form>
@@ -41,7 +41,7 @@
   </header>
 
   {#if gigs.length === 0}
-    <p class="empty">No gigs yet.{#if isAdmin} Use the New gig button to create one.{/if}</p>
+    <p class="empty">No gigs yet.{#if canEdit} Use the New gig button to create one.{/if}</p>
   {:else}
     <ul class="list">
       {#each gigs as gig (gig.id)}

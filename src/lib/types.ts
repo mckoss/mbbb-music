@@ -4,9 +4,9 @@
 import type { SongStatus } from './song-status';
 
 // --- Auth -------------------------------------------------------------------
-// Roles, highest-privilege first. 'admin' can view + manage users; 'member' and
-// (future) 'organizer' can view the library. A null role means signed-in but
-// not yet approved (the /pending state).
+// Roles, highest-privilege first. 'admin' can view + manage users; 'organizer'
+// can manage gig packets; 'member' can view the library. A null role means
+// signed-in but not yet approved (the /pending state).
 export type Role = 'admin' | 'member' | 'organizer';
 
 export interface SessionUser {
