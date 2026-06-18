@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/AGENTS.md\"; [ -f \"$f\" ] && printf \"The following AGENTS.md holds this repo's binding conventions. Treat it as already read for this session:\\n\\n\" && cat \"$f\"",
+            "statusMessage": "Loading AGENTS.md into context"
+          }
+        ]
+      }
+    ]
+  }
+}
