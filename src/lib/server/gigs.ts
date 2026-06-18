@@ -20,6 +20,7 @@ import {
   normalizeLocation,
   isValidDate,
   emptySet,
+  newId,
   type Gig,
   type GigInput,
   type GigSet,
@@ -67,6 +68,27 @@ export function createGig(input: GigInput, dataDir?: string): Gig {
   data.gigs.push(gig);
   writeFileAtomic(data, dataDir);
   return gig;
+}
+
+/** Duplicate an existing gig, copying its info and setlists into a new gig. */
+export function duplicateGig(id: string, dataDir?: string): Gig | null {
+  const source = getGig(id, dataDir);
+  if (!source) return null;
+  return createGig(
+    {
+      name: `${source.name} Copy`,
+      date: source.date,
+      ...(source.times ? { times: source.times.map((t) => ({ ...t })) } : {}),
+      ...(source.location ? { location: { ...source.location } } : {}),
+      ...(source.notes ? { notes: source.notes } : {}),
+      sets: source.sets.map((set) => ({
+        ...set,
+        id: newId(),
+        songSlugs: [...set.songSlugs],
+      })),
+    },
+    dataDir
+  );
 }
 
 /**

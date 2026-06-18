@@ -1,6 +1,7 @@
 // Shared gig-packet model used by both client and server (no server imports, so
 // it's safe to import anywhere). A gig is a dated event with one or more sets,
 // each an ordered list of songs (by slug) drawn from the library.
+import type { Role } from './types';
 
 /** A start (and optional end) time for one playing slot, as "HH:MM" strings. */
 export interface GigTime {
@@ -39,6 +40,11 @@ export interface GigInput {
   location?: GigLocation;
   notes?: string;
   sets?: GigSet[];
+}
+
+/** Gig Packets can be managed by admins and organizers. */
+export function canEditGigs(role: Role | null | undefined): boolean {
+  return role === 'admin' || role === 'organizer';
 }
 
 /**

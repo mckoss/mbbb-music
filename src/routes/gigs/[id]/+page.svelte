@@ -4,6 +4,7 @@
   import { enhance } from '$app/forms';
   import type { Gig, GigSet } from '$lib/gig';
   import {
+    canEditGigs,
     formatGigDate,
     formatGigTimes,
     formatGigTimeRange,
@@ -20,7 +21,7 @@
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
-  const isAdmin = $derived(page.data.user?.role === 'admin');
+  const canEdit = $derived(canEditGigs(page.data.user?.role));
 
   // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).
   const assetIndex = $derived(assetIndexFor(catalog));
@@ -34,7 +35,7 @@
   const bySlug = $derived(new Map(catalog.tunes.map((t) => [t.slug, t])));
   const titleOf = (slug: string) => bySlug.get(slug)?.title ?? slug;
 
-  // The pool an admin can add to a set: songs in a "current" status. Always /
+  // The pool an organizer/admin can add to a set: songs in a "current" status. Always /
   // Active / Learning are the assignable statuses minus the long-term Archive.
   const ADDABLE = new Set(['Always', 'Active', 'Learning']);
   const addable = $derived(
@@ -43,7 +44,7 @@
       .sort((a, b) => a.title.localeCompare(b.title))
   );
 
-  // --- Info editing (admin) -------------------------------------------------
+  // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
 
   // Resolve a song's printable chart in the chosen instrument/format.
@@ -217,14 +218,19 @@
       <p class="kicker">Gig Packet</p>
       <h2>{gig.name}</h2>
     </div>
-    {#if isAdmin}
-      <button class="edit" onclick={() => (editing = !editing)}>
-        {editing ? 'Done editing' : 'Edit info'}
-      </button>
+    {#if canEdit}
+      <div class="editor-actions">
+        <form method="POST" action="?/duplicateGig" use:enhance>
+          <button type="submit" class="edit">Duplicate packet</button>
+        </form>
+        <button class="edit" onclick={() => (editing = !editing)}>
+          {editing ? 'Done editing' : 'Edit info'}
+        </button>
+      </div>
     {/if}
   </header>
 
-  {#if editing && isAdmin}
+  {#if editing && canEdit}
     <!-- Info editor. Up to a few time slots, plus location + notes. -->
     <form
       class="info-form"
@@ -310,7 +316,7 @@
             {#if set.songSlugs.some((slug) => scoreFor(slug))}
               <button class="perform" onclick={() => startPerform(set.id)}>▶ Perform set</button>
             {/if}
-            {#if isAdmin && gig.sets.length > 1}
+            {#if canEdit && gig.sets.length > 1}
               <form
                 method="POST"
                 action="?/removeSet"
@@ -339,7 +345,7 @@
                   {:else}
                     <span class="no-chart">no chart for this instrument</span>
                   {/if}
-                  {#if isAdmin}
+                  {#if canEdit}
                     <form method="POST" action="?/moveSong" use:enhance>
                       <input type="hidden" name="setId" value={set.id} />
                       <input type="hidden" name="slug" value={slug} />
@@ -369,7 +375,7 @@
           </ol>
         {/if}
 
-        {#if isAdmin}
+        {#if canEdit}
           <form class="add-song" method="POST" action="?/addSong" use:enhance>
             <input type="hidden" name="setId" value={set.id} />
             <select name="slug" aria-label="Add a song">
@@ -384,7 +390,7 @@
       </div>
     {/each}
 
-    {#if isAdmin}
+    {#if canEdit}
       <form class="add-set" method="POST" action="?/addSet" use:enhance>
         <input name="name" placeholder="New set name (optional)" />
         <button type="submit" class="add-btn">+ Add set</button>
@@ -427,8 +433,8 @@
     </div>
   {/if}
 
-  <!-- Delete gig (admin) -->
-  {#if isAdmin}
+  <!-- Delete gig -->
+  {#if canEdit}
     <form
       class="delete-gig"
       method="POST"
@@ -499,6 +505,13 @@
     font-weight: 700;
     font-size: 0.8rem;
     cursor: pointer;
+  }
+
+  .editor-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   /* Read-only info block */

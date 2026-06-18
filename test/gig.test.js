@@ -16,11 +16,13 @@ import {
   formatGigTimeRange,
   mapsUrl,
   compareByDate,
+  canEditGigs,
 } from '../src/lib/gig.ts';
 import {
   listGigs,
   getGig,
   createGig,
+  duplicateGig,
   updateGig,
   deleteGig,
   addSet,
@@ -99,6 +101,14 @@ test('compareByDate orders ascending', () => {
   assert.ok(compareByDate(b, a) > 0);
 });
 
+test('canEditGigs allows admins and organizers only', () => {
+  assert.equal(canEditGigs('admin'), true);
+  assert.equal(canEditGigs('organizer'), true);
+  assert.equal(canEditGigs('member'), false);
+  assert.equal(canEditGigs(null), false);
+  assert.equal(canEditGigs(undefined), false);
+});
+
 // --- Store (against a temp dir; never the real data/) -----------------------
 
 async function withTempDir(fn) {
@@ -139,6 +149,41 @@ test('store: create/list/get/update/delete round-trips', async () => {
     assert.equal(deleteGig(gig.id, dir), true);
     assert.equal(deleteGig(gig.id, dir), false);
     assert.deepEqual(listGigs(dir), []);
+  });
+});
+
+test('store: duplicateGig copies info and setlists into a new gig', async () => {
+  await withTempDir(async (dir) => {
+    const original = createGig(
+      {
+        name: 'Summer Fair',
+        date: '2026-07-04',
+        times: [{ start: '14:00', end: '16:00' }],
+        location: { name: 'Town Green', address: '1 Main St' },
+        notes: 'Bring stands',
+        sets: [
+          { id: 'set-a', name: 'Main', songSlugs: ['song-a', 'song-b'] },
+          { id: 'set-b', name: 'Encore', songSlugs: ['song-c'] },
+        ],
+      },
+      dir
+    );
+
+    const copy = duplicateGig(original.id, dir);
+
+    assert.ok(copy);
+    assert.notEqual(copy.id, original.id);
+    assert.equal(copy.name, 'Summer Fair Copy');
+    assert.equal(copy.date, original.date);
+    assert.deepEqual(copy.times, original.times);
+    assert.deepEqual(copy.location, original.location);
+    assert.equal(copy.notes, original.notes);
+    assert.deepEqual(
+      copy.sets.map((s) => ({ name: s.name, songSlugs: s.songSlugs })),
+      original.sets.map((s) => ({ name: s.name, songSlugs: s.songSlugs }))
+    );
+    assert.notEqual(copy.sets[0].id, original.sets[0].id);
+    assert.equal(listGigs(dir).length, 2);
   });
 });
 
@@ -191,6 +236,7 @@ test('store: unknown id returns null/false', async () => {
   await withTempDir(async (dir) => {
     assert.equal(getGig('nope', dir), null);
     assert.equal(updateGig('nope', { name: 'x' }, dir), null);
+    assert.equal(duplicateGig('nope', dir), null);
     assert.equal(addSet('nope', undefined, dir), null);
     assert.equal(deleteGig('nope', dir), false);
   });
