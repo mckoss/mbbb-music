@@ -2,11 +2,24 @@
   import { page } from '$app/state';
   import { enhance } from '$app/forms';
   import type { Gig } from '$lib/gig';
-  import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation } from '$lib/gig';
+  import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation, isValidDate } from '$lib/gig';
   import { listDownloaded } from '$lib/offline';
 
   const gigs = $derived(page.data.gigs as Gig[]);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+
+  // Today as a local YYYY-MM-DD string, to split past from upcoming gigs.
+  function todayStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // `gigs` arrives sorted by date ascending. Undated gigs (newly created) stay
+  // with upcoming so they're easy to find and edit. Upcoming keeps chronological
+  // order; past gigs read most-recent first.
+  const today = todayStr();
+  const upcoming = $derived(gigs.filter((g) => !isValidDate(g.date) || g.date >= today));
+  const past = $derived(gigs.filter((g) => isValidDate(g.date) && g.date < today).reverse());
 
   // Which gigs are saved for offline, so the list can flag them.
   let offlineIds = $state(new Set<string>());
@@ -40,31 +53,45 @@
     {/if}
   </header>
 
+  {#snippet gigCard(gig: Gig)}
+    <li>
+      <a class="card" href={`/gigs/${gig.id}`}>
+        <div class="card-main">
+          <h3>
+            {gig.name}
+            {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
+          </h3>
+          <p class="when">{formatGigDate(gig.date)}</p>
+          {#if formatGigTimes(gig.times)}
+            <p class="meta">{formatGigTimes(gig.times)}</p>
+          {/if}
+          {#if formatGigLocation(gig.location)}
+            <p class="meta">{formatGigLocation(gig.location)}</p>
+          {/if}
+        </div>
+        <span class="count">{setsSummary(gig)}</span>
+      </a>
+    </li>
+  {/snippet}
+
   {#if gigs.length === 0}
     <p class="empty">No gigs yet.{#if canEdit} Use the New gig button to create one.{/if}</p>
   {:else}
-    <ul class="list">
-      {#each gigs as gig (gig.id)}
-        <li>
-          <a class="card" href={`/gigs/${gig.id}`}>
-            <div class="card-main">
-              <h3>
-                {gig.name}
-                {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
-              </h3>
-              <p class="when">{formatGigDate(gig.date)}</p>
-              {#if formatGigTimes(gig.times)}
-                <p class="meta">{formatGigTimes(gig.times)}</p>
-              {/if}
-              {#if formatGigLocation(gig.location)}
-                <p class="meta">{formatGigLocation(gig.location)}</p>
-              {/if}
-            </div>
-            <span class="count">{setsSummary(gig)}</span>
-          </a>
-        </li>
-      {/each}
-    </ul>
+    {#if upcoming.length > 0}
+      <ul class="list">
+        {#each upcoming as gig (gig.id)}
+          {@render gigCard(gig)}
+        {/each}
+      </ul>
+    {/if}
+    {#if past.length > 0}
+      <h3 class="divider">Past Gigs</h3>
+      <ul class="list">
+        {#each past as gig (gig.id)}
+          {@render gigCard(gig)}
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </section>
 
@@ -124,6 +151,23 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
   }
 
   .card {
