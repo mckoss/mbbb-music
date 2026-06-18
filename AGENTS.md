@@ -81,11 +81,12 @@ deploy commands before assuming another agent will know them.
 
 ## Isolated Changes With Git Worktrees
 
-For an independent code change that shouldn't disturb other in-progress work in
-the main checkout, run the whole lifecycle in a git worktree:
-**isolate → modify → commit → push → then dispose.** Push the worktree's branch
-straight to the remote; do **not** merge the branch back into the main checkout
-first — that adds churn and obscures which checkout you're operating in.
+Every code change runs its whole lifecycle in a git worktree:
+**isolate → modify → commit → push → then dispose.** Creating the worktree is
+the **first** step — make it *before* touching any code, not after starting to
+edit in the main checkout. Push the worktree's branch straight to the remote; do
+**not** merge the branch back into the main checkout first — that adds churn and
+obscures which checkout you're operating in.
 
 1. **Isolate.** Create the worktree and symlink the three gitignored paths a
    fresh checkout lacks — `data/` (manifest + content-addressed blobs),
@@ -111,6 +112,14 @@ first — that adds churn and obscures which checkout you're operating in.
    `build`, the tests, and the no-auth dev server need none of `config.json`'s
    secrets — only a real Drive re-sync does — so you can verify a change end to
    end without ever touching credentials.
+
+   If a dev server is already running in the main checkout, **stop it first**,
+   then start the dev server in the worktree so it reuses port **5173** — the
+   worktree's running app is the one you're changing. Vite picks the next free
+   port (5174…) if 5173 is still held, so leaving the old server up would serve
+   the worktree on the wrong port and the main checkout's stale code on 5173.
+   Stop the worktree's server and restart the main checkout's on 5173 only after
+   you dispose of the worktree.
 
 2. **Modify** the code. If the change affects classification, re-sync here — it
    writes **through** the `data` symlink to the shared manifest the running
