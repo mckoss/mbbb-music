@@ -32,6 +32,15 @@ next.
    matter.
 5. Keep changes scoped. This repo is early-stage design work; avoid inventing a
    full framework or backend until the next implementation step is explicit.
+6. Get explicit clearance before committing, pushing, or disposing a worktree.
+   Settling the design — answering "discuss before implementing" questions,
+   agreeing on an approach — is **not** authorization to ship. Implementing,
+   committing, pushing to `main`, and removing the review worktree are each a
+   separate gate that needs its own explicit go-ahead ("commit and push",
+   "ship it", "this is cleared"). When the design is set, build in the worktree,
+   then **stop and show the result** — leave the worktree in place and the
+   branch unpushed until the user clears it. Pushing to `main` is outward and
+   irreversible; never do it on inferred approval. When unsure, ask.
 
 ## Current Repository Shape
 
@@ -125,17 +134,26 @@ obscures which checkout you're operating in.
    writes **through** the `data` symlink to the shared manifest the running
    server reads (intentional, not a leak).
 
-3. **Commit** in the worktree, staging only the files you changed
-   (`git add <paths>` — never `git add -A`; the `data`/`node_modules` symlinks
-   show as untracked because the trailing-slash `.gitignore` patterns don't match
-   symlinks). Bump the version here too — the worktree's `package.json` is clean,
-   which avoids fighting unrelated uncommitted edits in the main checkout.
+   After you finish modifying and verifying (`check`/`build`/tests), **stop and
+   show the result.** Do not advance to Commit/Push/Dispose on your own — those
+   need explicit clearance per Hard Rule 6. Settling the design is not that
+   clearance; wait for words like "commit and push", "ship it", or "this is
+   cleared" before continuing.
+
+3. **Commit** in the worktree — *only once cleared* — staging only the files you
+   changed (`git add <paths>` — never `git add -A`; the `data`/`node_modules`
+   symlinks show as untracked because the trailing-slash `.gitignore` patterns
+   don't match symlinks). Bump the version here too — the worktree's
+   `package.json` is clean, which avoids fighting unrelated uncommitted edits in
+   the main checkout.
 
 4. **Push** the branch from the worktree straight to the remote
-   (`git push origin <branch>:main`, since this repo works direct-to-main).
+   (`git push origin <branch>:main`, since this repo works direct-to-main) — an
+   outward, irreversible step, so only on explicit go-ahead, never inferred.
 
-5. **Dispose** only after the push has landed: `rm` the three symlinks, then
-   `git worktree remove <path>` and delete the branch.
+5. **Dispose** only after the push has landed *and* the user has cleared the
+   implementation — keep the worktree in place for review until then. To dispose:
+   `rm` the symlinks, then `git worktree remove <path>` and delete the branch.
 
 ## Dependencies
 
