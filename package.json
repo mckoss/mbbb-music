@@ -1,6 +1,6 @@
 {
   "name": "mbbb-music",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "private": true,
   "description": "Mutiny Bay Brass Band music library tooling. Phase 1: Google Drive asset sync.",
   "type": "module",
@@ -27,6 +27,7 @@
   "dependencies": {
     "@napi-rs/canvas": "1.0.0",
     "google-auth-library": "9.15.1",
+    "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.0.227",
     "sharp": "0.34.5"
   },

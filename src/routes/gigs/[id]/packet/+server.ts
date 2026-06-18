@@ -1,0 +1,60 @@
+// Combined-PDF download for a gig packet. Resolves the gig's charts for the
+// requested instrument/format and streams them merged into one PDF as an
+// attachment. The instrument/format come from the query string (the download
+// box's local pickers), independent of the viewer's global cookie choice.
+import { error } from '@sveltejs/kit';
+
+import { getGig } from '$lib/server/gigs';
+import { getCatalog } from '$lib/server/library';
+import { instrumentDisplay } from '$lib/format';
+import type { Catalog } from '$lib/types';
+import type { PrintFormat } from '$lib/stores';
+import { packetCharts, buildPacketPdf } from '$lib/server/packet';
+
+/** Strip characters unsafe in a Content-Disposition filename. */
+function safeName(s: string): string {
+  return s.replace(/[\\/"\r\n]/g, '-').replace(/\s+/g, ' ').trim();
+}
+
+export async function GET({ params, url }) {
+  const gig = getGig(params.id ?? '');
+  if (!gig) throw error(404, 'Gig not found');
+  // The server catalog's JSDoc under-describes instruments (no `key`) and tunes
+  // (no `status`); both are present at runtime, so widen to the full type — the
+  // same cast the gig page makes on the serialized catalog.
+  const catalog = getCatalog() as unknown as Catalog;
+
+  const instrument = url.searchParams.get('instrument') ?? '';
+  const format: PrintFormat = url.searchParams.get('format') === 'lyre' ? 'lyre' : 'letter';
+
+  const charts = packetCharts(gig, catalog, instrument, format);
+  if (charts.length === 0) throw error(404, 'No charts for this instrument and format');
+
+  const inst = catalog.instruments.find((i) => i.slug === instrument);
+  const instLabel = inst ? instrumentDisplay(inst.label, inst.key) : instrument || 'All parts';
+  const fmtLabel = format === 'lyre' ? 'Lyre' : 'Letter';
+
+  const pdf = await buildPacketPdf(charts, `${gig.name} — ${instLabel} (${fmtLabel})`);
+  if (!pdf) throw error(404, 'No charts could be assembled into a PDF');
+
+  // RFC 5987: an ASCII-only fallback plus a UTF-8 name so keys like "B♭" survive.
+  const niceName = `MBBB - ${gig.name} - ${instLabel} (${fmtLabel}).pdf`;
+  // ASCII fallback: transliterate the accidental glyphs so "B♭" reads "Bb", not "B".
+  const asciiName = safeName(niceName.replace(/♭/g, 'b').replace(/♯/g, '#')).replace(
+    /[^\x20-\x7e]/g,
+    ''
+  );
+  const disposition =
+    `attachment; filename="${asciiName}"; ` +
+    `filename*=UTF-8''${encodeURIComponent(safeName(niceName))}`;
+
+  return new Response(pdf as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      'content-type': 'application/pdf',
+      'content-disposition': disposition,
+      'content-length': String(pdf.byteLength),
+      'cache-control': 'no-store',
+    },
+  });
+}

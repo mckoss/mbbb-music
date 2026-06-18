@@ -81,6 +81,46 @@
   );
   const fmtLabel = $derived(format === 'lyre' ? 'Lyre' : 'Letter');
 
+  // --- Combined-PDF download box -------------------------------------------
+  // The box carries its own Instrument + Format pickers so a player can build a
+  // packet for a different instrument/format without disturbing their global
+  // (header) choice. They default to the global selection until changed.
+  let dlInstrument = $state<string | null>(null);
+  let dlFormat = $state<PrintFormat | null>(null);
+  const packetInstrument = $derived(dlInstrument ?? instrument);
+  const packetFormat = $derived(dlFormat ?? format);
+
+  const packetInstLabel = $derived(
+    instrumentDisplay(
+      catalog.instruments.find((i) => i.slug === packetInstrument)?.label ?? packetInstrument,
+      catalog.instruments.find((i) => i.slug === packetInstrument)?.key ?? null
+    )
+  );
+
+  // The charts for the box's chosen instrument/format — same resolution as
+  // `downloads`, but keyed off the local pickers. Drives both the per-chart list
+  // and the combined-PDF link.
+  const packetDownloads = $derived.by(() => {
+    const seen = new Set<string>();
+    const out: { slug: string; title: string; sha: string; label: string }[] = [];
+    for (const set of gig.sets) {
+      for (const slug of set.songSlugs) {
+        const tune = bySlug.get(slug);
+        const sc = tune ? activeScore(tune, packetInstrument, packetFormat, null) : null;
+        if (sc && !seen.has(sc.sha)) {
+          seen.add(sc.sha);
+          out.push({ slug, title: titleOf(slug), sha: sc.sha, label: sc.label });
+        }
+      }
+    }
+    return out;
+  });
+
+  const hasSongs = $derived(gig.sets.some((s) => s.songSlugs.length > 0));
+  const packetHref = $derived(
+    `/gigs/${page.params.id}/packet?instrument=${encodeURIComponent(packetInstrument)}&format=${packetFormat}`
+  );
+
   // --- Perform-set mode -----------------------------------------------------
   // Driven by the URL (?perform=<setId>&i=<index>) so it's refresh-safe and the
   // browser Back button steps out. We chain through a set's songs, paging each
@@ -410,26 +450,56 @@
   />
 
   <!-- Downloads -->
-  {#if downloads.length > 0}
+  {#if hasSongs}
     <div class="downloads">
       <h3>Download charts</h3>
       <p class="hint">
-        Charts resolve to your chosen instrument
-        ({instrumentDisplay(
-          catalog.instruments.find((i) => i.slug === instrument)?.label ?? instrument,
-          catalog.instruments.find((i) => i.slug === instrument)?.key ?? null
-        )}) and format ({format === 'lyre' ? 'Lyre' : 'Letter'}). A single combined
-        zip is not yet available — download each chart below.
+        Pick the instrument and format for this packet — defaults to your current
+        choice and doesn't change it.
       </p>
-      <ul class="dl-list">
-        {#each downloads as d (d.sha)}
-          <li>
-            <a href={openUrl(d.sha)} target="_blank" rel="noopener">
-              {d.title} <span class="dl-label">— {d.label}</span>
-            </a>
-          </li>
-        {/each}
-      </ul>
+
+      <div class="dl-pickers">
+        <label class="dl-pick">
+          <span>Instrument</span>
+          <select value={packetInstrument} onchange={(e) => (dlInstrument = e.currentTarget.value)}>
+            {#each catalog.instruments as inst (inst.slug)}
+              <option value={inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="dl-pick">
+          <span>Format</span>
+          <select
+            value={packetFormat}
+            onchange={(e) => (dlFormat = e.currentTarget.value as PrintFormat)}
+          >
+            <option value="letter">Letter</option>
+            <option value="lyre">Lyre</option>
+          </select>
+        </label>
+      </div>
+
+      {#if packetDownloads.length > 0}
+        <a class="packet-btn" href={packetHref}>
+          ⬇ Download all as one PDF ({packetDownloads.length} chart{packetDownloads.length === 1
+            ? ''
+            : 's'})
+        </a>
+        <ul class="dl-list">
+          {#each packetDownloads as d (d.sha)}
+            <li>
+              <a href={openUrl(d.sha)} target="_blank" rel="noopener">
+                {d.title} <span class="dl-label">— {d.label}</span>
+              </a>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="hint">
+          No charts for {packetInstLabel} ({packetFormat === 'lyre' ? 'Lyre' : 'Letter'}) in this
+          packet. Try another instrument or format.
+        </p>
+      {/if}
     </div>
   {/if}
 
@@ -810,6 +880,39 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .dl-pickers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .dl-pick {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 160px;
+  }
+
+  .dl-pick span {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .packet-btn {
+    align-self: flex-start;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 18px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-strong);
+    background: var(--accent);
+    color: #fffdf7;
+    font-weight: 700;
+    text-decoration: none;
   }
 
   .dl-list {
