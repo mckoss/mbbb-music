@@ -1,10 +1,11 @@
-// Strip the title frame from a part's MuseScore file and derive a compact header.
+// Strip the title frame from a part's MuseScore file and derive header text.
 //
 // MuseScore's title block is a leading <VBox> holding aligned <Text> elements —
 // `title` (centered), `composer`/arranger (right), `instrument_excerpt` (left).
-// On a lyre card that frame wastes ~half an inch of height. We remove it and
-// return a one-line "Title - Instrument" string for the caller to overlay in a
-// thin header band instead (see stamp.js), reclaiming room for another system.
+// That frame is inconsistent across sources and wastes height. We remove it and
+// return the title + instrument so the caller can overlay an app-owned header in
+// a thin band instead (see stamp.js): lyre uses a one-line "Title - Instrument";
+// letter uses a large centered title with the instrument on the left.
 //
 // A part .mscz is a zip; we read the part's .mscx out of it with the `unzip`
 // CLI (present on macOS/Linux — this is a local-only tool) and render that bare
@@ -41,9 +42,10 @@ function textForStyle(mscx, styleName) {
  * @param {string} partMscz   Path to the extracted part .mscz.
  * @param {string} outDir     Where to write the stripped .mscx.
  * @param {number} idx        Part index (for a unique filename).
- * @param {string} fallback   Header to use if no title frame is found.
- * @returns {Promise<{ mscxPath: string, header: string } | null>}
- *          null if the .mscx can't be located (caller should fall back).
+ * @param {string} fallback   Text to use if no title/instrument is found.
+ * @returns {Promise<{ mscxPath: string, header: string, title: string, instrument: string } | null>}
+ *          `header` is the lyre one-liner; `title`/`instrument` are the letter
+ *          header's zones. null if the .mscx can't be located (caller falls back).
  */
 export async function stripTitleFrame(partMscz, outDir, idx, fallback) {
   const { stdout: listing } = await execFileP('unzip', ['-Z1', partMscz]);
@@ -65,7 +67,7 @@ export async function stripTitleFrame(partMscz, outDir, idx, fallback) {
   // the same frame, so this drops it too — exactly what we want.
   const stripped = mscx.replace(/<VBox>[\s\S]*?<\/VBox>/, '');
 
-  const mscxPath = join(outDir, `lyre-${idx}.mscx`);
+  const mscxPath = join(outDir, `stripped-${idx}.mscx`);
   await writeFile(mscxPath, stripped);
-  return { mscxPath, header };
+  return { mscxPath, header, title: title || fallback, instrument: instrument || fallback };
 }

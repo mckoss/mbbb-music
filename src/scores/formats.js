@@ -51,23 +51,46 @@
 
 /** @type {Record<string, Format>} */
 export const FORMATS = {
-  // Music stand — US Letter, full-size notation. Raster 3: staffSpace 1.75 mm
-  // ⇒ 7.0 mm total staff height, the standard for instrumental parts read at a
-  // 24–36" stand distance. Generous spacing; multi-measure rests on (standard
-  // for any printed part).
+  // Music stand — US Letter, full-size notation read at a 24–36" stand distance.
+  // Like lyre, this is title-frame-stripped with an app-owned header overlaid
+  // instead (a large CENTERED title, the instrument/part on the left, page number
+  // top-right, render date bottom-right — see stamp.js). The 1" top `marginTop`
+  // reserves that header band; the other three margins are 0.5".
+  //
+  // staffSpace here is the FLOOR (fit rung 0). The `fit` ladder grows it per part:
+  // a part that can fit on one page at a reasonable size is compressed to do so
+  // (avoiding a page turn); a part that must wrap is ENLARGED for legibility and
+  // spread to fill the pages. The geometric midpoint √3 ≈ 1.73 ≈ the classic
+  // 1.75 mm "raster 3" standard, so 1.75 is the centre rung.
   letter: {
     label: 'Music stand — Letter (8.5×11)',
     pageWidth: 8.5,
     pageHeight: 11,
-    margin: 0.5,
-    staffSpace: 1.75,
+    margin: 0.5, // left / right / bottom
+    marginTop: 1.0, // header band (stripped title frame is replaced by an overlay)
+    staffSpace: 1.5, // FLOOR — see fit.ladder
     style: {
       createMultiMeasureRests: true,
       enableIndentationOnFirstSystem: false, // parts don't need the score indent
-      // Readability first — page count doesn't matter here. Roomy systems, no
-      // horizontal compression (default note spacing), let the page justify.
-      minSystemDistance: 12.0, // sp; generous gap between systems
-      maxSystemDistance: 20.0, // sp; allow justification to spread comfortably
+      // Vertical justification is ON, so the SPREAD range governs system gaps.
+      // minSystemSpread stays low so the floor rung can pack systems tightly
+      // enough to win a single page; maxSystemSpread is eased per rung (fit.relax)
+      // from a tighter cap to a generous one so a sparse page still fills.
+      minSystemSpread: 2.5, // sp
+      minSystemDistance: 8.0, // sp; justify-off fallback
+      maxSystemDistance: 16.0, // sp
+    },
+    fit: {
+      // Rounded near-geometric (≈7.5%/step) from the 1.5 mm floor to a 2.0 mm
+      // ceiling, with the 1.75 mm standard dead centre.
+      ladder: [1.5, 1.6, 1.75, 1.85, 2.0],
+      // Eased from pack (floor, compress to save a page) → comfortable (ceiling,
+      // roomy and legible), linear by rung index.
+      relax: {
+        maxSystemSpread: [10.0, 28.0], // sp; pack at floor, spread to fill at ceiling
+        measureSpacing: [1.2, 1.5], // horizontal: compress at floor, default at ceiling
+        minNoteDistance: [0.5, 0.7], // sp; ease the gap between notes
+      },
     },
   },
 

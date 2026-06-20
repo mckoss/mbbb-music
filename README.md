@@ -188,23 +188,38 @@ everything else follows.
 
 | Decision | Letter (music stand) | Lyre (flip-folder card) |
 | --- | --- | --- |
-| **Staff space (Spatium)** | **1.75 mm** → ~7.0 mm staff | **1.35 mm** → ~5.4 mm staff |
+| **Staff space (Spatium)** | **1.5–2.0 mm** (fit; 1.75 default) | **1.35–1.9 mm** (fit; 1.35 floor) |
 | Reading distance | 24–36" (a music stand) | ~12–18" (clipped to the instrument) |
 | Physical sheet | 8.5 × 11 portrait | 8.5 × 11 portrait (carrier) |
 | Finished size | full sheet | 7 × 5.5 card, top-left corner |
-| Margins | 0.5" all sides | 0.25" all sides, 0.5" top band |
-| Priority | readability first | space conservation first |
+| Margins | 0.5" sides/bottom, 1" header band | 0.25" all sides, 0.5" top band |
+| Fit goal | one page if reasonable, else enlarge | grow to fill the card |
 
-### Letter — the music-stand part (`staffSpace: 1.75 mm`)
+Both formats are **title-frame-stripped with an app-owned header overlaid** (so
+the header is consistent across the library regardless of the source's title
+block) and both run the **fit-to-page search** below — they differ only in the
+ladder range, the header layout, and what "fit" optimizes for.
+
+### Letter — the music-stand part (fit `1.5 → 2.0 mm`, 1.75 standard)
 
 1.75 mm is the long-standing standard for instrumental parts read at arm's length
-on a stand (~7.0 mm staff height, MuseScore's "raster 3"). Page count doesn't
-matter here, so the layout is deliberately roomy: generous system gaps
-(`minSystemDistance: 12 sp`, `maxSystemDistance: 20 sp`), default note spacing (no
-horizontal compression), and the page is left to justify comfortably.
-Multi-measure rests are consolidated (standard for any single part), and the
-score's first-system indent is reclaimed since a part needs no indent. The PDF
-keeps MuseScore's own title block, with a render date stamped bottom-right.
+on a stand (~7.0 mm staff height, MuseScore's "raster 3"). But a fixed size either
+wastes paper on short parts or forces an avoidable page turn, so Letter runs the
+fit search (below) over a ladder **centered on 1.75** that reaches down to 1.5 mm
+and up to 2.0 mm. The goal here is different from lyre's:
+
+- **Prefer one page.** If a part fits on one page at a *reasonable* size, it's
+  compressed (down to the 1.5 mm floor) to avoid a page turn.
+- **Enlarge when it must wrap.** If it can't fit one page even at the floor,
+  compression buys nothing — so it's rendered *larger* (up to 2.0 mm) and spread
+  to fill the pages, for maximum legibility.
+
+Spacing eases with size like lyre (tighter at the 1.5 floor to win a page, roomy
+by 2.0). Multi-measure rests are consolidated and the first-system indent is
+reclaimed. The header is a large **centered title**, the **instrument/part on the
+left**, the **page number top-right** (multi-page only), and the **render date
+bottom-right** in the 0.5" bottom margin; the 1" top margin reserves the header
+band.
 
 ### Lyre — the flip-folder card (`staffSpace: 1.35 mm`)
 
@@ -227,15 +242,21 @@ pack the most music onto a small card while staying legible:
 These compression numbers are the **floor** profile: the right choice only for a
 part long enough to need every bit of the card. A short part rendered at the floor
 just floats in tiny 1.35 mm notes with the bottom half of the card empty — so the
-floor is a *minimum*, not the size we always use (see fit-to-card below).
+floor is a *minimum*, not the size we always use (see the fit search below).
 
-### Fit-to-card: growing the notes to fill the page
+### The fit-to-page search (both formats)
 
-For a part with slack, 1.35 mm wastes the card. So the lyre build does a
-**fit-to-card search**: it renders the part at a ladder of staff spaces and keeps
-the **largest one that doesn't add a page** over the floor. Short parts come out
-big and readable; long parts stay at the floor where they belong — automatically,
-per part.
+A fixed staff size is wrong in both directions: it wastes paper on short parts and
+forces avoidable page turns on long ones. So **both formats** render each part at a
+**ladder of staff spaces** and keep, per part, the **largest rung that doesn't add
+a page over the floor** (rung 0, the most compressed). What the floor *means*
+differs:
+
+- **Lyre** — the floor is the legibility minimum, so the search only ever *grows*
+  notes to fill the card. Short parts come out big; long parts stay at the floor.
+- **Letter** — the floor is a compression minimum below the 1.75 default, so the
+  search will *shrink* a part (down to 1.5 mm) to win a single page, or *enlarge* it
+  (up to 2.0 mm) when it must wrap anyway. Same rule, different ladder.
 
 This works because **page count is monotonic in staff space**: bigger notes ⇒ more
 vertical space per system ⇒ fewer systems per page ⇒ more pages. So "the largest
@@ -243,30 +264,32 @@ size that holds the page count" is well-defined, and you find it by measuring (y
 can't predict bars-per-system from the notes, and MuseScore has no auto-grow mode —
 so we render, count pages with `pdf-lib`, and pick).
 
-The ladder is a rounded, nearly geometric progression — equal *ratio* steps
-(≈ 8.9% each), because perceived size scales multiplicatively, so the rungs look
-evenly spaced rather than bunched at the small end:
+Each ladder is a rounded, nearly geometric progression — equal *ratio* steps,
+because perceived size scales multiplicatively, so the rungs look evenly spaced
+rather than bunched at the small end:
 
-| Rung | Staff space | ≈ staff height | Note |
+| Lyre rung | Staff space | Letter rung | Staff space |
 | --- | --- | --- | --- |
-| 0 (floor) | **1.35 mm** | 5.4 mm | legibility floor; long parts land here |
-| 1 | **1.5 mm** | 6.0 mm | |
-| 2 | **1.6 mm** | 6.4 mm | |
-| 3 | **1.75 mm** | 7.0 mm | ≈ the letter / music-stand size |
-| 4 (ceiling) | **1.9 mm** | 7.6 mm | cap, so a tiny part doesn't get comical |
+| 0 (floor) | **1.35 mm** | 0 (floor) | **1.5 mm** |
+| 1 | 1.5 mm | 1 | 1.6 mm |
+| 2 | 1.6 mm | 2 (default) | 1.75 mm |
+| 3 | 1.75 mm | 3 | 1.85 mm |
+| 4 (ceiling) | **1.9 mm** | 4 (ceiling) | **2.0 mm** |
+
+(Lyre steps ≈ 8.9%; Letter ≈ 7.5%, with the geometric midpoint √3 ≈ 1.73 ≈ the
+1.75 standard sitting dead centre.)
 
 **Pack and fill are different goals**, so the spacing eases *with* the size: as the
 rung climbs from floor to ceiling, the compression knobs are interpolated back
-toward roomy values — `maxSystemSpread` 5 → 20 sp (systems spread down to fill the
-card instead of clustering at the top), `measureSpacing` 1.3 → 1.5, and
-`minNoteDistance` 0.4 → 0.6 sp. So bigger notes also breathe horizontally and
-vertically rather than staying crushed.
+toward roomy values (`maxSystemSpread`, `measureSpacing`, `minNoteDistance`) — so
+bigger notes also breathe horizontally and vertically instead of staying crushed,
+and a sparse page spreads to fill rather than clustering at the top.
 
 Cost is bounded: each rung is one *batched* MuseScore run over all parts (reusing
-the batch-reliability trick), so the whole search is `ladder.length` runs total,
-independent of part count. The build prints the chosen staff space and the page
-floor it achieved for each part, e.g.
-`✓ tune-trumpet-bflat-lyre.pdf — spatium 1.60 mm, floor 1 pg`.
+the batch-reliability trick), so the whole search is `ladder.length` runs per
+format, independent of part count. The build prints the chosen staff space and the
+page floor it achieved for each part, e.g.
+`✓ tune-trumpet-bflat-letter.pdf — spatium 1.60 mm, floor 1 pg`.
 
 ### The lyre card: page geometry and the two cuts
 
@@ -289,16 +312,18 @@ trimmed edges.
 
 ### Header and page-number overlay
 
-Both formats overlay small corner text *on top of* the rendered music (via
-`pdf-lib`, in `src/scores/stamp.js`), reserving no layout space. The lyre format
-**strips MuseScore's title frame** (reclaiming roughly a system of height) and
-replaces it with a compact 8 pt bold **"Title – Instrument"** header in the
-top-left band, with the render date top-right (the bottom is left entirely to
-music). Letter keeps its full title block and stamps the date bottom-right.
+Both formats **strip MuseScore's inconsistent title frame** and overlay an
+app-owned header *on top of* the rendered music (via `pdf-lib`, in
+`src/scores/stamp.js`), reserving only the format's header band. The two layouts:
+
+- **Lyre** — a compact 8 pt bold **"Title – Instrument"** line in the top-left
+  band, render date top-right (the bottom is left entirely to music).
+- **Letter** — a large bold **centered title**, the **instrument/part** on the
+  left, and the **render date bottom-right** in the 0.5" bottom margin.
 
 Page numbers appear **only on multi-page parts**, and only once: on lyre they ride
-in the header as `Title – Instrument – p 2`; on letter they're appended to the
-bottom-right date as `– Page 2`. A single-sheet part shows no page number at all.
+in the header line as `Title – Instrument – p 2`; on letter they sit **top-right**
+of the header band as `p 2`. A single-sheet part shows no page number at all.
 
 ## Web interface (SvelteKit)
 

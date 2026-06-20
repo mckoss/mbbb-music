@@ -89,14 +89,19 @@ async function extractParts(bin, input, workDir) {
 }
 
 /**
- * Build a `fit`-ladder format (e.g. lyre): render the whole part batch at each
- * staff-space rung, then keep, per part, the LARGEST rung that doesn't add a page
- * over rung 0 — so a short part grows to fill the card instead of floating at the
- * top in floor-size notes. Page count is monotonic in staff space (bigger notes ⇒
- * fewer systems/page ⇒ more pages), so the kept rung is the roomiest legible fit.
+ * Build a `fit`-ladder format (lyre or letter): render the whole part batch at
+ * each staff-space rung, then keep, per part, the LARGEST rung that doesn't add a
+ * page over rung 0 (the floor). Page count is monotonic in staff space (bigger
+ * notes ⇒ fewer systems/page ⇒ more pages), so the kept rung is the roomiest fit
+ * at the minimum page count:
+ *   - Lyre: floor is the legibility minimum, so a short part grows to fill the card.
+ *   - Letter: floor is the compression minimum, so a part that can fit on one page
+ *     at a reasonable size is compressed to do so; one that must wrap is enlarged.
  *
  * Each rung is one batched MuseScore run (reusing the batch-reliability trick),
  * so the extra cost is `ladder.length` runs total, independent of part count.
+ * Both formats render the title-frame-stripped input and overlay an app-owned
+ * header; only the header layout (card vs. full-page) differs at stamp time.
  *
  * @param {object} ctx  Shared build state (see call site).
  */
@@ -111,7 +116,7 @@ async function buildFitFormat({ bin, fmt, key, named, outDir, workDir, title, re
     const rungDir = join(workDir, `${key}-r${r}`);
     await mkdir(rungDir, { recursive: true });
 
-    const job = named.map((p) => ({ in: p.lyreInput ?? p.path, out: join(rungDir, `${p.slug}.pdf`) }));
+    const job = named.map((p) => ({ in: p.strippedInput ?? p.path, out: join(rungDir, `${p.slug}.pdf`) }));
     const jobPath = join(workDir, `job-${key}-r${r}.json`);
     await writeFile(jobPath, JSON.stringify(job));
     // -f: don't abort on version/corruption warnings from older sources.
@@ -142,9 +147,20 @@ async function buildFitFormat({ bin, fmt, key, named, outDir, workDir, title, re
     const chosen = avail.filter((rg) => rg.pages <= budget).pop() ?? avail[0];
 
     await copyFile(chosen.path, finalOut);
-    // Card format: compact header top-left (+ page number on multi-page), date
-    // top-right; bottom stays free for music.
-    await stampCorners(finalOut, { header: p.header ?? p.name, date: renderDate, datePosition: 'topRight', trim });
+    // Card (lyre, has trim): compact one-line header top-left, date top-right so
+    // the bottom stays free for music. Full-page (letter): large centered title,
+    // instrument/part on the left, page number top-right, date bottom-right.
+    const stampOpts = trim
+      ? { header: p.header ?? p.name, date: renderDate, datePosition: 'topRight', trim }
+      : {
+          title: p.title ?? title,
+          header: p.instrument ?? p.name,
+          headerSize: 10,
+          titleSize: 17,
+          date: renderDate,
+          datePosition: 'bottomRight',
+        };
+    await stampCorners(finalOut, stampOpts);
     pdfs.push(finalOut);
     // Report the fit outcome to stdout: the staff space chosen for this part and
     // the page floor it achieved (the fewest pages possible — the chosen spatium
@@ -198,10 +214,12 @@ export async function buildParts(bin, input, opts = {}) {
     });
     log(`${basename(input)}: ${named.length} part(s) × ${formatKeys.length} format(s)`);
 
-    // Lyre strips the title frame (reclaiming ~a system of height) and overlays a
-    // compact "Title - Instrument" header instead. Precompute the stripped .mscx
-    // + header per part, once, only when lyre is requested.
-    if (formatKeys.includes('lyre')) {
+    // The fit formats (lyre, letter) strip the inconsistent title frame and
+    // overlay an app-owned header instead. Precompute the stripped .mscx + header
+    // fields per part, once, when any fit format is requested. `header` is the
+    // lyre one-liner; `title`/`instrument` are the letter header's zones.
+    const stripFor = formatKeys.filter((k) => FORMATS[k].fit);
+    if (stripFor.length) {
       for (let i = 0; i < named.length; i++) {
         const p = named[i];
         let stripped = null;
@@ -210,8 +228,10 @@ export async function buildParts(bin, input, opts = {}) {
         } catch {
           stripped = null; // unzip/edit failed — fall back to the framed source
         }
-        p.lyreInput = stripped?.mscxPath ?? p.path;
+        p.strippedInput = stripped?.mscxPath ?? p.path;
         p.header = stripped?.header ?? p.name;
+        p.title = stripped?.title ?? p.name;
+        p.instrument = stripped?.instrument ?? p.name;
       }
     }
 
