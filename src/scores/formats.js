@@ -60,25 +60,24 @@ export const FORMATS = {
     },
   },
 
-  // Lyre flip-folder card: a 7" wide × 5" tall card, but PRINTED on a full
+  // Lyre flip-folder card: a 7" wide × 5.5" tall card, but PRINTED on a full
   // landscape US Letter (11×8.5) sheet with the card pinned to the TOP-LEFT
   // corner. Players print on plain Letter stock and trim the card out with just
-  // two cuts — the right edge (7" from the left) and the bottom edge (5" from
+  // two cuts — the right edge (7" from the left) and the bottom edge (5.5" from
   // the top); the top and left edges are the paper's own. Cut guides for those
-  // two edges are drawn by stamp.js. The music layout inside the 7×5 box is
-  // unchanged from a standalone 7×5 page (same printable area + Spatium), so
-  // engraving, line breaks, and legibility are identical.
+  // two edges are drawn by stamp.js. (5.5" tall matches the flip-folder window;
+  // adjust trimHeight if your folder differs.)
   //
   // Everything below is tuned to compress a part onto the small card while
   // staying legible at the shorter lyre reading distance. staffSpace 1.35 mm ⇒
   // ~5.4 mm staff height (1.35–1.45 mm range; below ~1.30 mm ledger lines/
   // accidentals degrade).
   lyre: {
-    label: 'Lyre card (7×5, printed on Letter)',
+    label: 'Lyre card (7×5.5, printed on Letter)',
     pageWidth: 11.0, // landscape US Letter carrier sheet
     pageHeight: 8.5,
     trimWidth: 7.0, // finished card, pinned to the sheet's top-left corner
-    trimHeight: 5.0,
+    trimHeight: 5.5,
     // 1/4" all around. Because the card is pinned to the sheet's TOP-LEFT
     // corner, its top and left edges ARE the paper's edges — so this inset must
     // clear the printer's non-printable border. Consumer lasers/inkjets swallow
