@@ -150,8 +150,15 @@ export async function buildParts(bin, input, opts = {}) {
     }
 
     for (const key of formatKeys) {
+      const fmt = FORMATS[key];
       const stylePath = join(workDir, `${key}.mss`);
-      await writeFile(stylePath, styleFileFor(FORMATS[key]));
+      await writeFile(stylePath, styleFileFor(fmt));
+
+      // When the format trims a card out of a larger carrier sheet (lyre on
+      // Letter), pass the card size (in points) so corner stamps + cut guides
+      // align to the card, not the sheet.
+      const trim =
+        fmt.trimWidth && fmt.trimHeight ? { width: fmt.trimWidth * 72, height: fmt.trimHeight * 72 } : undefined;
 
       // One job: every part → its PDF for this format, in a single MuseScore run.
       // Lyre renders the title-stripped .mscx; other formats the original .mscz.
@@ -178,8 +185,8 @@ export async function buildParts(bin, input, opts = {}) {
         await stampCorners(
           out,
           key === 'lyre'
-            ? { header: part.header, date: renderDate, datePosition: 'topRight' }
-            : { date: renderDate, datePosition: 'bottomRight' },
+            ? { header: part.header, date: renderDate, datePosition: 'topRight', trim }
+            : { date: renderDate, datePosition: 'bottomRight', trim },
         );
         pdfs.push(out);
         log(`  ✓ ${basename(out)}`);
