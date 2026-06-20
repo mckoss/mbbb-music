@@ -168,6 +168,138 @@ extension before launching (on WSL via `Start-Process`, otherwise
 `open`/`xdg-open`); the blobs in `data/cas/` are never modified. To avoid
 opening a flood of windows, more than 25 matches requires `--yes`.
 
+## Print formatting (score PDFs)
+
+`bin/build-scores.js` (`npm run build-scores -- <file>.mscz`) renders a MuseScore
+file into per-instrument part PDFs in two **print formats**, tuned for two very
+different reading situations. All the layout decisions live in one place —
+`src/scores/formats.js` — so they can be re-tuned and re-rendered. This section
+records *why* the numbers are what they are.
+
+### The fundamental unit: staff space (Spatium)
+
+Every notation size scales off one master lever, MuseScore's **Spatium** (called
+`staffSpace` in the code): the distance between two adjacent staff lines, in
+millimetres. A five-line staff is four spaces tall, so total staff height ≈
+`4 × staffSpace`. Note heads, stems, flags, beams, and clefs all scale with it.
+Horizontal and vertical *system* spacing is expressed in **staff-spaces (`sp`)**,
+so those distances scale off the Spatium automatically. Get the Spatium right and
+everything else follows.
+
+| Decision | Letter (music stand) | Lyre (flip-folder card) |
+| --- | --- | --- |
+| **Staff space (Spatium)** | **1.75 mm** → ~7.0 mm staff | **1.35 mm** → ~5.4 mm staff |
+| Reading distance | 24–36" (a music stand) | ~12–18" (clipped to the instrument) |
+| Physical sheet | 8.5 × 11 portrait | 8.5 × 11 portrait (carrier) |
+| Finished size | full sheet | 7 × 5.5 card, top-left corner |
+| Margins | 0.5" all sides | 0.25" all sides, 0.5" top band |
+| Priority | readability first | space conservation first |
+
+### Letter — the music-stand part (`staffSpace: 1.75 mm`)
+
+1.75 mm is the long-standing standard for instrumental parts read at arm's length
+on a stand (~7.0 mm staff height, MuseScore's "raster 3"). Page count doesn't
+matter here, so the layout is deliberately roomy: generous system gaps
+(`minSystemDistance: 12 sp`, `maxSystemDistance: 20 sp`), default note spacing (no
+horizontal compression), and the page is left to justify comfortably.
+Multi-measure rests are consolidated (standard for any single part), and the
+score's first-system indent is reclaimed since a part needs no indent. The PDF
+keeps MuseScore's own title block, with a render date stamped bottom-right.
+
+### Lyre — the flip-folder card (`staffSpace: 1.35 mm`)
+
+The lyre card clips to the instrument and is read much closer, so it trades
+readability for density. **1.35 mm is a deliberate floor**, the bottom of the
+recommended 1.35–1.45 mm lyre range (~5.4 mm staff): below ~1.30 mm, ledger lines
+and accidentals start to degrade. From that floor, everything else is squeezed to
+pack the most music onto a small card while staying legible:
+
+- **Horizontal** (more bars per system): `measureSpacing: 1.3` (down from ~1.5),
+  `minNoteDistance: 0.4 sp` (down from ~0.6), `minMeasureWidth: 2.0 sp` to crush
+  sparse/rest bars.
+- **Vertical** (more systems per page): vertical justification stays on, so system
+  gaps follow the *spread* range — `maxSystemSpread` is capped at **5 sp** (down
+  from MuseScore's default 32 sp), which is what actually keeps systems tight
+  enough to fit more per page. Padding above/below the outer staves is zeroed
+  (`staffUpper/LowerBorder: 0`), and oversized text (chord symbols, rehearsal
+  marks, staff text) is trimmed so it doesn't inflate system bounding boxes.
+
+These compression numbers are the **floor** profile: the right choice only for a
+part long enough to need every bit of the card. A short part rendered at the floor
+just floats in tiny 1.35 mm notes with the bottom half of the card empty — so the
+floor is a *minimum*, not the size we always use (see fit-to-card below).
+
+### Fit-to-card: growing the notes to fill the page
+
+For a part with slack, 1.35 mm wastes the card. So the lyre build does a
+**fit-to-card search**: it renders the part at a ladder of staff spaces and keeps
+the **largest one that doesn't add a page** over the floor. Short parts come out
+big and readable; long parts stay at the floor where they belong — automatically,
+per part.
+
+This works because **page count is monotonic in staff space**: bigger notes ⇒ more
+vertical space per system ⇒ fewer systems per page ⇒ more pages. So "the largest
+size that holds the page count" is well-defined, and you find it by measuring (you
+can't predict bars-per-system from the notes, and MuseScore has no auto-grow mode —
+so we render, count pages with `pdf-lib`, and pick).
+
+The ladder is a rounded, nearly geometric progression — equal *ratio* steps
+(≈ 8.9% each), because perceived size scales multiplicatively, so the rungs look
+evenly spaced rather than bunched at the small end:
+
+| Rung | Staff space | ≈ staff height | Note |
+| --- | --- | --- | --- |
+| 0 (floor) | **1.35 mm** | 5.4 mm | legibility floor; long parts land here |
+| 1 | **1.5 mm** | 6.0 mm | |
+| 2 | **1.6 mm** | 6.4 mm | |
+| 3 | **1.75 mm** | 7.0 mm | ≈ the letter / music-stand size |
+| 4 (ceiling) | **1.9 mm** | 7.6 mm | cap, so a tiny part doesn't get comical |
+
+**Pack and fill are different goals**, so the spacing eases *with* the size: as the
+rung climbs from floor to ceiling, the compression knobs are interpolated back
+toward roomy values — `maxSystemSpread` 5 → 20 sp (systems spread down to fill the
+card instead of clustering at the top), `measureSpacing` 1.3 → 1.5, and
+`minNoteDistance` 0.4 → 0.6 sp. So bigger notes also breathe horizontally and
+vertically rather than staying crushed.
+
+Cost is bounded: each rung is one *batched* MuseScore run over all parts (reusing
+the batch-reliability trick), so the whole search is `ladder.length` runs total,
+independent of part count. The build prints the chosen staff space and the page
+floor it achieved for each part, e.g.
+`✓ tune-trumpet-bflat-lyre.pdf — spatium 1.60 mm, floor 1 pg`.
+
+### The lyre card: page geometry and the two cuts
+
+The card is a **7" wide × 5.5" tall** finished piece (5.5" matches the band's
+flip-folder window), but it's *printed on a plain portrait 8.5 × 11 Letter sheet*
+so players can use ordinary stock. The card is pinned to the sheet's **top-left
+corner**, which means its top and left edges are the paper's own edges — no cut
+needed there. Two cuts finish it:
+
+1. **Right edge at 7"** — lops off the 1.5" right margin (a single guillotine pass).
+2. **Bottom edge at 5.5"** — and because 5.5" is *exactly half* of the 11" sheet,
+   this is the same half-sheet cut you'd make anyway, so it costs no extra pass.
+
+(Earlier revisions printed on *landscape* Letter; portrait is what makes the
+bottom cut coincide with the half-sheet line, saving a pass.) Pinning to the
+top-left also matters because consumer printers swallow up to ~1/4" of
+non-printable border at the paper edges — the 0.25" card margin clears it so the
+first system and the header aren't clipped. Faint dashed cut guides mark the two
+trimmed edges.
+
+### Header and page-number overlay
+
+Both formats overlay small corner text *on top of* the rendered music (via
+`pdf-lib`, in `src/scores/stamp.js`), reserving no layout space. The lyre format
+**strips MuseScore's title frame** (reclaiming roughly a system of height) and
+replaces it with a compact 8 pt bold **"Title – Instrument"** header in the
+top-left band, with the render date top-right (the bottom is left entirely to
+music). Letter keeps its full title block and stamps the date bottom-right.
+
+Page numbers appear **only on multi-page parts**, and only once: on lyre they ride
+in the header as `Title – Instrument – p 2`; on letter they're appended to the
+bottom-right date as `– Page 2`. A single-sheet part shows no page number at all.
+
 ## Web interface (SvelteKit)
 
 A SvelteKit app (TypeScript, Svelte 5, `adapter-node` for Railway) serves the
@@ -188,7 +320,7 @@ The current slice is the **player core** (catalog browse + scores + audio):
   selector when an instrument has more than one), a shared audio player, PDF /
   MuseScore / MP3 downloads with app-generated filenames, and a format-sized PDF
   preview.
-- **Score / Performance overlay** — full-screen real PDF sized to letter or 7×5
+- **Score / Performance overlay** — full-screen real PDF sized to letter or 7×5.5
   lyre, with the same audio transport; closes on Escape or browser Back.
 - A **single shared audio transport** stays continuous between the Collection
   player and the Score overlay.
@@ -289,7 +421,7 @@ roles across deploys.
 
 - Which Google Drive folders or local paths are current import sources?
 - Which instruments and named parts should be first-class in the catalog?
-- Which output format matters first: letter PDFs, 7x5 lyre PDFs, per-instrument
+- Which output format matters first: letter PDFs, 7×5.5 lyre PDFs, per-instrument
   zip files, or a web/PWA performance view?
 - How complete and clean are the MuseScore source files compared with the PDF and
   MP3 collection?

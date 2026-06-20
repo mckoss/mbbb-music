@@ -36,8 +36,9 @@ function sanitize(text) {
 
 /**
  * Stamp a PDF in place: an optional bold `header` top-left, and the `date`
- * right-aligned (top or bottom). On multi-page parts the date gets a per-page
- * "- Page N" suffix (handy once a part spans two flip-folder pages).
+ * right-aligned (top or bottom). On multi-page parts the per-page page number is
+ * shown once: appended to the `header` as "- p N" when there is one (lyre), else
+ * tacked onto the `date` as "- Page N" (letter). Single-page parts show neither.
  *
  * When `trim` is given (a card smaller than the carrier sheet — lyre printed on
  * Letter), the corner items hug the TRIM box pinned to the sheet's top-left
@@ -70,11 +71,15 @@ export async function stampCorners(pdfPath, { header, date, datePosition = 'bott
     // (the lyre top margin reserves room for it).
     const topBaseline = height - HEADER_SIZE - TOP_PAD;
 
+    const multi = total > 1;
     if (header) {
-      page.drawText(sanitize(header), { x: INSET, y: topBaseline, size: HEADER_SIZE, font: bold, color: NEAR_BLACK });
+      // Page number rides in the header on multi-page parts ("Title - Inst - p 2").
+      const text = multi ? `${header} - p ${idx + 1}` : header;
+      page.drawText(sanitize(text), { x: INSET, y: topBaseline, size: HEADER_SIZE, font: bold, color: NEAR_BLACK });
     }
     if (date) {
-      const text = sanitize(total > 1 ? `${date} - Page ${idx + 1}` : date);
+      // Only carry the page number on the date when there's no header to hold it.
+      const text = sanitize(multi && !header ? `${date} - Page ${idx + 1}` : date);
       const w = reg.widthOfTextAtSize(text, META_SIZE);
       const y = datePosition === 'topRight' ? topBaseline : cardBottom + BOTTOM_PAD;
       page.drawText(text, { x: cardRight - w - INSET, y, size: META_SIZE, font: reg, color: GREY });
@@ -102,4 +107,10 @@ export async function stampCorners(pdfPath, { header, date, datePosition = 'bott
   });
 
   await writeFile(pdfPath, await doc.save());
+}
+
+/** Number of pages in a PDF — the page-count signal the lyre fit search ranks on. */
+export async function pageCount(pdfPath) {
+  const doc = await PDFDocument.load(await readFile(pdfPath));
+  return doc.getPageCount();
 }

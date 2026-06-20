@@ -15,13 +15,13 @@
 // format (3 total for letter+lyre), and runMscore retries the startup abort —
 // together that's what makes a multi-part build reliable.
 
-import { mkdtemp, mkdir, writeFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, copyFile, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname, basename } from 'node:path';
 
 import { runMscore } from './musescore.js';
-import { FORMATS, FORMAT_KEYS, styleFileFor } from './formats.js';
-import { stampCorners } from './stamp.js';
+import { FORMATS, FORMAT_KEYS, styleFileFor, fitRungOverride } from './formats.js';
+import { stampCorners, pageCount } from './stamp.js';
 import { stripTitleFrame } from './strip-title.js';
 import { slugify, slugifyStem } from '../sync/slugify.js';
 import { detectInstrument, detectKey, detectPartNumber } from '../sync/instruments.js';
@@ -89,6 +89,72 @@ async function extractParts(bin, input, workDir) {
 }
 
 /**
+ * Build a `fit`-ladder format (e.g. lyre): render the whole part batch at each
+ * staff-space rung, then keep, per part, the LARGEST rung that doesn't add a page
+ * over rung 0 — so a short part grows to fill the card instead of floating at the
+ * top in floor-size notes. Page count is monotonic in staff space (bigger notes ⇒
+ * fewer systems/page ⇒ more pages), so the kept rung is the roomiest legible fit.
+ *
+ * Each rung is one batched MuseScore run (reusing the batch-reliability trick),
+ * so the extra cost is `ladder.length` runs total, independent of part count.
+ *
+ * @param {object} ctx  Shared build state (see call site).
+ */
+async function buildFitFormat({ bin, fmt, key, named, outDir, workDir, title, renderDate, trim, pdfs, log }) {
+  const ladder = fmt.fit.ladder;
+
+  // rungs[partIndex][rungIndex] = { path, pages } | null (no output for that rung).
+  const rungs = named.map(() => []);
+  for (let r = 0; r < ladder.length; r++) {
+    const stylePath = join(workDir, `${key}-r${r}.mss`);
+    await writeFile(stylePath, styleFileFor(fmt, fitRungOverride(fmt, r)));
+    const rungDir = join(workDir, `${key}-r${r}`);
+    await mkdir(rungDir, { recursive: true });
+
+    const job = named.map((p) => ({ in: p.lyreInput ?? p.path, out: join(rungDir, `${p.slug}.pdf`) }));
+    const jobPath = join(workDir, `job-${key}-r${r}.json`);
+    await writeFile(jobPath, JSON.stringify(job));
+    // -f: don't abort on version/corruption warnings from older sources.
+    await runMscore(bin, ['-j', jobPath, '-S', stylePath, '-f']);
+
+    for (let i = 0; i < named.length; i++) {
+      const out = job[i].out;
+      try {
+        await access(out);
+        rungs[i][r] = { path: out, pages: await pageCount(out) };
+      } catch {
+        rungs[i][r] = null; // MuseScore produced no output at this rung
+      }
+    }
+  }
+
+  for (let i = 0; i < named.length; i++) {
+    const p = named[i];
+    const finalOut = join(outDir, `${title}-${p.slug}-${key}.pdf`);
+    const avail = rungs[i].map((rg, idx) => rg && { idx, ...rg }).filter(Boolean);
+    if (!avail.length) {
+      log(`  ✗ missing ${basename(finalOut)} (MuseScore produced no output)`);
+      continue;
+    }
+    // Floor page count (rung 0) is the budget; if rung 0 failed, fall back to the
+    // fewest pages any rung achieved. Keep the largest rung that stays within it.
+    const budget = rungs[i][0]?.pages ?? Math.min(...avail.map((rg) => rg.pages));
+    const chosen = avail.filter((rg) => rg.pages <= budget).pop() ?? avail[0];
+
+    await copyFile(chosen.path, finalOut);
+    // Card format: compact header top-left (+ page number on multi-page), date
+    // top-right; bottom stays free for music.
+    await stampCorners(finalOut, { header: p.header ?? p.name, date: renderDate, datePosition: 'topRight', trim });
+    pdfs.push(finalOut);
+    // Report the fit outcome to stdout: the staff space chosen for this part and
+    // the page floor it achieved (the fewest pages possible — the chosen spatium
+    // is the largest that still hits it). toFixed(2) keeps the column aligned.
+    const pg = `${chosen.pages} pg`;
+    log(`  ✓ ${basename(finalOut)} — spatium ${ladder[chosen.idx].toFixed(2)} mm, floor ${pg}`);
+  }
+}
+
+/**
  * Build all part × format PDFs for one input file.
  *
  * @param {string} bin              MuseScore binary path.
@@ -151,8 +217,6 @@ export async function buildParts(bin, input, opts = {}) {
 
     for (const key of formatKeys) {
       const fmt = FORMATS[key];
-      const stylePath = join(workDir, `${key}.mss`);
-      await writeFile(stylePath, styleFileFor(fmt));
 
       // When the format trims a card out of a larger carrier sheet (lyre on
       // Letter), pass the card size (in points) so corner stamps + cut guides
@@ -160,34 +224,31 @@ export async function buildParts(bin, input, opts = {}) {
       const trim =
         fmt.trimWidth && fmt.trimHeight ? { width: fmt.trimWidth * 72, height: fmt.trimHeight * 72 } : undefined;
 
+      if (fmt.fit) {
+        await buildFitFormat({ bin, fmt, key, named, outDir, workDir, title, renderDate, trim, pdfs, log });
+        continue;
+      }
+
+      const stylePath = join(workDir, `${key}.mss`);
+      await writeFile(stylePath, styleFileFor(fmt));
+
       // One job: every part → its PDF for this format, in a single MuseScore run.
-      // Lyre renders the title-stripped .mscx; other formats the original .mscz.
-      const job = named.map((p) => ({
-        part: p,
-        in: key === 'lyre' ? p.lyreInput : p.path,
-        out: join(outDir, `${title}-${p.slug}-${key}.pdf`),
-      }));
+      const job = named.map((p) => ({ in: p.path, out: join(outDir, `${title}-${p.slug}-${key}.pdf`) }));
       const jobPath = join(workDir, `job-${key}.json`);
-      await writeFile(jobPath, JSON.stringify(job.map(({ in: input_, out }) => ({ in: input_, out }))));
+      await writeFile(jobPath, JSON.stringify(job));
 
       // -f: don't abort on version/corruption warnings from older sources.
       await runMscore(bin, ['-j', jobPath, '-S', stylePath, '-f']);
 
-      for (const { out, part } of job) {
+      for (const { out } of job) {
         try {
           await access(out);
         } catch {
           log(`  ✗ missing ${basename(out)} (MuseScore produced no output)`);
           continue;
         }
-        // Lyre: header top-left, date top-right (bottom stays free for music).
-        // Letter: keep its title frame; date bottom-right.
-        await stampCorners(
-          out,
-          key === 'lyre'
-            ? { header: part.header, date: renderDate, datePosition: 'topRight', trim }
-            : { date: renderDate, datePosition: 'bottomRight', trim },
-        );
+        // Non-card format (letter): keep its title frame; date bottom-right.
+        await stampCorners(out, { date: renderDate, datePosition: 'bottomRight', trim });
         pdfs.push(out);
         log(`  ✓ ${basename(out)}`);
       }
