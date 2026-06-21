@@ -7,6 +7,7 @@ import { getAsset, casPath } from '$lib/server/library';
 
 const CONTENT_TYPE: Record<string, string> = {
   pdf: 'application/pdf',
+  notes: 'application/pdf',
   mp3: 'audio/mpeg',
   musescore: 'application/octet-stream',
   image: 'image/jpeg',
