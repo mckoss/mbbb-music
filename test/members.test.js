@@ -12,7 +12,12 @@ import {
   allProfilesDb,
   profileHistoryDb,
 } from '../src/lib/server/members.ts';
-import { sniffImageType, gravatarUrl, initialsSvg } from '../src/lib/server/avatars.ts';
+import { mkdtempSync, writeFileSync as fsWriteFile, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve as pathResolve } from 'node:path';
+import { createHash } from 'node:crypto';
+
+import { sniffImageType, gravatarUrl, initialsSvg, loadAvatarIn } from '../src/lib/server/avatars.ts';
 
 function freshDb() {
   const db = new DatabaseSync(':memory:');
@@ -172,6 +177,70 @@ test('initialsSvg derives initials from the name, else the email', () => {
   assert.match(initialsSvg('Test Member', 'tm@x'), /aria-label="TM"/);
   assert.match(initialsSvg(null, 'jo@x'), /aria-label="JO"/);
   assert.match(initialsSvg('Test Member', 'tm@x'), /^<svg /);
+});
+
+// --- avatar caching (loadAvatarIn, injected dir + fetch) -------------------
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+const pngResponse = () => new Response(new Uint8Array(PNG), { status: 200, headers: { 'content-type': 'image/png' } });
+const notFound = () => new Response(null, { status: 404 });
+const tmpDir = () => mkdtempSync(pathResolve(tmpdir(), 'mbbb-av-'));
+
+test('loadAvatarIn: an uploaded avatar wins without any network', async () => {
+  const dir = tmpDir();
+  try {
+    const sha = createHash('sha256').update(PNG).digest('hex');
+    fsWriteFile(pathResolve(dir, sha), PNG);
+    const r = await loadAvatarIn(dir, () => { throw new Error('should not fetch'); }, {
+      email: 'jo@x', avatarSha: sha, googlePhoto: 'https://photo/x',
+    });
+    assert.deepEqual(r, { source: 'upload', sha });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadAvatarIn: a Google photo is fetched once, cached, and refreshed on URL change', async () => {
+  const dir = tmpDir();
+  try {
+    let calls = 0;
+    const fetchFn = async () => { calls++; return pngResponse(); };
+    const opts = { email: 'jo@x', avatarSha: null, googlePhoto: 'https://photo/url1' };
+    const r1 = await loadAvatarIn(dir, fetchFn, opts);
+    assert.equal(r1.source, 'google');
+    const r2 = await loadAvatarIn(dir, fetchFn, opts);
+    assert.deepEqual(r2, r1);
+    assert.equal(calls, 1); // second view served from the local cache
+    await loadAvatarIn(dir, fetchFn, { ...opts, googlePhoto: 'https://photo/url2' });
+    assert.equal(calls, 2); // a new URL (e.g. updated photo at sign-in) refetches
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadAvatarIn: a Gravatar hit is cached locally', async () => {
+  const dir = tmpDir();
+  try {
+    const r = await loadAvatarIn(dir, async () => pngResponse(), { email: 'jo@x', avatarSha: null, googlePhoto: null });
+    assert.equal(r.source, 'gravatar');
+    assert.ok(typeof r.sha === 'string');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadAvatarIn: a Gravatar miss falls to initials and is negatively cached', async () => {
+  const dir = tmpDir();
+  try {
+    let calls = 0;
+    const fetchFn = async () => { calls++; return notFound(); };
+    const opts = { email: 'jo@x', avatarSha: null, googlePhoto: null };
+    assert.deepEqual(await loadAvatarIn(dir, fetchFn, opts), { source: 'initials' });
+    assert.deepEqual(await loadAvatarIn(dir, fetchFn, opts), { source: 'initials' });
+    assert.equal(calls, 1); // not re-probed within the TTL
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('empty edit history yields an empty (not missing) profile', () => {

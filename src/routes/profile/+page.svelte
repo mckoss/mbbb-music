@@ -9,6 +9,15 @@
     `/members/${encodeURIComponent(p.email)}/avatar?v=${encodeURIComponent(p.updatedAt ?? '')}`
   );
   const also = $derived(new Set(p.instruments));
+
+  // Human label for where the displayed photo actually comes from.
+  const SOURCE_LABEL: Record<string, string> = {
+    upload: 'your uploaded picture',
+    google: 'your Google account photo',
+    gravatar: 'a Gravatar matched to your email',
+    initials: 'auto-generated initials (no photo found yet)',
+  };
+  const sourceLabel = $derived(SOURCE_LABEL[data.avatarSource] ?? 'unknown');
 </script>
 
 <section class="profile">
@@ -29,21 +38,18 @@
     <div class="avatar-row">
       <img class="avatar" src={avatarSrc} alt="Your avatar" />
       <div class="avatar-controls">
+        <p class="source">Showing {sourceLabel}.</p>
         <label class="field">
-          <span class="label">Profile picture</span>
+          <span class="label">{data.avatarSource === 'upload' ? 'Replace picture' : 'Upload a picture'}</span>
           <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" />
         </label>
-        {#if p.avatarSha}
-          <label class="check">
+        {#if data.avatarSource === 'upload'}
+          <label class="check remove">
             <input type="checkbox" name="removeAvatar" value="1" />
-            Remove my uploaded picture
+            Remove uploaded picture (revert to your Google/Gravatar photo or initials)
           </label>
         {/if}
-        <p class="hint">
-          Shown in order of preference: your upload → your Google photo
-          {#if data.hasGooglePhoto}<span class="ok">(on file)</span>{/if}
-          → Gravatar → initials.
-        </p>
+        <p class="hint">Order of preference: your upload → Google photo → Gravatar → initials.</p>
       </div>
     </div>
 
@@ -232,13 +238,18 @@
     font-size: 0.9rem;
   }
 
+  .source {
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+
+  .remove {
+    color: var(--muted);
+  }
+
   .hint {
     color: var(--muted);
     font-size: 0.8rem;
-  }
-  .ok {
-    color: var(--accent-strong);
-    font-weight: 700;
   }
 
   .actions {

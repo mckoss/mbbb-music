@@ -4,7 +4,7 @@ import { error, fail } from '@sveltejs/kit';
 
 import { getProfile, editProfile } from '$lib/server/members';
 import { photoOf } from '$lib/server/users';
-import { saveAvatar, MAX_AVATAR_BYTES } from '$lib/server/avatars';
+import { saveAvatar, loadAvatar, MAX_AVATAR_BYTES } from '$lib/server/avatars';
 import { INSTRUMENT_CHOICES, SHIRT_SIZES, type ProfilePatch, type ShirtSize } from '$lib/members';
 
 function requireUser(locals: App.Locals) {
@@ -12,13 +12,17 @@ function requireUser(locals: App.Locals) {
   return locals.user.email;
 }
 
-export function load({ locals }) {
+export async function load({ locals }) {
   const email = requireUser(locals);
+  const profile = getProfile(email);
+  // Resolve where the displayed photo actually comes from, so the UI can name it
+  // (this also warms the local cache for the avatar <img> request that follows).
+  const { source } = await loadAvatar({ email, avatarSha: profile.avatarSha, googlePhoto: photoOf(email) });
   return {
-    profile: getProfile(email),
+    profile,
     instruments: INSTRUMENT_CHOICES,
     shirtSizes: SHIRT_SIZES,
-    hasGooglePhoto: Boolean(photoOf(email)),
+    avatarSource: source,
   };
 }
 

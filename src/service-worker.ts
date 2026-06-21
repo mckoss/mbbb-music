@@ -28,6 +28,7 @@ const APP_SHELL = `app-shell-${version}`;
 const PAGES = `pages-${version}`;
 export const SCORES_CACHE = 'mbbb-scores';
 export const META_CACHE = 'mbbb-offline-meta';
+export const AVATARS_CACHE = 'mbbb-avatars';
 
 // Everything we can serve straight from the install-time precache.
 const PRECACHE = [...build, ...files];
@@ -65,6 +66,10 @@ function isRenderRequest(url: URL): boolean {
 function isDataRequest(url: URL): boolean {
   // SvelteKit client-side load data, plus the catalog endpoint.
   return url.pathname.endsWith('/__data.json') || url.pathname === '/api/catalog';
+}
+
+function isAvatarRequest(url: URL): boolean {
+  return url.pathname.startsWith('/members/') && url.pathname.endsWith('/avatar');
 }
 
 /** Cache-first against a named cache; never falls through to network. */
@@ -133,6 +138,14 @@ sw.addEventListener('fetch', (event) => {
   //    and managed on the Offline page (per-song eject + clear-all).
   if (isRenderRequest(url)) {
     event.respondWith(cacheFirstStore(SCORES_CACHE, request));
+    return;
+  }
+
+  // 2b) Member avatars: same-origin image bytes (external sources are cached
+  //     server-side). Network-first into a durable cache so a roster viewed
+  //     online stays available offline; an updated photo refreshes when online.
+  if (isAvatarRequest(url)) {
+    event.respondWith(networkFirst(AVATARS_CACHE, request));
     return;
   }
 
