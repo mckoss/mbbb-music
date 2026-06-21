@@ -24,6 +24,13 @@ import { getAsset, casPath } from './library.js';
 
 const PROFILE = `r${RENDER_REV}-${RENDER_DPI}`;
 
+// Asset types whose bytes are a PDF and so can be rasterized to page images.
+// `notes` are Google Docs/Sheets exported to PDF — not scores, but still PDFs,
+// so they get the same WebP thumbnails/previews.
+const RENDERABLE = new Set(['pdf', 'notes']);
+const isRenderable = (meta: { assetType: string } | null): boolean =>
+  meta != null && RENDERABLE.has(meta.assetType);
+
 function renderDir(): string {
   return resolve(loadConfig().dataDir, 'render', PROFILE);
 }
@@ -106,7 +113,7 @@ export async function getPageCount(sha: string): Promise<number | null> {
   if (mem != null) return mem;
 
   const meta = getAsset(sha);
-  if (!meta || meta.assetType !== 'pdf') return null;
+  if (!isRenderable(meta)) return null;
 
   const disk = await readMeta(sha);
   if (disk != null) {
@@ -144,7 +151,7 @@ const inflight = new Map<string, Promise<string | null>>();
  */
 export async function ensureRenderedPage(sha: string, n: number): Promise<string | null> {
   const meta = getAsset(sha);
-  if (!meta || meta.assetType !== 'pdf') return null;
+  if (!isRenderable(meta)) return null;
 
   const path = resolve(renderDir(), `${sha}-${n}.webp`);
   if (existsSync(path)) return path;

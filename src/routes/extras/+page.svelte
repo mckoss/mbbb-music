@@ -43,7 +43,7 @@
 
   <ul class="list">
     {#each filtered as e (e.sha256)}
-      <li class="row" class:has-thumb={e.assetType === 'image' || e.assetType === 'pdf'}>
+      <li class="row" class:has-thumb={e.assetType === 'image' || e.assetType === 'pdf' || e.assetType === 'notes'}>
         {#if e.assetType === 'image'}
           <a
             class="thumb"
@@ -54,7 +54,7 @@
           >
             <img src={`/blob/${e.sha256}`} alt={e.name} loading="lazy" />
           </a>
-        {:else if e.assetType === 'pdf'}
+        {:else if e.assetType === 'pdf' || e.assetType === 'notes'}
           <a
             class="thumb pdf"
             href={openUrl(e.sha256)}
@@ -72,7 +72,7 @@
               <button class="act" onclick={() => playAudio(e)}>
                 {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
               </button>
-            {:else if e.assetType === 'pdf' || e.assetType === 'image'}
+            {:else if e.assetType === 'pdf' || e.assetType === 'notes' || e.assetType === 'image'}
               <a class="act" href={openUrl(e.sha256)} target="_blank" rel="noopener">View</a>
             {/if}
             <a class="dl" href={dlUrl(e.sha256)} download title="Download">⤓</a>
