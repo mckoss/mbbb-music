@@ -211,11 +211,23 @@ export function profileHistoryDb(db: DatabaseSync, email: string, limit = 500): 
     .all(email.trim().toLowerCase(), limit) as unknown as ProfileEditRow[];
 }
 
-/** Apply a typed patch as a set of field edits; returns the resulting profile. */
+/** The current stored (normalized) string for one field of an effective profile. */
+function storedValue(p: MemberProfile, field: ProfileField): string | null {
+  if (field === 'instruments') return p.instruments.length ? JSON.stringify(p.instruments) : null;
+  return (p[field] as string | null) ?? null;
+}
+
+/**
+ * Apply a typed patch as a set of field edits; returns the resulting profile.
+ * Only fields whose value actually changes are written, so the audit log records
+ * real edits (not a fresh row per field on every save).
+ */
 export function editProfileDb(db: DatabaseSync, email: string, patch: ProfilePatch, by: string, at?: string): MemberProfile {
+  const current = effectiveProfileDb(db, email);
   for (const field of PROFILE_FIELDS) {
     if (!(field in patch)) continue;
-    const value = serializeProfileValue(field, (patch as Record<string, unknown>)[field]);
+    const value = validateProfileValue(field, serializeProfileValue(field, (patch as Record<string, unknown>)[field]));
+    if (value === storedValue(current, field)) continue; // unchanged — no-op
     editProfileFieldDb(db, { email, field, value, by, at });
   }
   return effectiveProfileDb(db, email);

@@ -13,7 +13,7 @@ import {
   OAUTH_COOKIE,
   SESSION_COOKIE,
 } from '$lib/server/auth';
-import { roleOf, rememberName } from '$lib/server/users';
+import { roleOf, rememberName, rememberPhoto } from '$lib/server/users';
 
 /** Only allow same-site relative paths as a post-login destination. */
 function safeNext(next: unknown): string {
@@ -44,7 +44,7 @@ export async function GET({ url, cookies }) {
   }
   if (parsed.state !== state) throw redirect(303, '/login?error=state');
 
-  let identity: { email: string; name: string | null } | null = null;
+  let identity: { email: string; name: string | null; picture: string | null } | null = null;
   try {
     identity = await exchangeCode(cfg, redirectUriFor(cfg, url.origin), code);
   } catch {
@@ -56,6 +56,7 @@ export async function GET({ url, cookies }) {
   // can show their email and an admin can grant a role.
   cookies.set(SESSION_COOKIE, makeSession(identity.email, cfg.cookieSecret), sessionCookieOptions(secure));
   rememberName(identity.email, identity.name);
+  rememberPhoto(identity.email, identity.picture);
 
   if (!roleOf(identity.email)) throw redirect(303, '/pending');
   throw redirect(303, safeNext(parsed.next));

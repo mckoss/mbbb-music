@@ -12,6 +12,7 @@ import {
   allProfilesDb,
   profileHistoryDb,
 } from '../src/lib/server/members.ts';
+import { sniffImageType, gravatarUrl, initialsSvg } from '../src/lib/server/avatars.ts';
 
 function freshDb() {
   const db = new DatabaseSync(':memory:');
@@ -130,6 +131,17 @@ test('editProfileDb applies a typed patch across fields in one call', () => {
   assert.equal(p.shirtSize, 'M');
 });
 
+test('editProfileDb writes only changed fields (unchanged values are no-ops)', () => {
+  const db = freshDb();
+  editProfileDb(db, 'jo@x', { fullName: 'Jo', primaryInstrument: 'trumpet' }, 'jo@x', '2026-06-15T00:00:00.000Z');
+  const before = profileHistoryDb(db, 'jo@x').length; // 2 rows
+  // Resave fullName identical, change primaryInstrument: only one new row.
+  editProfileDb(db, 'jo@x', { fullName: 'Jo', primaryInstrument: 'tuba' }, 'jo@x', '2026-06-15T00:05:00.000Z');
+  assert.equal(profileHistoryDb(db, 'jo@x').length, before + 1);
+  assert.equal(effectiveProfileDb(db, 'jo@x').primaryInstrument, 'tuba');
+  assert.equal(effectiveProfileDb(db, 'jo@x').fullName, 'Jo'); // unchanged, untouched
+});
+
 test('allProfilesDb returns one projected profile per member, sorted by email', () => {
   const db = freshDb();
   editProfileDb(db, 'zoe@x', { fullName: 'Zoe', primaryInstrument: 'drums' }, 'zoe@x', '2026-06-15T00:00:00.000Z');
@@ -137,6 +149,29 @@ test('allProfilesDb returns one projected profile per member, sorted by email', 
   const all = allProfilesDb(db);
   assert.deepEqual(all.map((p) => p.email), ['al@x', 'zoe@x']);
   assert.equal(all[1].primaryInstrument, 'drums');
+});
+
+// --- avatar helpers (pure) -------------------------------------------------
+
+test('sniffImageType recognizes PNG/JPEG/GIF/WebP and rejects others', () => {
+  assert.equal(sniffImageType(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'image/png');
+  assert.equal(sniffImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), 'image/jpeg');
+  assert.equal(sniffImageType(Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])), 'image/gif');
+  assert.equal(sniffImageType(Buffer.from('RIFF\0\0\0\0WEBPVP8 ')), 'image/webp');
+  assert.equal(sniffImageType(Buffer.from([0x25, 0x50, 0x44, 0x46])), null); // a PDF, not an image
+});
+
+test('gravatarUrl keys on the md5 of the trimmed lowercased email, with d=404', () => {
+  // Canonical Gravatar example hash for test@example.com.
+  const url = gravatarUrl('  Test@Example.com ');
+  assert.match(url, /55502f40dc8b7c769880b10874abc9d0/);
+  assert.match(url, /[?&]d=404/);
+});
+
+test('initialsSvg derives initials from the name, else the email', () => {
+  assert.match(initialsSvg('Test Member', 'tm@x'), /aria-label="TM"/);
+  assert.match(initialsSvg(null, 'jo@x'), /aria-label="JO"/);
+  assert.match(initialsSvg('Test Member', 'tm@x'), /^<svg /);
 });
 
 test('empty edit history yields an empty (not missing) profile', () => {

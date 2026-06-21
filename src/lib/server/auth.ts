@@ -80,14 +80,14 @@ export async function exchangeCode(
   cfg: AuthConfig,
   redirectUri: string,
   code: string
-): Promise<{ email: string; name: string | null } | null> {
+): Promise<{ email: string; name: string | null; picture: string | null } | null> {
   const c = client(cfg, redirectUri);
   const { tokens } = await c.getToken(code);
   if (!tokens.id_token) return null;
   const ticket = await c.verifyIdToken({ idToken: tokens.id_token, audience: cfg.clientId });
   const payload = ticket.getPayload();
   if (!payload?.email || !payload.email_verified) return null;
-  return { email: payload.email.toLowerCase(), name: payload.name ?? null };
+  return { email: payload.email.toLowerCase(), name: payload.name ?? null, picture: payload.picture ?? null };
 }
 
 /** A random opaque token (for OAuth state / nonces). */

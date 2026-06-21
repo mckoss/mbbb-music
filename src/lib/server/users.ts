@@ -15,13 +15,14 @@ export interface UserRecord {
   email: string;
   role: Role;
   name?: string | null;
+  photo?: string | null; // Google account photo URL, captured at sign-in
   addedAt?: string;
   addedBy?: string;
   bootstrap?: boolean; // a config.auth.admins entry — not editable via the UI
 }
 
 interface UsersFile {
-  users: Record<string, { role: Role; name?: string | null; addedAt?: string; addedBy?: string }>;
+  users: Record<string, { role: Role; name?: string | null; photo?: string | null; addedAt?: string; addedBy?: string }>;
 }
 
 function usersPath(): string {
@@ -70,7 +71,7 @@ export function listUsers(): UserRecord[] {
   for (const [email, rec] of Object.entries(file)) {
     const e = email.toLowerCase();
     if (out.has(e)) continue; // a bootstrap admin overrides any file entry
-    out.set(e, { email: e, role: rec.role, name: rec.name ?? null, addedAt: rec.addedAt, addedBy: rec.addedBy });
+    out.set(e, { email: e, role: rec.role, name: rec.name ?? null, photo: rec.photo ?? null, addedAt: rec.addedAt, addedBy: rec.addedBy });
   }
   return [...out.values()].sort((a, b) => a.email.localeCompare(b.email));
 }
@@ -112,4 +113,22 @@ export function rememberName(email: string, name: string | null): void {
     rec.name = name;
     writeFileAtomic(data);
   }
+}
+
+/** Record the Google account photo URL on sign-in (best-effort, file users only). */
+export function rememberPhoto(email: string, photo: string | null): void {
+  const e = email.toLowerCase();
+  if (!photo || bootstrapAdmins().has(e)) return;
+  const data = readFile();
+  const rec = data.users[e];
+  if (rec && rec.photo !== photo) {
+    rec.photo = photo;
+    writeFileAtomic(data);
+  }
+}
+
+/** The stored Google account photo URL for an email, or null. */
+export function photoOf(email: string | null | undefined): string | null {
+  if (!email) return null;
+  return readFile().users[email.toLowerCase()]?.photo ?? null;
 }

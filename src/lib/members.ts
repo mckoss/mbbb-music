@@ -5,6 +5,10 @@
 
 import { INSTRUMENT_CHOICES } from '../sync/instruments.js';
 
+// Re-exported so UI code can pull the canonical instrument list + label helper
+// from one profile-domain module.
+export { INSTRUMENT_CHOICES, instrumentLabel } from '../sync/instruments.js';
+
 /** Band-shirt sizes offered in the profile picker. */
 export type ShirtSize = 'S' | 'M' | 'L' | 'XL' | 'XXL';
 export const SHIRT_SIZES: ShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL'];
