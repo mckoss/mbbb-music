@@ -189,6 +189,9 @@ export async function buildParts(bin, input, opts = {}) {
   });
 
   const title = slugifyStem(basename(input)) || 'score';
+  // Human song title for the letter header when a score embeds no title text
+  // (derived from the filename: "Hot_To_Go.mscz" → "Hot To Go").
+  const displayTitle = basename(input, '.mscz').replace(/[_-]+/g, ' ').trim() || title;
   const outDir = opts.outDir ?? join(dirname(input), `${basename(input, '.mscz')}.parts`);
   await mkdir(outDir, { recursive: true });
 
@@ -229,9 +232,13 @@ export async function buildParts(bin, input, opts = {}) {
           stripped = null; // unzip/edit failed — fall back to the framed source
         }
         p.strippedInput = stripped?.mscxPath ?? p.path;
-        p.header = stripped?.header ?? p.name;
-        p.title = stripped?.title ?? p.name;
+        // `|| displayTitle` (not `??`): an extracted-but-empty title falls back to
+        // the song title, never the part name (which would duplicate the instrument).
+        p.title = stripped?.title || displayTitle;
         p.instrument = stripped?.instrument ?? p.name;
+        // Lyre one-liner derived from the resolved zones, so it gets the same
+        // title fix + song-title fallback as the letter header.
+        p.header = [p.title, p.instrument].filter(Boolean).join(' - ') || p.name;
       }
     }
 

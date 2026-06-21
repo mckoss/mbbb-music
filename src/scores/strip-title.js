@@ -28,24 +28,37 @@ function decodeEntities(s) {
     .replace(/&amp;/g, '&'); // last, so "&amp;lt;" wouldn't double-decode
 }
 
-/** First <text> whose <style> matches `styleName`, searched across the file. */
+/**
+ * The <text> of the first <Text> block whose <style> matches `styleName`. We scan
+ * whole <Text>…</Text> blocks rather than assuming <text> immediately follows
+ * <style>: MuseScore interleaves <offset>, <eid>, <linked> etc. between them when
+ * the element has manual positioning, so a tighter regex misses those titles.
+ */
 function textForStyle(mscx, styleName) {
-  const re = new RegExp(`<style>${styleName}</style>\\s*<text>([\\s\\S]*?)</text>`);
-  const m = mscx.match(re);
-  // Drop any inline rich-text tags (e.g. <b>, <font/>) the text may carry.
-  return m ? decodeEntities(m[1].replace(/<[^>]+>/g, '')).trim() : '';
+  const blocks = mscx.match(/<Text>[\s\S]*?<\/Text>/g) || [];
+  for (const block of blocks) {
+    const style = block.match(/<style>([^<]+)<\/style>/);
+    if (style && style[1] === styleName) {
+      const text = block.match(/<text>([\s\S]*?)<\/text>/);
+      // Drop any inline rich-text tags (e.g. <b>, <font/>) the text may carry.
+      return text ? decodeEntities(text[1].replace(/<[^>]+>/g, '')).trim() : '';
+    }
+  }
+  return '';
 }
 
 /**
- * Read a part .mscz, build its header, and write a title-frame-stripped .mscx.
+ * Read a part .mscz, extract its title/instrument, and write a title-frame-stripped
+ * .mscx. The caller composes the header from the returned zones.
  *
  * @param {string} partMscz   Path to the extracted part .mscz.
  * @param {string} outDir     Where to write the stripped .mscx.
  * @param {number} idx        Part index (for a unique filename).
- * @param {string} fallback   Text to use if no title/instrument is found.
- * @returns {Promise<{ mscxPath: string, header: string, title: string, instrument: string } | null>}
- *          `header` is the lyre one-liner; `title`/`instrument` are the letter
- *          header's zones. null if the .mscx can't be located (caller falls back).
+ * @param {string} fallback   Instrument label if the score names none.
+ * @returns {Promise<{ mscxPath: string, title: string, instrument: string } | null>}
+ *          `title`/`instrument` are the header zones (`title` may be '' — the
+ *          caller supplies the song-title fallback). null if the .mscx can't be
+ *          located (caller falls back to the framed source).
  */
 export async function stripTitleFrame(partMscz, outDir, idx, fallback) {
   const { stdout: listing } = await execFileP('unzip', ['-Z1', partMscz]);
@@ -61,7 +74,6 @@ export async function stripTitleFrame(partMscz, outDir, idx, fallback) {
 
   const title = textForStyle(mscx, 'title');
   const instrument = textForStyle(mscx, 'instrument_excerpt') || textForStyle(mscx, 'instrument');
-  const header = [title, instrument].filter(Boolean).join(' - ') || fallback;
 
   // Remove the leading title frame (the first VBox). composer/arranger lives in
   // the same frame, so this drops it too — exactly what we want.
@@ -69,5 +81,8 @@ export async function stripTitleFrame(partMscz, outDir, idx, fallback) {
 
   const mscxPath = join(outDir, `stripped-${idx}.mscx`);
   await writeFile(mscxPath, stripped);
-  return { mscxPath, header, title: title || fallback, instrument: instrument || fallback };
+  // `title` is returned raw (empty if the score has none) so the caller can fall
+  // back to a song title rather than the part name. `instrument` keeps the name
+  // fallback (it's the part's own label).
+  return { mscxPath, title, instrument: instrument || fallback };
 }
