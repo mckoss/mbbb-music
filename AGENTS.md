@@ -306,6 +306,10 @@ every push.
 - Use judgement: when a push mixes a feature and fixes, bump MINOR. Reset PATCH
   to 0 on a MINOR bump (e.g. `0.2.4` → `0.3.0`).
 - One bump per push, not per commit; the version reflects what ships.
+- **Keep `package-lock.json` in sync.** Whenever you commit a `package.json`
+  change (a version bump included), update `package-lock.json` in the same commit
+  so its `version` fields match — run `npm install --package-lock-only`, then
+  `git add package-lock.json`. The lockfile must never lag `package.json`.
 
 ## Commit Guidance
 
