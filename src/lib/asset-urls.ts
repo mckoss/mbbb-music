@@ -82,6 +82,15 @@ function ext(a: { originalName: string | null; assetType?: string }, fallback: s
   return (m ? m[1] : fallback).toLowerCase();
 }
 
+/**
+ * Extension for an "other file" / extra. Notes (Google Docs/Sheets) are exported
+ * to PDF and have no source extension, so they must be `.pdf` — otherwise they
+ * fall back to `.bin` and get served as an unviewable octet/Google-mime blob.
+ */
+function extOf(a: { originalName: string | null; assetType?: string }): string {
+  return a.assetType === 'notes' ? 'pdf' : ext(a, 'bin');
+}
+
 /** Add `<dir>/<base>.<ext>` to the index, suffixing `-2`, `-3`… on collision. */
 function place(idx: AssetIndex, dir: string, base: string, extension: string, sha: string): void {
   let name = `${base}.${extension}`;
@@ -106,9 +115,11 @@ function addTune(idx: AssetIndex, t: TuneLike): void {
   // Recordings.
   for (const a of t.audio) place(idx, `audio/${song}`, stem(a, song), 'mp3', a.sha256);
 
-  // Images and other files keep their original extension.
+  // Images and other files keep their original extension. Notes are Google
+  // Docs/Sheets exported to PDF, so they carry no usable source extension —
+  // serve them as `.pdf` (like t.notes above) rather than a bare `.bin`.
   for (const im of t.images) place(idx, `file/${song}`, stem(im, 'image'), ext(im, 'jpg'), im.sha256);
-  for (const f of t.files) place(idx, `file/${song}`, stem(f, f.assetType ?? 'file'), ext(f, 'bin'), f.sha256);
+  for (const f of t.files) place(idx, `file/${song}`, stem(f, f.assetType ?? 'file'), extOf(f), f.sha256);
 }
 
 /** Build the full slug→sha index from a catalog. */
@@ -116,7 +127,7 @@ export function buildAssetIndex(catalog: CatalogLike): AssetIndex {
   const idx: AssetIndex = { byPath: new Map(), bySha: new Map() };
   for (const t of catalog.tunes) addTune(idx, t);
   for (const e of catalog.extras ?? []) {
-    place(idx, 'file/extras', stem(e, e.assetType ?? 'file'), ext(e, 'bin'), e.sha256);
+    place(idx, 'file/extras', stem(e, e.assetType ?? 'file'), extOf(e), e.sha256);
   }
   return idx;
 }
