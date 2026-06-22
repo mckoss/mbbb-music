@@ -17,6 +17,31 @@ test('captures a trailing part number', () => {
   assert.equal(m.partNumber, 2);
 });
 
+test('captures a glued "part1" token from a generated filename (before the format)', () => {
+  const m = detectAssetMetadata({
+    originalName: 'baile-inolvidable-para-charanga-bad-bunny-trumpet-bflat-part1-letter.pdf',
+    songTitle: 'Baile Inolvidable',
+  });
+  assert.equal(m.instrumentSlug, 'trumpet');
+  assert.equal(m.partNumber, 1);
+  assert.equal(m.partNumbers, null); // single part → no multi list
+});
+
+test('captures a combined "part1-2" chart as both numbers', () => {
+  const m = detectAssetMetadata({
+    originalName: 'unholy-trumpet-bflat-part1-2-letter.pdf',
+    songTitle: 'Unholy',
+  });
+  assert.equal(m.instrumentSlug, 'trumpet');
+  assert.equal(m.partNumber, 1); // first, for sorting
+  assert.deepEqual(m.partNumbers, [1, 2]);
+});
+
+test('captures a combined part written "1 & 2" (a MuseScore part name)', () => {
+  const m = detectAssetMetadata({ originalName: 'Unholy - Trumpet in B-flat 1 & 2.pdf', songTitle: 'Unholy' });
+  assert.deepEqual(m.partNumbers, [1, 2]);
+});
+
 test('instrument with default key and no explicit key token', () => {
   const m = detectAssetMetadata({ originalName: 'Bad Guy - Alto Saxophone.pdf', songTitle: 'Bad Guy' });
   assert.equal(m.instrument, 'Alto saxophone');

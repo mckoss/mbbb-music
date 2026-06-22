@@ -35,8 +35,10 @@ function contentTypeFor(filename: string, mimeType: string | null): string {
  * browser revalidates with `If-None-Match` and gets a cheap 304 when unchanged,
  * or fresh bytes the moment the name points at a new file — never a stale one.
  *
- * `?dl` forces a download (`Content-Disposition: attachment`); without it the
- * asset opens inline. Either way the filename is the clean last path segment.
+ * `?dl` forces a download (`Content-Disposition: attachment`) named with the
+ * asset's canonical, song-prefixed filename (e.g.
+ * `baile-inolvidable-trumpet-bflat-part1-letter.pdf`); without it the asset opens
+ * inline under the clean last path segment.
  */
 export async function streamFriendly(
   family: string,
@@ -45,7 +47,8 @@ export async function streamFriendly(
   url: URL,
 ): Promise<Response> {
   const path = `${family}/${rest ?? ''}`;
-  const sha = assetIndexFor(getCatalog()).byPath.get(path);
+  const idx = assetIndexFor(getCatalog());
+  const sha = idx.byPath.get(path);
   if (!sha) throw error(404, 'unknown file');
 
   const file = casPath(sha);
@@ -56,10 +59,13 @@ export async function streamFriendly(
     throw error(404, 'blob missing from store');
   }
 
-  const filename = (path.split('/').pop() || 'download').replace(/["\r\n]/g, '');
+  // Inline opens use the clean last path segment; a `?dl` download uses the
+  // canonical, song-prefixed name (falls back to the path segment if unmapped).
+  const inlineName = (path.split('/').pop() || 'download').replace(/["\r\n]/g, '');
+  const downloadName = (idx.nameBySha.get(sha) || inlineName).replace(/["\r\n]/g, '');
   const etag = `"${sha}"`;
   const headers = new Headers({
-    'content-type': contentTypeFor(filename, getAsset(sha)?.mimeType ?? null),
+    'content-type': contentTypeFor(inlineName, getAsset(sha)?.mimeType ?? null),
     'accept-ranges': 'bytes',
     etag,
     'cache-control': 'no-cache',
@@ -71,8 +77,9 @@ export async function streamFriendly(
     return new Response(null, { status: 304, headers });
   }
 
-  const disposition = url.searchParams.has('dl') ? 'attachment' : 'inline';
-  headers.set('content-disposition', `${disposition}; filename="${filename}"`);
+  const isDownload = url.searchParams.has('dl');
+  const disposition = isDownload ? 'attachment' : 'inline';
+  headers.set('content-disposition', `${disposition}; filename="${isDownload ? downloadName : inlineName}"`);
 
   const total = stat.size;
 

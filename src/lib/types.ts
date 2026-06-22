@@ -23,10 +23,12 @@ export interface CatalogPart {
   instrumentSlug: string;
   instrument: string | null;
   key: string | null;
-  partNumber: number | null;
+  partNumber: number | null; // first part number (sorting/dedup)
+  partNumbers?: number[]; // every number a combined chart covers ("1 & 2" → [1,2])
   format: string; // 'letter' | 'lyre'
   originalName: string | null;
   source: string | null; // canonical source label this copy came from
+  generated?: boolean; // app-generated (MuseScore output) — masks manual copies
 }
 
 export interface CatalogAsset {
@@ -38,6 +40,20 @@ export interface CatalogAsset {
   source: string | null; // canonical source label this copy came from
   assetType?: string;
   instrumentSlug?: string; // set on audio: the isolated-part instrument, if any
+  generated?: boolean; // app-generated (MuseScore output) — masks manual copies
+}
+
+// A manually-created score/part hidden by an app-generated replacement. Kept off
+// the player/score views but surfaced (clickable) on the Library Status masked
+// row. `bucket` records which column it came from; the part fields are present
+// only when it came from `parts`.
+export interface MaskedItem extends CatalogAsset {
+  bucket: 'parts' | 'scores';
+  instrument?: string | null;
+  key?: string | null;
+  partNumber?: number | null;
+  partNumbers?: number[];
+  format?: string;
 }
 
 // An unreachable shortcut (target not readable by the sync). No content/sha; it
@@ -69,6 +85,7 @@ export interface Tune {
   images: CatalogAsset[];
   files: CatalogAsset[];
   unreachable: UnreachableItem[];
+  masked: MaskedItem[]; // manual scores/parts hidden by a generated replacement
 }
 
 export interface Instrument {

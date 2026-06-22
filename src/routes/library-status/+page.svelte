@@ -175,6 +175,24 @@
         buildCell(miscFor(t), unMisc(t), miscItemLabel),
         ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel)),
       ] as (Cell | null)[],
+      // Manual originals masked by a generated version, aligned to the same
+      // columns: only the Whole-Band (score) and per-instrument (part) columns can
+      // carry them; the rest are always null. These use the normal source-colored
+      // cell (the masked SUB-ROW, not the chip color, is what marks them masked).
+      hasMasked: (t.masked?.length ?? 0) > 0,
+      maskedCells: [
+        null,
+        null,
+        buildCell((t.masked ?? []).filter((m) => m.bucket === 'scores'), [], scoreItemLabel),
+        null,
+        ...instruments.map((inst) =>
+          buildCell(
+            (t.masked ?? []).filter((m) => m.bucket === 'parts' && m.instrumentSlug === inst.slug),
+            [],
+            partItemLabel
+          )
+        ),
+      ] as (Cell | null)[],
     }))
   );
 
@@ -442,7 +460,10 @@
       <strong>Misc Files</strong> column gathers everything else in a song's folder —
       notes (Google Docs), images, and other documents. Click a
       square to open it (a single file opens full screen; several open a list).
-      Blank means nothing is on file.
+      Blank means nothing is on file. When a song has app-generated scores, the
+      manually-created originals they replace are hidden from the score pages but
+      still listed on a <strong>“masked originals” sub-row</strong> here (squares
+      keep their source color), so you can open and compare them.
     </p>
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
 
@@ -569,6 +590,34 @@
                 </td>
               {/each}
             </tr>
+            {#if r.hasMasked}
+              <tr class="masked-row">
+                <th class="row-head masked-head" scope="row">
+                  <span class="masked-label" title="Manually-created scores hidden by a generated version — click a square to open and compare">↳ masked originals</span>
+                </th>
+                {#each r.maskedCells as c, i (i)}
+                  <td>
+                    {#if c}
+                      <button
+                        class="sq"
+                        class:split={!!c.color2}
+                        style:background={c.color2
+                          ? `linear-gradient(135deg, ${c.color} 0 50%, ${c.color2} 50% 100%)`
+                          : c.color}
+                        style:color={c.text}
+                        title={c.color2
+                          ? `Masked original — ${c.count} × ${c.name} + ${c.name2} — click to open`
+                          : `Masked original — ${c.count} × ${c.name} — click to open`}
+                        onclick={() => openCell(c, `Masked — ${columns[i].label}`, r.title)}
+                      >
+                        {c.count}
+                        {#if c.dot}<span class="dot" aria-hidden="true"></span>{/if}
+                      </button>
+                    {/if}
+                  </td>
+                {/each}
+              </tr>
+            {/if}
           {/each}
         {/each}
         {#if rows.length === 0}
@@ -1016,6 +1065,27 @@
 
   .row-title {
     display: block;
+  }
+
+  /* The masked-originals sub-row sits directly under its song row: shorter, a
+     faint neutral wash, and a quieter indented label so it reads as secondary.
+     The squares themselves keep their normal source colors. */
+  .masked-row td {
+    height: 26px;
+    background: rgba(0, 0, 0, 0.03);
+  }
+  .masked-row .row-head.masked-head {
+    background: var(--panel);
+    padding-top: 0;
+    padding-bottom: 4px;
+  }
+  .masked-label {
+    display: block;
+    padding-left: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-style: italic;
+    color: var(--muted);
   }
 
   .row-head form {

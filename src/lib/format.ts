@@ -30,21 +30,42 @@ export function instrumentDisplay(label: string, key: string | null): string {
   return k ? `${label} (${k})` : label;
 }
 
-/** e.g. "Trumpet (B♭) 2" using instrument + key + partNumber. */
+/**
+ * The part-number designation for display: "2", or a combined "1 & 2" / "1, 2 & 3"
+ * for a chart covering several parts. Empty when the part carries no number.
+ */
+export function partNumberText(part: CatalogPart): string {
+  const nums = part.partNumbers?.length ? part.partNumbers : part.partNumber != null ? [part.partNumber] : [];
+  if (nums.length === 0) return '';
+  if (nums.length === 1) return String(nums[0]);
+  return `${nums.slice(0, -1).join(', ')} & ${nums[nums.length - 1]}`;
+}
+
+/** e.g. "Trumpet (B♭) 2" or "Trumpet (B♭) 1 & 2" using instrument + key + part(s). */
 export function partLabel(part: CatalogPart): string {
   const base = instrumentDisplay(part.instrument ?? part.instrumentSlug, part.key);
-  return part.partNumber != null ? `${base} ${part.partNumber}` : base;
+  const pt = partNumberText(part);
+  return pt ? `${base} ${pt}` : base;
+}
+
+/** The print format as a clean word, used to tell two otherwise-identical parts
+ * (e.g. a generated Letter + Lyre pair) apart in a picker. */
+function formatTag(part: CatalogPart): string {
+  return part.format === 'lyre' ? 'Lyre' : 'Letter';
 }
 
 /**
  * A short tag distinguishing one variant of an otherwise identically-labelled
  * part — its own filename (minus Drive's "Copy of" and the extension), falling
- * back to the source archive. Used only to break ties; see {@link partOptionLabel}.
+ * back to the source archive. The print-format token ("letter"/"lyre") is dropped
+ * because it's shown separately as a clean format word (see {@link partOptionLabel}).
+ * Used only to break ties.
  */
 function variantTag(part: CatalogPart): string {
   const name = part.originalName ? stripCopyOf(part.originalName) : '';
   const cleaned = name
     .replace(/\.[a-z0-9]+$/i, '') // drop extension
+    .replace(/[-_\s]*\b(?:letter|lyre)\b/gi, '') // drop the print-format token
     .replace(/_+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -62,6 +83,11 @@ export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): str
   const base = partLabel(part);
   const collides = siblings.some((p) => p.sha256 !== part.sha256 && partLabel(p) === base);
   if (!collides) return base;
+  // When the colliding parts differ only in print format (a generated Letter +
+  // Lyre pair), disambiguate by that clean format word rather than the filename.
+  const fmt = `${base} — ${formatTag(part)}`;
+  const fmtCollides = siblings.some((p) => p.sha256 !== part.sha256 && `${partLabel(p)} — ${formatTag(p)}` === fmt);
+  if (!fmtCollides) return fmt;
   const tag = variantTag(part);
   return tag ? `${base} — ${tag}` : base;
 }
@@ -69,7 +95,8 @@ export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): str
 /** Minimal base for {@link partShortLabel}: just the part (with key only when
  * there's no part number), dropping the instrument name. */
 function partShortBase(part: CatalogPart): string {
-  if (part.partNumber != null) return `Part ${part.partNumber}`;
+  const pt = partNumberText(part);
+  if (pt) return `Part ${pt}`;
   const k = keyLabel(part.key);
   return k ? `Part (${k})` : 'Part';
 }
@@ -83,6 +110,10 @@ export function partShortLabel(part: CatalogPart, siblings: CatalogPart[]): stri
   const base = partShortBase(part);
   const collides = siblings.some((p) => p.sha256 !== part.sha256 && partShortBase(p) === base);
   if (!collides) return base;
+  // Prefer the clean print-format word for a Letter/Lyre pair (see partOptionLabel).
+  const fmt = `${base} — ${formatTag(part)}`;
+  const fmtCollides = siblings.some((p) => p.sha256 !== part.sha256 && `${partShortBase(p)} — ${formatTag(p)}` === fmt);
+  if (!fmtCollides) return fmt;
   const tag = variantTag(part);
   return tag ? `${base} — ${tag}` : base;
 }

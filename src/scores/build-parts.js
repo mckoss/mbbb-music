@@ -24,7 +24,7 @@ import { FORMATS, FORMAT_KEYS, styleFileFor, fitRungOverride } from './formats.j
 import { stampCorners, pageCount } from './stamp.js';
 import { stripTitleFrame } from './strip-title.js';
 import { slugify, slugifyStem } from '../sync/slugify.js';
-import { detectInstrument, detectKey, detectPartNumber } from '../sync/instruments.js';
+import { detectInstrument, detectKey, detectPartNumbers } from '../sync/instruments.js';
 
 /** Local render timestamp as `YYYY-MM-DD HH:MM` (24-hour), unique per minute. */
 function renderStamp(d = new Date()) {
@@ -36,6 +36,8 @@ function renderStamp(d = new Date()) {
 /**
  * A descriptive slug for one part, derived from its MuseScore part name. Mirrors
  * the catalog's part naming (src/lib/asset-urls.ts): instrument[-key][-partN].
+ * A combined part keeps every number ("Trumpet 1 & 2" → "trumpet-bflat-part1-2"),
+ * so the catalog can render "Part 1 & 2" instead of dropping all but the last.
  * Falls back to a slug of the raw name when the instrument isn't recognized.
  *
  * @param {string} partName
@@ -45,11 +47,11 @@ function renderStamp(d = new Date()) {
 function partSlug(partName, index) {
   const inst = detectInstrument(partName);
   const key = detectKey(partName);
-  const num = detectPartNumber(partName);
+  const nums = detectPartNumbers(partName);
   const bits = [];
   bits.push(inst ? inst.slug : slugify(partName) || `part${index + 1}`);
   if (key) bits.push(key);
-  if (num != null) bits.push(`part${num}`);
+  if (nums.length) bits.push(`part${nums.join('-')}`);
   return bits.join('-');
 }
 

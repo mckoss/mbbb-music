@@ -56,6 +56,12 @@ test('partShortLabel drops the instrument, keeping just the part number', () => 
   assert.equal(partShortLabel(b, [a, b]), 'Part 2');
 });
 
+test('a combined chart reads "Part 1 & 2" (short) and "Trumpet (B♭) 1 & 2" (full)', () => {
+  const a = part({ sha256: 'a', partNumber: 1, partNumbers: [1, 2] });
+  assert.equal(partShortLabel(a, [a]), 'Part 1 & 2');
+  assert.equal(partOptionLabel(a, [a]), 'Trumpet (B♭) 1 & 2');
+});
+
 test('partShortLabel disambiguates same-numbered siblings by variant tag', () => {
   // Two "Part 1" arrangements would collide, so each gets its filename tag.
   const a = part({ sha256: 'a', partNumber: 1, originalName: 'Bella Ciao - march.pdf' });

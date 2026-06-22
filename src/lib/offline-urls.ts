@@ -51,6 +51,7 @@ interface PartLike {
   instrument: string | null;
   key: string | null;
   partNumber: number | null;
+  partNumbers?: number[];
 }
 interface AssetLike {
   sha256: string;
@@ -72,7 +73,9 @@ export interface ShaSong {
 }
 
 function partLabel(p: PartLike): string {
-  return [p.instrument || p.instrumentSlug, p.key, p.partNumber].filter(Boolean).join(' ');
+  const nums = p.partNumbers?.length ? p.partNumbers : p.partNumber != null ? [p.partNumber] : [];
+  const numText = nums.length <= 1 ? (nums[0] ?? '') : `${nums.slice(0, -1).join(', ')} & ${nums[nums.length - 1]}`;
+  return [p.instrument || p.instrumentSlug, p.key, numText].filter(Boolean).join(' ');
 }
 
 /**

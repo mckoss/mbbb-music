@@ -28,6 +28,22 @@ const noopLogger = { info() {}, warn() {}, error() {} };
 const MISC_SONG = 'Misc';
 
 /**
+ * The song title a file's folder represents. Normally the folder name is the
+ * song. A `generated` source instead holds one `<Song>.parts` folder per song
+ * (the `build-scores` output uploaded as-is), so strip that suffix — the song
+ * then groups with, and masks, the manually-created folder of the same name.
+ *
+ * @param {Object} file                  Drive file (with sourceFolderLabel, folderName).
+ * @param {Set<string>} generatedLabels  Source labels marked `generated: true`.
+ */
+function songTitleFromFolder(file, generatedLabels) {
+  const name = file.folderName;
+  if (!name) return MISC_SONG;
+  if (generatedLabels.has(file.sourceFolderLabel)) return name.replace(/\.parts$/i, '') || MISC_SONG;
+  return name;
+}
+
+/**
  * Run an incremental, content-addressable Drive asset sync.
  *
  * @param {Object} params
@@ -47,6 +63,9 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
   const manifest = await loadManifest(config.manifestPath);
   const casDir = resolve(config.dataDir, 'cas');
   const originsDir = originsDirFor(casDir);
+  // Sources whose folders are app-generated `<Song>.parts` output rather than a
+  // plain song folder; their folder names need the `.parts` suffix stripped.
+  const generatedLabels = new Set((config.sources || []).filter((s) => s.generated).map((s) => s.label));
 
   // 1. List + classify across all configured source folders. One shared
   // visited-folder set spans every source, so a folder reached again through a
@@ -149,7 +168,7 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
       // An unreadable shortcut: record its classified metadata (no content) so the
       // health view can flag the permission gap. Never queued for download.
       const { file } = entry;
-      const meta = detectAssetMetadata({ originalName: file.name, songTitle: file.folderName || MISC_SONG });
+      const meta = detectAssetMetadata({ originalName: file.name, songTitle: songTitleFromFolder(file, generatedLabels) });
       manifest.files[entry.id] = buildUnreachableEntry(entry, meta, timestamp);
       actions.unreachable.push({ id: entry.id, name: file.name });
       continue;
@@ -165,8 +184,9 @@ export async function runSync({ driveClient, config, dryRun = false, now = () =>
     const { file, classification } = entry;
     // A file inside a song folder is attributed to that song; one sitting at a
     // source root (no song folder) isn't tied to a song, so it lands in a shared
-    // "Misc" bucket rather than being mislabeled with the source name.
-    const songTitle = file.folderName || MISC_SONG;
+    // "Misc" bucket rather than being mislabeled with the source name. A
+    // generated source's `<Song>.parts` folder maps to the bare song title.
+    const songTitle = songTitleFromFolder(file, generatedLabels);
     const meta = detectAssetMetadata({ originalName: file.name, songTitle });
 
     // Prefer the hash Drive reports. Drive omits sha256Checksum for some files
@@ -362,6 +382,7 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     instrumentSlug: meta.instrumentSlug,
     key: meta.key,
     partNumber: meta.partNumber,
+    partNumbers: meta.partNumbers,
     syncedAt: timestamp,
   });
 }

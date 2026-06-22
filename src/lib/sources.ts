@@ -17,6 +17,7 @@ const NEUTRAL: SourceStyle = { color: '#9aa0a6', text: '#ffffff', name: 'Other' 
 // purple.
 export function sourceStyle(label: string | null | undefined): SourceStyle {
   const l = (label ?? '').toLowerCase();
+  if (l.includes('generated')) return { color: '#0e9bb5', text: '#ffffff', name: 'Generated (MuseScore)' };
   if (l.includes('arrangement')) return { color: '#2e9e4f', text: '#ffffff', name: 'Arrangements' };
   if (l.includes('mbbb') || l.includes('song-library'))
     return { color: '#f2c200', text: '#332a00', name: 'MBBB Song Library' };

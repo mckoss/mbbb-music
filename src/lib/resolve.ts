@@ -1,6 +1,6 @@
 import type { Tune, CatalogPart } from './types';
 import type { PrintFormat } from './stores';
-import { partOptionLabel, stripCopyOf } from './format.js';
+import { partOptionLabel, partShortLabel, stripCopyOf } from './format.js';
 
 export interface ActivePdf {
   sha: string;
@@ -112,8 +112,11 @@ export function viewableDocs(
     out.push({ sha, label, kind });
   };
 
+  // The instrument and format are chosen by their own dropdowns, so the Document
+  // picker only needs the part identity — "Part 1", "Part 2", … (and "Full score"
+  // / "Notes" below) — never the instrument name or a raw filename.
   const parts = partsForFormat(tune, instrumentSlug, printFormat);
-  for (const p of parts) push(p.sha256, partOptionLabel(p, parts), 'part');
+  for (const p of parts) push(p.sha256, partShortLabel(p, parts), 'part');
 
   const scores = tune.scores ?? [];
   for (const s of scores) {

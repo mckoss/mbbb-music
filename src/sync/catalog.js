@@ -11,7 +11,7 @@
 // audio, and MuseScore sources.
 
 import { slugify, slugifyStem } from './slugify.js';
-import { DEFAULT_KEY_BY_SLUG, detectPartNumber, instrumentLabel } from './instruments.js';
+import { DEFAULT_KEY_BY_SLUG, detectPartNumbers, instrumentLabel } from './instruments.js';
 import { isJunkName, NATIVE_PDF_EXPORT } from './classify.js';
 
 /**
@@ -162,33 +162,50 @@ export function formatFromShape(widthPt, heightPt, landscapeIsLyre = false) {
  *
  * The landscape-means-Lyre rule applies only to instrument parts (an entry with
  * an instrumentSlug); a whole-band score in landscape stays size-classified.
+ *
+ * With `fromName`, the page shape is ignored and the format is read purely from a
+ * 'lyre' token in the filename. App-generated parts use this: the generator emits
+ * both Letter and Lyre on the same 8.5×11 sheet (the Lyre art sits in the upper-
+ * left for cutting), so their page geometry is identical and only the filename
+ * token ("…-lyre.pdf" vs "…-letter.pdf") distinguishes the two.
  */
-export function formatOf(entry) {
+export function formatOf(entry, { fromName = false } = {}) {
   if (typeof entry === 'string' || entry == null) {
     return /\blyre\b/i.test(String(entry ?? '')) ? 'lyre' : 'letter';
   }
+  const nameSaysLyre = /\blyre\b/i.test(String(entry.originalName ?? ''));
+  if (fromName) return nameSaysLyre ? 'lyre' : 'letter';
   const isPart = Boolean(entry.instrumentSlug);
   const byShape =
     entry.pageWidthPt && entry.pageHeightPt
       ? formatFromShape(entry.pageWidthPt, entry.pageHeightPt, isPart)
       : null;
   if (byShape) return byShape;
-  return /\blyre\b/i.test(String(entry.originalName ?? '')) ? 'lyre' : 'letter';
+  return nameSaysLyre ? 'lyre' : 'letter';
 }
 
 /**
- * Part number for an entry, re-derived from the filename when the synced value
- * is missing. detectPartNumber only reads a trailing number, so a format suffix
- * ("Trumpet_2-Lyre") hides it; strip a trailing lyre/letter token first.
+ * Every part number an entry covers ("1 & 2" → [1,2]), preferring the synced
+ * `partNumbers`, then re-deriving from the filename (so already-synced data and
+ * the re-generated combined names both work), then falling back to a stored
+ * single `partNumber`. A trailing format token ("…-part1-2-Lyre") would hide the
+ * run, so it's stripped first.
  */
-function effectivePartNumber(entry) {
-  const stored = partNumberOf(entry);
-  if (stored != null) return stored;
+function effectivePartNumbers(entry) {
+  if (Array.isArray(entry.partNumbers) && entry.partNumbers.length) return entry.partNumbers;
   // Drop a trailing format token that sits just before the extension (or at the
-  // end), keeping any real extension so detectPartNumber strips that — not a
-  // version dot like "V1.0" — and the part number ("…Trumpet_2") survives.
+  // end), keeping any real extension so the detector strips that — not a version
+  // dot like "V1.0" — and the part run ("…part1-2") survives.
   const cleaned = String(entry.originalName ?? '').replace(/[\s_-]*(lyre|letter)(?=(\.[^.]*)?$)/i, '');
-  return detectPartNumber(cleaned);
+  const derived = detectPartNumbers(cleaned);
+  if (derived.length) return derived;
+  const stored = partNumberOf(entry);
+  return stored != null ? [stored] : [];
+}
+
+/** The first part number an entry covers, or null. */
+function effectivePartNumber(entry) {
+  return effectivePartNumbers(entry)[0] ?? null;
 }
 
 /**
@@ -426,6 +443,11 @@ function dedupeParts(parts, pri) {
  * @property {CatalogAsset[]} images      Images (JPEG) embeddable in the view.
  * @property {CatalogAsset[]} files       Other downloadable files (docx, zip, …).
  * @property {Object[]} unreachable       Unreachable shortcuts (no content) for the health view.
+ * @property {CatalogAsset[]} masked      Manually-created scores/parts hidden by an
+ *                                        app-generated replacement: kept out of the
+ *                                        player/score views but surfaced (clickable)
+ *                                        on the File Info page. Each carries a `bucket`
+ *                                        ('parts'|'scores') marking where it came from.
  */
 
 /** Is token-run `a` a leading prefix of token-run `b`? (token-level, not chars) */
@@ -600,6 +622,12 @@ export function detectCollectionFolders(manifest, canonical) {
   return collections;
 }
 
+// Asset buckets that a song's app-generated scores mask: once a generated
+// score/part exists for a song, the manual copies in these buckets are dropped
+// from the catalog. Scores and parts today; add 'audio' when generated audio
+// replaces the manual practice tracks (see the masking pass in buildCatalog).
+const MASKED_WHEN_GENERATED = ['parts', 'scores'];
+
 /**
  * Build the player-facing catalog: tunes grouped by song, each with its
  * per-instrument parts, full scores, audio, and MuseScore sources. Every unique
@@ -612,15 +640,24 @@ export function detectCollectionFolders(manifest, canonical) {
  * known song is returned in `extras` (surfaced on the Extra Files tab), never as
  * a bogus "Misc" song.
  *
+ * App-generated scores supersede manual ones: when a song has any score/part
+ * from a `generatedSourceLabels` source, its manually-created score PDFs are
+ * MASKED (dropped from the catalog the player sees, though still synced in CAS).
+ * Non-score assets — audio, notes, images, and especially the MuseScore master —
+ * are never masked. {@link MASKED_WHEN_GENERATED} is the extension point: add
+ * 'audio' there once app-generated audio replaces the manual practice tracks.
+ *
  * @param {object} manifest
  * @param {string[]} [sourceLabels]       Configured source labels in priority order.
  * @param {string[]} [looseSourceLabels]  Labels of sources NOT foldered by song.
+ * @param {string[]} [generatedSourceLabels]  Labels of sources holding app-generated scores.
  * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], sources: string[], uniqueCount:number, liveCount:number }}
  */
-export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []) {
+export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = [], generatedSourceLabels = []) {
   const pri = sourcePriority(sourceLabels, manifest);
   const { canonical, liveCount } = canonicalByContent(manifest, pri);
   const loose = new Set(looseSourceLabels || []);
+  const generated = new Set(generatedSourceLabels || []);
   // Folders that hold parts for many different songs (a by-player/by-instrument
   // collection) — detected by content, not folder/file names. Their files are
   // grouped by the song each one's content belongs to, not by the folder.
@@ -653,7 +690,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
     if (!song) {
-      song = { slug, title, lastModified: null, parts: [], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [] };
+      song = { slug, title, lastModified: null, parts: [], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [], masked: [] };
       bySong.set(slug, song);
     }
     return song;
@@ -663,6 +700,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     if (e.modifiedTime && (!song.lastModified || e.modifiedTime > song.lastModified)) {
       song.lastModified = e.modifiedTime;
     }
+    const isGenerated = generated.has(e.sourceFolderLabel);
     const asset = {
       sha256: e.sha256,
       driveFileId: e.driveFileId,
@@ -670,16 +708,25 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       folder: e.originalFolder || null,
       originalName: e.originalName || null,
       source: e.sourceFolderLabel || null,
+      // Carry the generated flag so the masking pass can keep these and drop the
+      // manual copies; a truthy value also lets the UI badge a standardized score.
+      ...(isGenerated ? { generated: true } : {}),
     };
     const at = effectiveAssetType(e);
     if (at === 'pdf' && e.instrumentSlug) {
+      const partNums = effectivePartNumbers(e);
       song.parts.push({
         ...asset,
         instrument: e.instrument || null,
         instrumentSlug: e.instrumentSlug,
         key: effectiveKey(e),
-        partNumber: effectivePartNumber(e),
-        format: formatOf(e),
+        partNumber: partNums[0] ?? null,
+        // A combined chart carries several ("1 & 2"); omit for single parts so the
+        // common case stays clean and renders from partNumber.
+        ...(partNums.length > 1 ? { partNumbers: partNums } : {}),
+        // Generated parts share Letter/Lyre page geometry, so classify them from
+        // the filename token rather than the (identical) page shape.
+        format: formatOf(e, { fromName: isGenerated }),
         _mtime: e.modifiedTime || '', // transient, used for version dedup
       });
     } else if (at === 'pdf') {
@@ -757,6 +804,31 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     song.unreachable.push(unreachableItem(e));
   }
 
+  // Mask manually-created scores wherever app-generated ones exist. A song with
+  // any generated score/part is "generated": its manual score PDFs are removed
+  // from the player-facing buckets (still synced in CAS) so the score pages show
+  // only the standardized set. They are NOT discarded: each is moved to the
+  // song's `masked` list (tagged with its origin bucket), so the File Info page
+  // can still surface them as a clickable secondary row for comparison. The
+  // MuseScore master, audio, notes, and images are untouched.
+  for (const song of bySong.values()) {
+    const hasGenerated = song.parts.some((p) => p.generated) || song.scores.some((s) => s.generated);
+    if (!hasGenerated) continue;
+    for (const bucket of MASKED_WHEN_GENERATED) {
+      const kept = [];
+      for (const a of song[bucket]) {
+        if (a.generated) {
+          kept.push(a);
+        } else {
+          // eslint-disable-next-line no-unused-vars
+          const { _mtime, ...rest } = a; // drop the transient version-dedup field
+          song.masked.push({ ...rest, bucket });
+        }
+      }
+      song[bucket] = kept;
+    }
+  }
+
   const tunes = [...bySong.values()]
     .sort((a, b) => a.slug.localeCompare(b.slug))
     .map((s) => ({
@@ -774,6 +846,13 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
     for (const u of t.unreachable) {
       if (u.instrumentSlug && !instLabels.has(u.instrumentSlug)) {
         instLabels.set(u.instrumentSlug, u.instrument || u.instrumentSlug);
+      }
+    }
+    // A masked manual part whose instrument has no generated replacement still
+    // needs a column so the File Info masked row has somewhere to render it.
+    for (const m of t.masked) {
+      if (m.instrumentSlug && !instLabels.has(m.instrumentSlug)) {
+        instLabels.set(m.instrumentSlug, m.instrument || m.instrumentSlug);
       }
     }
   }

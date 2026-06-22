@@ -6,7 +6,7 @@
 // the metadata recorded alongside each file in the manifest.
 
 import { slugify, slugifyStem } from './slugify.js';
-import { detectInstrument, detectKey, detectPartNumber } from './instruments.js';
+import { detectInstrument, detectKey, detectPartNumbers } from './instruments.js';
 
 /**
  * Strip a known leading song prefix from a filename stem so instrument/key
@@ -26,7 +26,9 @@ function stripSongPrefix(stemSlug, songSlug) {
  * @property {string|null} instrument  Detected instrument label, or null.
  * @property {string|null} instrumentSlug
  * @property {string|null} key          Detected key slug (e.g. "bflat"), or null.
- * @property {number|null} partNumber   Detected part number, or null.
+ * @property {number|null} partNumber   First detected part number, or null.
+ * @property {number[]|null} partNumbers Every part number a combined chart covers
+ *                                       ("1 & 2" → [1,2]); null when none/single.
  */
 
 /**
@@ -43,14 +45,17 @@ export function detectAssetMetadata({ originalName, songTitle }) {
   const descriptor = stripSongPrefix(stemSlug, songSlug).replace(/-/g, ' ');
 
   const inst = detectInstrument(descriptor) ?? detectInstrument(originalName);
+  // Part numbers are only meaningful for a known instrument ("Trumpet 2"); a
+  // trailing number with no instrument ("MDL Bass Line 5") is not a part. A
+  // combined chart carries several ("Trumpet 1 & 2" → [1,2]).
+  const nums = inst ? detectPartNumbers(originalName) : [];
   return {
     songTitle,
     songTitleSlug: songSlug,
     instrument: inst ? inst.label : null,
     instrumentSlug: inst ? inst.slug : null,
     key: detectKey(originalName),
-    // A part number is only meaningful for a known instrument ("Trumpet 2"); a
-    // trailing number with no instrument ("MDL Bass Line 5") is not a part.
-    partNumber: inst ? detectPartNumber(originalName) : null,
+    partNumber: nums[0] ?? null,
+    partNumbers: nums.length > 1 ? nums : null,
   };
 }

@@ -19,6 +19,10 @@ const DEFAULT_CONFIG_PATH = resolve(REPO_ROOT, 'config.json');
  * @property {boolean} [foldered]  False if this source is NOT organized into
  *        per-song subfolders (its files are grouped by the song embedded in each
  *        filename instead). Defaults to true (folder name = song).
+ * @property {boolean} [generated]  True if this source holds app-generated scores
+ *        (the MuseScore `build-scores` output, one `<Song>.parts` folder per song).
+ *        When a song has generated scores here, they MASK the manually-created
+ *        score PDFs synced for that song from other sources.
  */
 
 /**
@@ -84,6 +88,8 @@ function normalizeSources(sources) {
       label: s.label || `drive-folder-${i + 1}`,
       // Preserve an explicit `foldered: false` (source not organized by song).
       ...(s.foldered === false ? { foldered: false } : {}),
+      // Preserve an explicit `generated: true` (authoritative MuseScore output).
+      ...(s.generated === true ? { generated: true } : {}),
     }));
 }
 

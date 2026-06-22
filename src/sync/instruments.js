@@ -128,19 +128,54 @@ export function detectKey(text) {
 }
 
 /**
- * Detect a trailing part number, e.g. "Trumpet 2" or "Trumpet - 2". Returns the
- * integer part number (>= 1) or null. A trailing "0" is not a valid part number
- * (it appears in this library as a voicing/version index, e.g. "alto_sax_0"),
- * so it is rejected.
+ * Detect a part number from a name. Recognizes an explicit "part N" token —
+ * including the app-generated glued form "…-part1-letter" — anywhere in the name,
+ * and otherwise a bare trailing number ("Trumpet 2", "Trumpet - 2"). Returns the
+ * integer part number (>= 1) or null. A "0" is not a valid part number (it appears
+ * in this library as a voicing/version index, e.g. "alto_sax_0"), so it's rejected.
  *
  * @param {string} text
  * @returns {number | null}
  */
 export function detectPartNumber(text) {
-  const m = String(text ?? '')
-    .replace(/\.[^.]+$/, '')
-    .match(/(?:^|[\s_-])(\d{1,2})\s*$/);
+  const s = String(text ?? '').replace(/\.[^.]+$/, '');
+  // An explicit "part 2" / "part2" / "part-2" token. The generated naming glues
+  // it before the format ("…-part1-letter"), where the trailing-number rule can't
+  // see it. Word-bounded so it never fires inside another word.
+  const explicit = s.match(/\bpart[\s_-]*(\d{1,2})\b/i);
+  if (explicit) {
+    const n = Number(explicit[1]);
+    if (Number.isInteger(n) && n >= 1) return n;
+  }
+  // Otherwise a bare number at the very end ("Trumpet 2", "Trumpet_2").
+  const m = s.match(/(?:^|[\s_-])(\d{1,2})\s*$/);
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+// One number, or a run of them joined by a separator (`&`, `and`, `,`, `+`, `-`,
+// `–`, `to`, with optional spaces/underscores) — a combined part like "1 & 2".
+const PART_RUN = '\\d{1,2}(?:[\\s_]*(?:&|and|\\+|,|-|–|to)[\\s_]*\\d{1,2})*';
+const PART_EXPLICIT = new RegExp(`\\bpart[\\s_-]*(${PART_RUN})`, 'i');
+const PART_TRAILING = new RegExp(`(?:^|[\\s_-])(${PART_RUN})\\s*$`, 'i');
+
+/**
+ * Detect every part number a chart covers, as an ordered, de-duplicated list.
+ * A single part yields one number ("Trumpet 2" → [2]); a combined part yields
+ * several ("Trumpet 1 & 2" → [1, 2], the generated "…-part1-2-…" → [1, 2]).
+ *
+ * Reads an explicit "part …" token first (the generated glued form), else a
+ * trailing run of numbers. A "0" is rejected (a voicing/version index, not a
+ * part). Returns [] when no part number is present.
+ *
+ * @param {string} text
+ * @returns {number[]}
+ */
+export function detectPartNumbers(text) {
+  const s = String(text ?? '').replace(/\.[^.]+$/, '');
+  const group = (s.match(PART_EXPLICIT) || s.match(PART_TRAILING))?.[1];
+  if (!group) return [];
+  const nums = (group.match(/\d{1,2}/g) || []).map(Number).filter((n) => Number.isInteger(n) && n >= 1);
+  return [...new Set(nums)];
 }

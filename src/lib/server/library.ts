@@ -69,11 +69,14 @@ function load(): Loaded {
   // are presentation-only and applied to the tunes below, so the song's derived
   // slug stays its stable identity (gig setlists + status key on it).
   const manifest = applyCorrections(rawManifest, overlay);
-  const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean }[];
+  const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean; generated?: boolean }[];
   const sourceLabels = sources.map((s) => s.label).filter(Boolean);
   // Sources explicitly marked `foldered: false` aren't organized into per-song
   // folders; their files are grouped by the song embedded in each filename.
   const looseLabels = sources.filter((s) => s.foldered === false).map((s) => s.label);
+  // Sources marked `generated: true` hold app-generated scores; their presence
+  // masks the manually-created score PDFs for the same song.
+  const generatedLabels = sources.filter((s) => s.generated === true).map((s) => s.label);
   // Map each source label to its Google Drive folder URL so the UI can link to
   // the source in Drive.
   const sourceUrls: Record<string, string> = {};
@@ -82,7 +85,7 @@ function load(): Loaded {
   }
   // Attach each song's admin-assigned status (default 'Unfiled') here at the
   // server boundary, so the pure sync catalog stays decoupled from the store.
-  const built = buildCatalog(manifest, sourceLabels, looseLabels);
+  const built = buildCatalog(manifest, sourceLabels, looseLabels, generatedLabels);
   const statuses = statusMap();
   // Each tune's `slug` is its stable identity (used by status + gig setlists and
   // never changed by a correction). A song correction overlays presentation only:

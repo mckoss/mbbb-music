@@ -3,11 +3,12 @@
 
   "dataDir": "data",
 
-  "_comment_sources": "Folders to scan, each recursively. Listing order is the attribution priority when the same file is reachable from several sources. Set \"foldered\": false on a source whose files are NOT organized into per-song subfolders — its files are grouped by the song embedded in each filename and merged into matching songs; unmatched files appear on the Extra Files tab. Omit it (default true) for sources laid out as <source>/<song>/<asset>.",
+  "_comment_sources": "Folders to scan, each recursively. Listing order is the attribution priority when the same file is reachable from several sources. Set \"foldered\": false on a source whose files are NOT organized into per-song subfolders — its files are grouped by the song embedded in each filename and merged into matching songs; unmatched files appear on the Extra Files tab. Omit it (default true) for sources laid out as <source>/<song>/<asset>. Set \"generated\": true on a source holding app-generated MuseScore output (one <Song>.parts folder per song, the build-scores result uploaded as-is): its scores MASK the manually-created score PDFs for the same song, while audio, notes, and the MuseScore master are kept.",
   "sources": [
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_1", "label": "scores" },
     { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_2", "label": "recordings" },
-    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_3", "label": "loose-files", "foldered": false }
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_3", "label": "loose-files", "foldered": false },
+    { "id": "REPLACE_WITH_DRIVE_FOLDER_ID_4", "label": "generated-scores", "generated": true }
   ],
 
   "google": {

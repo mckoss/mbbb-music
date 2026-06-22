@@ -344,6 +344,42 @@ test('parts carry print format, re-derive lyre part numbers, and keep all distin
   assert.ok(!tpt.some((x) => x.partNumber == null), 'no undifferentiated unnumbered duplicates');
 });
 
+test('generated parts classify Letter/Lyre from the filename token, not page shape', () => {
+  // Both generated PDFs have identical LETTER-size geometry (the Lyre art prints
+  // in the upper-left of an 8.5×11 sheet for cutting), so only the filename tells
+  // them apart. 612×792 pt = 8.5×11 in.
+  const gp = (sha, name) => ({
+    driveFileId: sha, status: 'synced', sha256: sha, assetType: 'pdf',
+    songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+    instrument: 'Trumpet', instrumentSlug: 'trumpet', key: 'bflat',
+    sourceFolderLabel: 'generated-scores', originalFolder: 'Bad Guy.parts',
+    pageWidthPt: 612, pageHeightPt: 792, originalName: name,
+  });
+  const manifest = {
+    files: {
+      gl: gp('gl', 'Bad Guy-trumpet-letter.pdf'),
+      gy: gp('gy', 'Bad Guy-trumpet-lyre.pdf'),
+      // A MANUAL lyre-named part with the same letter geometry still classifies by
+      // shape (its filename tokens are unreliable) — the generated rule is scoped.
+      ml: {
+        driveFileId: 'ml', status: 'synced', sha256: 'ml', assetType: 'pdf',
+        songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+        instrument: 'Trumpet', instrumentSlug: 'trumpet', key: 'bflat',
+        sourceFolderLabel: 'scores', originalFolder: 'Iron Man',
+        pageWidthPt: 612, pageHeightPt: 792, originalName: 'Iron Man - Trumpet Lyre.pdf',
+      },
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['generated-scores', 'scores'], [], ['generated-scores']);
+
+  const gen = tunes.find((t) => t.slug === 'bad-guy').parts;
+  assert.equal(gen.find((p) => p.originalName.includes('lyre')).format, 'lyre', 'generated lyre → lyre by name');
+  assert.equal(gen.find((p) => p.originalName.includes('letter')).format, 'letter', 'generated letter → letter by name');
+
+  const manual = tunes.find((t) => t.slug === 'iron-man').parts[0];
+  assert.equal(manual.format, 'letter', 'a manual part keeps shape-based classification');
+});
+
 test('distinct copies of one slot order by source priority, newest as tiebreak — none hidden', () => {
   const p = (sha, name, source, mt) => ({
     status: 'synced', sha256: sha, assetType: 'pdf', sourceFolderLabel: source,
@@ -452,4 +488,72 @@ test('images bucket inline, docx/zip bucket as downloads; a song-less file goes 
   assert.equal(extras.length, 1);
   assert.equal(extras[0].originalName, 'Stage Plot.zip');
   assert.equal(extras[0].assetType, 'archive');
+});
+
+test('app-generated scores mask manual score PDFs for the same song, keeping audio + master', () => {
+  const manifest = {
+    files: {
+      // Manually-created Bad Guy folder: a messy trumpet part and full score (to be
+      // masked), plus an mp3 and the MuseScore master (to be kept).
+      m1: {
+        driveFileId: 'm1', status: 'synced', sha256: 'h1', assetType: 'pdf',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        instrument: 'Trumpet', instrumentSlug: 'trumpet',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad Guy - Tpt FINAL v3.pdf',
+      },
+      m2: {
+        driveFileId: 'm2', status: 'synced', sha256: 'h2', assetType: 'pdf',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad Guy - Full Score.pdf',
+      },
+      m3: {
+        status: 'synced', sha256: 'h3', assetType: 'mp3',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad Guy.mp3',
+      },
+      m4: {
+        status: 'synced', sha256: 'h4', assetType: 'musescore',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad Guy.mscz',
+      },
+      // Generated standardized trumpet part (sync strips the ".parts" folder suffix,
+      // so songTitleSlug is the bare song).
+      g1: {
+        status: 'synced', sha256: 'h5', assetType: 'pdf',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        instrument: 'Trumpet', instrumentSlug: 'trumpet',
+        sourceFolderLabel: 'generated-scores', originalFolder: 'Bad Guy.parts', originalName: 'Bad Guy-trumpet-letter.pdf',
+      },
+      // A song with no generated scores is untouched.
+      o1: {
+        status: 'synced', sha256: 'h6', assetType: 'pdf',
+        songTitle: 'Iron Man', songTitleSlug: 'iron-man',
+        instrument: 'Tuba', instrumentSlug: 'tuba',
+        sourceFolderLabel: 'scores', originalFolder: 'Iron Man', originalName: 'Iron Man - Tuba.pdf',
+      },
+    },
+  };
+  // The generated source listed first (highest priority) and flagged generated.
+  const { tunes } = buildCatalog(manifest, ['generated-scores', 'scores'], [], ['generated-scores']);
+
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+  assert.equal(bad.parts.length, 1, 'only the generated trumpet part remains');
+  assert.equal(bad.parts[0].generated, true);
+  assert.equal(bad.parts[0].originalName, 'Bad Guy-trumpet-letter.pdf');
+  assert.equal(bad.scores.length, 0, 'the manual full score is masked');
+  assert.equal(bad.audio.length, 1, 'practice audio is kept');
+  assert.equal(bad.musescore.length, 1, 'the MuseScore master is always kept');
+
+  // Masked manual files are preserved (not discarded) for the File Info page,
+  // each tagged with the bucket it came from, and still carry a Drive id to click.
+  assert.equal(bad.masked.length, 2, 'the masked manual part + score are kept for File Info');
+  const maskedNames = bad.masked.map((m) => m.originalName).sort();
+  assert.deepEqual(maskedNames, ['Bad Guy - Full Score.pdf', 'Bad Guy - Tpt FINAL v3.pdf']);
+  assert.deepEqual(bad.masked.map((m) => m.bucket).sort(), ['parts', 'scores']);
+  assert.ok(bad.masked.every((m) => m.driveFileId && !('_mtime' in m)), 'clickable, no transient field');
+
+  const iron = tunes.find((t) => t.slug === 'iron-man');
+  assert.equal(iron.parts.length, 1, 'a song with no generated scores is unaffected');
+  assert.ok(!iron.parts[0].generated, 'and its parts are not flagged generated');
+  assert.equal(iron.masked.length, 0, 'a non-generated song has nothing masked');
 });
