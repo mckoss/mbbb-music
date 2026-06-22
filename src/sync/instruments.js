@@ -21,6 +21,8 @@
  * @type {Instrument[]}
  */
 const INSTRUMENTS = [
+  // Before alto-sax: its bare "alto" matcher would otherwise swallow "alto horn".
+  { label: 'Alto horn', slug: 'alto-horn', defaultKey: 'eflat', match: ['alto horn', 'althorn', 'tenor horn', 'eb horn', 'e flat horn'] },
   { label: 'Alto saxophone', slug: 'alto-sax', defaultKey: 'eflat', match: ['alto saxophone', 'alto sax', 'altosax', 'saxophone alto', 'saxofon alto', 'saxo alto', 'alto'] },
   { label: 'Soprano saxophone', slug: 'soprano-sax', defaultKey: 'bflat', match: ['soprano saxophone', 'soprano sax', 'saxophone soprano', 'saxofon soprano', 'soprano'] },
   { label: 'Tenor saxophone', slug: 'tenor-sax', defaultKey: 'bflat', match: ['tenor saxophone', 'tenor sax', 'tenorsax', 'saxophone tenor', 'sax tenor', 'saxofon tenor', 'saxo tenor'] },
