@@ -130,7 +130,10 @@
     {/if}
   </div>
 
-  {#if numPages > 1}
+  {#if numPages > 1 && !tap}
+    <!-- Bottom pager only when there are no edge tap zones (the roomy Score
+         view). In tap mode the full-height zones page the score, so this would
+         be redundant. -->
     <div class="nav">
       <button class="pg" onclick={prev} disabled={pageNum <= 1} aria-label="Previous page">‹</button>
       <span class="count">{pageNum} / {numPages}</span>
