@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { audio, playSha, prime, toggle, restart, seek } from '$lib/audio';
+  import { audio, playSha, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
   import { formatTime } from '$lib/format';
 
   let {
@@ -13,6 +13,13 @@
   const position = $derived(isCurrent ? $audio.position : 0);
   const duration = $derived(isCurrent ? $audio.duration : 0);
   const disabled = $derived(sha == null);
+
+  // Load this track's metadata as soon as the player is shown (and whenever the
+  // selected recording changes), so the scrub bar knows the duration and is
+  // draggable — with live timecode feedback — before the first Play.
+  $effect(() => {
+    if (sha != null) ensureLoaded(sha, title);
+  });
 
   // Count-in: a fixed metronome lead-in so a player knows when the downbeat
   // lands instead of being caught out by the MP3 jumping straight into the

@@ -84,6 +84,28 @@ export function prime(sha: string, title: string): void {
     });
 }
 
+/**
+ * Make `sha` the loaded (paused) track so its duration is known and the scrub
+ * bar is live *before* the first Play — letting a player drag to a start point
+ * with timecode feedback on a freshly-loaded page. No-op when it's already the
+ * selected track; declines to disturb a different track that's actively playing,
+ * so the shared transport stays continuous.
+ */
+export function ensureLoaded(sha: string, title: string): void {
+  const a = element();
+  if (!a) return;
+  if (a.src.endsWith(`/blob/${sha}`)) {
+    // Already selected — keep the title fresh, preserve any scrub position.
+    audio.update((s) => ({ ...s, sha, title }));
+    return;
+  }
+  if (!a.paused) return; // something else is playing — don't interrupt it
+  a.src = `/blob/${sha}`;
+  a.preload = 'metadata';
+  a.currentTime = 0;
+  audio.update((s) => ({ ...s, sha, title, position: 0, duration: 0 }));
+}
+
 /** Play the given blob. Resets position only when the sha changes. */
 export function playSha(sha: string, title: string): void {
   const a = element();
