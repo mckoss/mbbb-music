@@ -15,7 +15,7 @@ function lastNameOf(name: string): string {
 export function load({ locals }) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
 
-  const members = listUsers().map((u) => {
+  const all = listUsers().map((u) => {
     const p = getProfile(u.email);
     // Primary instrument, or the first listed one if no primary is set.
     const instSlug = p.primaryInstrument ?? p.instruments[0] ?? null;
@@ -28,18 +28,23 @@ export function load({ locals }) {
       avatarRev: p.updatedAt ?? '',
       joinedDate: p.joinedDate,
       lastName: lastNameOf(name),
+      isFormer: Boolean(p.endDate),
     };
   });
 
-  // By seniority (earliest joined date first); members without a date sort after
-  // those with one; ties and the undated group fall back to last name.
-  members.sort((a, b) => {
+  // Within a group: by seniority (earliest joined date first); members without a
+  // date sort after those with one; ties and the undated group fall back to last
+  // name. Former members are split out so they sit below the active roster.
+  const bySeniority = (a: (typeof all)[number], b: (typeof all)[number]) => {
     if (a.joinedDate && b.joinedDate) {
       if (a.joinedDate !== b.joinedDate) return a.joinedDate < b.joinedDate ? -1 : 1;
     } else if (a.joinedDate) return -1;
     else if (b.joinedDate) return 1;
     return a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' });
-  });
+  };
 
-  return { members };
+  return {
+    active: all.filter((m) => !m.isFormer).sort(bySeniority),
+    former: all.filter((m) => m.isFormer).sort(bySeniority),
+  };
 }

@@ -2,29 +2,46 @@
   let { data } = $props();
 </script>
 
+{#snippet card(m: (typeof data.active)[number])}
+  <li>
+    <a class="card" href={`/members/${encodeURIComponent(m.email)}`}>
+      <img
+        class="avatar"
+        src={`/members/${encodeURIComponent(m.email)}/avatar?v=${encodeURIComponent(m.avatarRev)}`}
+        alt={m.name}
+        loading="lazy"
+      />
+      <span class="name">{m.name}</span>
+      <span class="inst">{m.instrument ?? '—'}</span>
+    </a>
+  </li>
+{/snippet}
+
 <section class="roster">
   <header>
     <p class="kicker">Members</p>
     <h2>Band roster</h2>
-    <p class="count">{data.members.length} members</p>
+    <p class="count">
+      {data.active.length} active{#if data.former.length} · {data.former.length} former{/if}
+    </p>
   </header>
 
-  <ul class="grid">
-    {#each data.members as m (m.email)}
-      <li>
-        <a class="card" href={`/members/${encodeURIComponent(m.email)}`}>
-          <img
-            class="avatar"
-            src={`/members/${encodeURIComponent(m.email)}/avatar?v=${encodeURIComponent(m.avatarRev)}`}
-            alt={m.name}
-            loading="lazy"
-          />
-          <span class="name">{m.name}</span>
-          <span class="inst">{m.instrument ?? '—'}</span>
-        </a>
-      </li>
-    {/each}
-  </ul>
+  {#if data.active.length}
+    <ul class="grid">
+      {#each data.active as m (m.email)}{@render card(m)}{/each}
+    </ul>
+  {/if}
+
+  {#if data.former.length}
+    <div class="divider"><span>Former members</span></div>
+    <ul class="grid former">
+      {#each data.former as m (m.email)}{@render card(m)}{/each}
+    </ul>
+  {/if}
+
+  {#if !data.active.length && !data.former.length}
+    <p class="empty">No members yet.</p>
+  {/if}
 </section>
 
 <style>
@@ -99,5 +116,37 @@
   .inst {
     color: var(--muted);
     font-size: 0.82rem;
+  }
+
+  /* Labeled separator between the active roster and former members. */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* Dim former members slightly to set them apart. */
+  .former .card .avatar {
+    filter: grayscale(0.35);
+    opacity: 0.9;
+  }
+
+  .empty {
+    color: var(--muted);
+    font-size: 0.85rem;
   }
 </style>
