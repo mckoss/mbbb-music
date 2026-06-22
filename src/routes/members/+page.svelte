@@ -11,15 +11,17 @@
 
   <ul class="grid">
     {#each data.members as m (m.email)}
-      <li class="card">
-        <img
-          class="avatar"
-          src={`/members/${encodeURIComponent(m.email)}/avatar?v=${encodeURIComponent(m.avatarRev)}`}
-          alt={m.name}
-          loading="lazy"
-        />
-        <span class="name">{m.name}</span>
-        <span class="inst">{m.instrument ?? '—'}</span>
+      <li>
+        <a class="card" href={`/members/${encodeURIComponent(m.email)}`}>
+          <img
+            class="avatar"
+            src={`/members/${encodeURIComponent(m.email)}/avatar?v=${encodeURIComponent(m.avatarRev)}`}
+            alt={m.name}
+            loading="lazy"
+          />
+          <span class="name">{m.name}</span>
+          <span class="inst">{m.instrument ?? '—'}</span>
+        </a>
       </li>
     {/each}
   </ul>
@@ -70,6 +72,13 @@
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel);
+    color: var(--ink);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .card:hover {
+    border-color: var(--accent-strong);
   }
 
   .avatar {
