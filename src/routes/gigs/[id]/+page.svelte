@@ -15,29 +15,35 @@
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { activeScore, partsForFormat } from '$lib/resolve';
-  import { instrumentDisplay, partOptionLabel } from '$lib/format';
+  import { instrumentDisplay, partOptionLabel, audioLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
+  import { scoreSearch } from '$lib/nav';
   import PdfPager from '$lib/components/PdfPager.svelte';
+  import AudioPlayer from '$lib/components/AudioPlayer.svelte';
   import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
 
-  // Record a performance when entering perform-set mode (?perform=<setId>).
+  // Record a set run when entering it (?perform=<setId>[&mode=practice]). A
+  // performance run is a real performance; a practice run is logged as a score
+  // view (rehearsal), matching the score overlay's practice/performance split.
   let lastPerform = '';
   $effect(() => {
     if (!browser) return;
-    const setId = page.url.searchParams.get('perform');
+    const sp = page.url.searchParams;
+    const setId = sp.get('perform');
     if (!setId) {
       lastPerform = '';
       return;
     }
-    const key = `${gig.id}|${setId}`;
+    const mode = sp.get('mode') === 'practice' ? 'practice' : 'performance';
+    const key = `${gig.id}|${setId}|${mode}`;
     if (key === lastPerform) return;
     lastPerform = key;
-    track('performance', gig.name, `set:${setId}`);
+    track(mode === 'practice' ? 'score-view' : 'performance', gig.name, `set:${setId}`);
   });
 
   // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).
@@ -171,6 +177,24 @@
   );
   const performing = $derived(Boolean(performSet && performSongs.length > 0));
 
+  // Practice vs performance run (mirrors the score overlay). Practice keeps the
+  // same set chaining and tap-paging but adds the compact one-line player for
+  // the current song so you can rehearse a set with audio + count-in.
+  const performMode = $derived(params.get('mode') === 'practice' ? 'practice' : 'performance');
+  const isPractice = $derived(performMode === 'practice');
+
+  // The current song's recordings, for the practice player. Reset the picker to
+  // the first take whenever the song changes so each song starts on its default.
+  const performAudios = $derived(performTune?.audio ?? []);
+  let chosenAudioSha = $state<string | null>(null);
+  $effect(() => {
+    void performSlug;
+    chosenAudioSha = performAudios[0]?.sha256 ?? null;
+  });
+  const practiceAudio = $derived(
+    performAudios.find((a) => a.sha256 === chosenAudioSha) ?? performAudios[0] ?? null
+  );
+
   function setPerformPart(sha: string) {
     performPart = performParts.find((p) => p.sha256 === sha)?.partNumber ?? null;
   }
@@ -178,10 +202,12 @@
     printFormat.set(value);
   }
 
-  function startPerform(setId: string) {
+  function startSet(setId: string, mode: 'practice' | 'performance') {
     const p = new URLSearchParams(page.url.search);
     p.set('perform', setId);
     p.set('i', '0');
+    if (mode === 'practice') p.set('mode', 'practice');
+    else p.delete('mode');
     goto(`?${p}`); // pushState so Back/Done returns to detail
   }
 
@@ -200,8 +226,17 @@
     const p = new URLSearchParams(page.url.search);
     p.delete('perform');
     p.delete('i');
+    p.delete('mode');
     const qs = p.toString();
     goto(qs ? `?${qs}` : page.url.pathname, { replaceState: true });
+  }
+
+  // Flip practice <-> performance without leaving the set or losing your place.
+  function switchMode() {
+    const p = new URLSearchParams(page.url.search);
+    if (isPractice) p.delete('mode');
+    else p.set('mode', 'practice');
+    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
   function onKey(e: KeyboardEvent) {
@@ -221,6 +256,9 @@
       <span class="pos">
         {performSet.name || 'Set'} · {clampedIndex + 1}/{performSongs.length}
       </span>
+      <button class="ghost" onclick={switchMode} title="Switch run mode">
+        {isPractice ? 'Performance ▶' : '✎ Practice'}
+      </button>
       <button class="ghost" onclick={prevSong} disabled={clampedIndex <= 0}>‹ Prev song</button>
       <button
         class="ghost"
@@ -246,7 +284,10 @@
       </label>
       <button class="primary" onclick={donePerform}>Done</button>
     </div>
-    <div class="now-playing">{performSlug ? titleOf(performSlug) : ''}</div>
+    <div class="now-playing">
+      <span class="run-mode">{isPractice ? 'Practice' : 'Performance'}</span>
+      {performSlug ? titleOf(performSlug) : ''}
+    </div>
     <div class="stage">
       {#if performScore}
         {#key performScore.sha}
@@ -264,6 +305,30 @@
         </div>
       {/if}
     </div>
+
+    {#if isPractice}
+      <!-- Practice run: a one-line player for the current song (shared compact
+           AudioPlayer), so you can rehearse a set with audio and count-in. -->
+      <div class="player-bar">
+        {#if performAudios.length > 1}
+          <select
+            class="rec-sel"
+            value={chosenAudioSha}
+            onchange={(e) => (chosenAudioSha = e.currentTarget.value)}
+            aria-label="Recording"
+          >
+            {#each performAudios as a (a.sha256)}
+              <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+            {/each}
+          </select>
+        {/if}
+        {#if practiceAudio}
+          <AudioPlayer compact sha={practiceAudio.sha256} title={performSlug ? titleOf(performSlug) : ''} />
+        {:else}
+          <span class="no-audio">No recording for this song.</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -371,7 +436,8 @@
           <h3>{set.name || `Set ${si + 1}`}</h3>
           <div class="set-actions">
             {#if set.songSlugs.some((slug) => scoreFor(slug))}
-              <button class="perform" onclick={() => startPerform(set.id)}>▶ Perform set</button>
+              <button class="practice-set" onclick={() => startSet(set.id, 'practice')}>✎ Practice set</button>
+              <button class="perform" onclick={() => startSet(set.id, 'performance')}>▶ Perform set</button>
             {/if}
             {#if canEdit && gig.sets.length > 1}
               <form
@@ -393,7 +459,9 @@
             {#each set.songSlugs as slug, i (slug)}
               {@const sc = scoreFor(slug)}
               <li>
-                <span class="song-title">{titleOf(slug)}</span>
+                <a class="song-title" href={scoreSearch({ song: slug, instrument, format })}>
+                  {titleOf(slug)}
+                </a>
                 <span class="song-tools">
                   {#if sc}
                     <a class="dl" href={openUrl(sc.sha)} target="_blank" rel="noopener" title={sc.label}>
@@ -783,6 +851,19 @@
     cursor: pointer;
   }
 
+  /* Practice is the lower-key sibling of Perform: same shape, outlined. */
+  .practice-set {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-strong);
+    background: var(--paper);
+    color: var(--accent-strong);
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
   .danger-link {
     border: 0;
     background: none;
@@ -810,6 +891,13 @@
 
   .song-title {
     font-weight: 600;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .song-title:hover {
+    color: var(--accent-strong);
+    text-decoration: underline;
   }
 
   .song-tools {
@@ -1079,11 +1167,51 @@
     max-width: 50vw;
   }
 
+  .run-mode {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(242, 211, 107, 0.18);
+    color: #f2d36b;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle;
+  }
+
   .stage {
     flex: 1;
     min-height: 0;
     display: flex;
     justify-content: center;
     padding: 12px;
+  }
+
+  /* Practice run: a reserved player strip at the bottom, so the chart sits above
+     it (never covered) and the transport is thumb-reachable on a stand. */
+  .player-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-top: 1px solid rgba(255, 253, 247, 0.12);
+    background: rgba(32, 33, 36, 0.96);
+  }
+
+  .player-bar .rec-sel {
+    min-height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    background: #2c2d31;
+    color: #fffdf7;
+    padding: 0 8px;
+    max-width: 40vw;
+  }
+
+  .no-audio {
+    color: #b9b6ac;
+    font-size: 0.85rem;
   }
 </style>
