@@ -7,6 +7,7 @@
   import { viewableDocs } from '$lib/resolve';
   import { instrumentDisplay, audioLabel, stripCopyOf } from '$lib/format';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
+  import { track } from '$lib/track';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
@@ -43,6 +44,18 @@
   const docs = $derived(open && tune ? viewableDocs(tune, instrument, format) : []);
   const current = $derived(docs.find((d) => d.sha === partSha) ?? docs[0] ?? null);
   const title = $derived(tune?.title ?? '');
+
+  // Record a score view (or a performance) when the overlay opens or switches
+  // mode. Server-side dedup collapses repeats; the local key avoids re-firing on
+  // unrelated reactive ticks.
+  let lastTracked = '';
+  $effect(() => {
+    if (!browser || !open || !tune) return;
+    const key = `${tune.slug}|${instrument}|${mode}`;
+    if (key === lastTracked) return;
+    lastTracked = key;
+    track(mode === 'performance' ? 'performance' : 'score-view', tune.title, instrument);
+  });
 
   // Recording picker for the practice player: default to the first take (the
   // catalog orders the full-band mix first), reset when the song changes.

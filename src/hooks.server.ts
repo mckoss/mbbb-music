@@ -13,9 +13,44 @@ import type { Handle } from '@sveltejs/kit';
 
 import { authConfig, readSession, SESSION_COOKIE } from '$lib/server/auth';
 import { roleOf } from '$lib/server/users';
+import { logEvent } from '$lib/server/activity';
+import { getGig } from '$lib/server/gigs';
 import type { SessionUser } from '$lib/types';
 
 let warnedOpen = false;
+
+/** A human label if this GET is a PDF download we want to record, else null. */
+function pdfDownloadLabel(path: string, params: URLSearchParams): string | null {
+  // A gig's printable packet (always a PDF).
+  const packet = /^\/gigs\/([^/]+)\/packet$/.exec(path);
+  if (packet) {
+    const inst = params.get('instrument');
+    return `Packet: ${getGig(packet[1])?.name ?? packet[1]}${inst ? ` (${inst})` : ''}`;
+  }
+  // Friendly slug downloads explicitly flagged ?dl, PDFs only.
+  if (params.has('dl') && /^\/(score|file|source)\//.test(path) && path.endsWith('.pdf')) {
+    return decodeURIComponent(path.split('/').pop() ?? 'file.pdf');
+  }
+  // Raw blob download whose save-name is a PDF.
+  if (params.has('dl') && path.startsWith('/blob/')) {
+    const name = params.get('dl') ?? '';
+    if (name.toLowerCase().endsWith('.pdf')) return name;
+  }
+  return null;
+}
+
+/** Record a PDF download for an approved user (best-effort; never throws). */
+function logDownload(user: SessionUser | null, method: string, path: string, params: URLSearchParams): void {
+  if (!user?.role || method !== 'GET') return;
+  const label = pdfDownloadLabel(path, params);
+  if (label) {
+    try {
+      logEvent({ email: user.email, type: 'download', label, detail: path });
+    } catch {
+      /* analytics must not break a download */
+    }
+  }
+}
 
 // Paths reachable without a role. /pending also needs a session (handled below).
 const ALWAYS_OPEN = ['/login', '/auth/login', '/auth/callback', '/auth/logout'];
@@ -43,6 +78,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
     event.locals.authOpen = true;
     event.locals.user = { email: 'open@localhost', name: 'Open mode', role: 'admin' };
+    logDownload(event.locals.user, event.request.method, path, event.url.searchParams);
     return resolve(event);
   }
 
@@ -73,5 +109,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (user.role !== 'admin') return redirectTo('/');
   }
 
+  logDownload(user, event.request.method, path, event.url.searchParams);
   return resolve(event);
 };

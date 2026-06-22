@@ -111,7 +111,8 @@
     <a href="/members" class:active={path === '/members' || path.startsWith('/members/')}>Members</a>
     <a href="/profile" class:active={path.startsWith('/profile')}>My Profile</a>
     {#if isAdmin}
-      <a href="/admin/users" class:active={path.startsWith('/admin')}>Users</a>
+      <a href="/admin/users" class:active={path.startsWith('/admin/users')}>Users</a>
+      <a href="/admin/activity" class:active={path.startsWith('/admin/activity')}>Activity</a>
     {/if}
   </nav>
 {/if}

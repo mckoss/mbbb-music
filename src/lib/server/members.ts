@@ -219,6 +219,13 @@ export function profileHistoryDb(db: DatabaseSync, email: string, limit = 500): 
     .all(email.trim().toLowerCase(), limit) as unknown as ProfileEditRow[];
 }
 
+/** Recent profile edits across all members, newest first (for the activity report). */
+export function recentProfileEditsDb(db: DatabaseSync, limit = 200): ProfileEditRow[] {
+  return db
+    .prepare(`SELECT * FROM member_edits ORDER BY edited_at DESC, id DESC LIMIT ?`)
+    .all(limit) as unknown as ProfileEditRow[];
+}
+
 /** The current stored (normalized) string for one field of an effective profile. */
 function storedValue(p: MemberProfile, field: ProfileField): string | null {
   if (field === 'instruments') return p.instruments.length ? JSON.stringify(p.instruments) : null;
@@ -267,5 +274,6 @@ export const editProfile = (email: string, patch: ProfilePatch, by: string): Mem
   editProfileDb(db(), email, patch, by);
 export const profileHistory = (email: string, limit?: number): ProfileEditRow[] =>
   profileHistoryDb(db(), email, limit);
+export const recentProfileEdits = (limit?: number): ProfileEditRow[] => recentProfileEditsDb(db(), limit);
 export const deleteProfileEdit = (id: number, by: string): boolean => deleteProfileEditDb(db(), id, by);
 export const restoreProfileEdit = (id: number): boolean => restoreProfileEditDb(db(), id);

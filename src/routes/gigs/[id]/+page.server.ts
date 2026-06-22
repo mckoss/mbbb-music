@@ -5,6 +5,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 
 import { getCatalog } from '$lib/server/library';
+import { logEvent } from '$lib/server/activity';
 import {
   getGig,
   updateGig,
@@ -36,9 +37,18 @@ function parseTimes(form: FormData): GigTime[] {
   return out;
 }
 
-export function load({ params }) {
+export function load({ params, locals, url }) {
   const gig = getGig(params.id);
   if (!gig) throw error(404, 'Gig not found');
+  // Record a gig view (not when entering perform mode — that's a performance,
+  // beaconed from the client).
+  if (locals.user?.role && !url.searchParams.has('perform')) {
+    try {
+      logEvent({ email: locals.user.email, type: 'gig-view', label: gig.name, detail: gig.id });
+    } catch {
+      /* analytics must not break the page */
+    }
+  }
   // The catalog gives titles for each song slug and the pool of songs an admin
   // can add (filtered to Always/Active/Learning on the client).
   const catalog = getCatalog();

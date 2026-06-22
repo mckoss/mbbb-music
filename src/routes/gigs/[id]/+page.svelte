@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { enhance } from '$app/forms';
+  import { track } from '$lib/track';
   import type { Gig, GigSet } from '$lib/gig';
   import {
     canEditGigs,
@@ -22,6 +24,21 @@
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+
+  // Record a performance when entering perform-set mode (?perform=<setId>).
+  let lastPerform = '';
+  $effect(() => {
+    if (!browser) return;
+    const setId = page.url.searchParams.get('perform');
+    if (!setId) {
+      lastPerform = '';
+      return;
+    }
+    const key = `${gig.id}|${setId}`;
+    if (key === lastPerform) return;
+    lastPerform = key;
+    track('performance', gig.name, `set:${setId}`);
+  });
 
   // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).
   const assetIndex = $derived(assetIndexFor(catalog));
