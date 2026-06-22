@@ -210,7 +210,7 @@
   }
 
   .glyph-img {
-    height: 44px;
+    height: 66px;
     width: auto;
     object-fit: contain;
   }
@@ -226,7 +226,7 @@
     margin: 0;
     padding: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 18px;
   }
 
@@ -250,8 +250,8 @@
   }
 
   .avatar {
-    width: 96px;
-    height: 96px;
+    width: 144px;
+    height: 144px;
     border-radius: 50%;
     object-fit: cover;
     border: 1px solid var(--line);
