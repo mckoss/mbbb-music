@@ -29,14 +29,25 @@
   // that share an instrument/key (different arrangements) each be selected.
   const partSha = $derived(params.get('part'));
 
-  // Two ways to read a score (#1). Practice: chrome + the MP3 player on top, with
-  // the page scaled to fit below it. Performance: full-screen, no player, large
-  // page, paged by tapping the left/right edges (iPad on a music stand).
-  type Mode = 'practice' | 'performance';
-  const mode = $derived<Mode>(params.get('mode') === 'performance' ? 'performance' : 'practice');
-  // A plain boolean for template branching, so Svelte's TS narrowing doesn't
-  // collapse `mode` to a literal inside the {:else} block.
-  const isPerformance = $derived(mode === 'performance');
+  // Three ways to read a score (#1). Score view (default): full chrome — the
+  // instrument/format/document switchers, downloads, and the roomy player — with
+  // the page scaled below. From there you launch one of two immersive,
+  // tap-paged, full-screen states: Practice (a single floating player line on
+  // top) or Performance (no player at all). Both step back to the Score view.
+  type Mode = 'score' | 'practice' | 'performance';
+  const mode = $derived<Mode>(
+    params.get('mode') === 'performance'
+      ? 'performance'
+      : params.get('mode') === 'practice'
+        ? 'practice'
+        : 'score'
+  );
+  // Plain booleans for template branching, so Svelte's TS narrowing doesn't
+  // collapse `mode` to a literal across blocks. `immersive` covers both
+  // full-screen, tap-paged states (Practice and Performance).
+  const isScore = $derived(mode === 'score');
+  const isPractice = $derived(mode === 'practice');
+  const immersive = $derived(mode !== 'score');
 
   // Every PDF this song can show — the instrument's parts, the full-band
   // score(s), and notes — in priority order. The chosen one is addressed by sha
@@ -135,7 +146,7 @@
 
   function setMode(m: Mode) {
     const p = new URLSearchParams(page.url.search);
-    if (m === 'practice') p.delete('mode');
+    if (m === 'score') p.delete('mode'); // Score view is the default (no param)
     else p.set('mode', m);
     goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
@@ -160,19 +171,41 @@
 
 <svelte:window onkeydown={onKey} onclick={onWindowClick} />
 
+<!-- The recording picker, shared by the Score view's player line and the
+     immersive Practice bar. Shown only when a song has more than one take. -->
+{#snippet recordingSelect()}
+  {#if audios.length > 1}
+    <select
+      class="rec-sel"
+      value={chosenAudioSha}
+      onchange={(e) => (chosenAudioSha = e.currentTarget.value)}
+      aria-label="Recording"
+    >
+      {#each audios as a (a.sha256)}
+        <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+      {/each}
+    </select>
+  {/if}
+{/snippet}
+
 {#if open && tune}
-  <div class="overlay" class:performance={isPerformance}>
-    {#if isPerformance}
-      <!-- No chrome on a music stand: a single floating Back arrow (top-left,
-           the same corner as Practice mode's) steps back to the full Score view.
-           It sits above the page-tap zones, so it always wins a tap. -->
-      <div class="floating">
+  <div class="overlay" class:immersive>
+    {#if !isScore}
+      <!-- Immersive (Practice / Performance): a floating Back arrow (top-left)
+           steps back to the Score view. It sits above the page-tap zones, so it
+           always wins a tap. In Practice it leads the one-line player bar; in
+           Performance it stands alone. -->
+      <div class="floating" class:bar-line={isPractice}>
         <button
           class="back"
-          onclick={() => setMode('practice')}
+          onclick={() => setMode('score')}
           aria-label="Back to Score view"
           title="Back to Score view">←</button
         >
+        {#if isPractice}
+          {@render recordingSelect()}
+          <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        {/if}
       </div>
     {:else}
     <header class="bar">
@@ -184,9 +217,9 @@
       </div>
 
       <div class="controls">
-        <div class="mode-toggle" role="group" aria-label="View mode">
-          <button class:on={mode === 'practice'} onclick={() => setMode('practice')}>Practice</button>
-          <button class:on={mode === 'performance'} onclick={() => setMode('performance')}>Performance</button>
+        <div class="mode-launch" role="group" aria-label="Open full-screen mode">
+          <button onclick={() => setMode('practice')} title="Full-screen score with a one-line player">Practice</button>
+          <button onclick={() => setMode('performance')} title="Full-screen score, no player">Performance</button>
         </div>
         {#if instruments.length}
           <label class="fmt">
@@ -238,23 +271,14 @@
     </header>
 
     <div class="practice">
-      {#if audios.length > 1}
-        <label class="fmt">
-          <span class="eyebrow">Recording</span>
-          <select value={chosenAudioSha} onchange={(e) => (chosenAudioSha = e.currentTarget.value)}>
-            {#each audios as a (a.sha256)}
-              <option value={a.sha256}>{audioLabel(a.originalName)}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      <AudioPlayer sha={practiceAudio?.sha256 ?? null} title={title} />
+      {@render recordingSelect()}
+      <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
     </div>
     {/if}
 
     <div class="stage">
       {#if current}
-        <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={mode === 'performance'} openHref={openUrl(current.sha)} />
+        <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={immersive} openHref={openUrl(current.sha)} />
       {:else}
         <div class="no-chart">
           <p>No chart for “{title}” in this instrument / format.</p>
@@ -430,7 +454,9 @@
     margin-top: 8px;
   }
 
-  .mode-toggle {
+  /* Two launch buttons into the immersive states. Not a toggle — in the Score
+     view you're never "in" either, you step into them and Back returns here. */
+  .mode-launch {
     display: inline-flex;
     border: 1px solid rgba(255, 253, 247, 0.25);
     border-radius: 6px;
@@ -438,7 +464,7 @@
     align-self: flex-end;
   }
 
-  .mode-toggle button {
+  .mode-launch button {
     min-height: 44px;
     border: 0;
     border-radius: 0;
@@ -447,16 +473,23 @@
     padding: 0 14px;
   }
 
-  .mode-toggle button.on {
+  .mode-launch button:hover {
     background: var(--accent);
     color: #fffdf7;
   }
 
+  .mode-launch button + button {
+    border-left: 1px solid rgba(255, 253, 247, 0.25);
+  }
+
+  /* The Score view's player line — the same compact single-row layout as the
+     immersive Practice bar, so it stops wasting vertical space above the score. */
   .practice {
-    padding: 14px 24px;
+    padding: 10px 24px;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   .stage {
@@ -467,21 +500,23 @@
     padding: 8px 24px 24px;
   }
 
-  /* Performance mode: no chrome, the page fills the whole screen. */
-  .overlay.performance {
+  /* Immersive modes (Practice / Performance): no chrome, the page fills the
+     whole screen. */
+  .overlay.immersive {
     overflow: hidden;
   }
 
-  .overlay.performance .stage {
+  .overlay.immersive .stage {
     padding: 12px;
   }
 
   .floating {
     position: absolute;
     top: 12px;
-    left: 12px; /* same corner as the practice-mode Back arrow */
-    z-index: 10; /* above PdfPager's tap zones (no z-index) so the button wins a tap */
+    left: 12px;
+    z-index: 10; /* above PdfPager's tap zones (no z-index) so the controls win a tap */
     display: flex;
+    align-items: center;
     gap: 10px;
     /* A solid pill so it reads clearly over both the dark stage and a white score
        page, and fully opaque so it's never easy to miss on a music stand. */
@@ -489,6 +524,23 @@
     border-radius: 10px;
     background: rgba(32, 33, 36, 0.92);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Practice mode: the floating pill stretches into the full top line, holding
+     the Back arrow, the recording selector, and the one-line player. */
+  .floating.bar-line {
+    right: 12px;
+    padding: 8px 12px;
+  }
+
+  .rec-sel {
+    min-height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    background: #2c2d31;
+    color: #fffdf7;
+    padding: 0 8px;
+    max-width: 40vw;
   }
 
   @media print {

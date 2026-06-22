@@ -2,7 +2,11 @@
   import { audio, playSha, prime, toggle, restart, seek } from '$lib/audio';
   import { formatTime } from '$lib/format';
 
-  let { sha, title }: { sha: string | null; title: string } = $props();
+  let {
+    sha,
+    title,
+    compact = false
+  }: { sha: string | null; title: string; compact?: boolean } = $props();
 
   const isCurrent = $derived(sha != null && $audio.sha === sha);
   const playing = $derived(isCurrent && $audio.playing);
@@ -140,56 +144,92 @@
   );
 </script>
 
-<div class="player" class:disabled class:counting={countdown != null}>
-  <div class="buttons">
+{#if compact}
+  <!-- Single-row variant for the immersive Practice bar. Order matches the
+       issue: count-in, Play (shows the live countdown), Rewind, slider, time.
+       The big beat-indicator is dropped — the Play button carries the count. -->
+  <div class="player compact" class:disabled class:counting={countdown != null}>
+    <label class="toggle">
+      <input type="checkbox" bind:checked={countIn} {disabled} />
+      <span>Count-in</span>
+    </label>
+    {#if countIn}
+      <select class="beats-sel" bind:value={beats} {disabled} aria-label="Count-in beats">
+        <option value={3}>3</option>
+        <option value={4}>4</option>
+      </select>
+    {/if}
     <button class="play" onclick={onPlay} {disabled} aria-label={playLabel}>
       {#if countdown != null}{countdown}{:else}{playing ? '❚❚' : '▶'}{/if}
     </button>
     <button class="beginning" onclick={restart} disabled={disabled || !isCurrent} aria-label="Beginning">
       ⏮
     </button>
+    <input
+      class="scrub"
+      type="range"
+      min="0"
+      max={duration || 0}
+      step="1"
+      value={position}
+      oninput={onScrub}
+      {disabled}
+      aria-label="Seek"
+    />
+    <span class="time">{formatTime(position)} / {formatTime(duration)}</span>
   </div>
+{:else}
+  <div class="player" class:disabled class:counting={countdown != null}>
+    <div class="buttons">
+      <button class="play" onclick={onPlay} {disabled} aria-label={playLabel}>
+        {#if countdown != null}{countdown}{:else}{playing ? '❚❚' : '▶'}{/if}
+      </button>
+      <button class="beginning" onclick={restart} disabled={disabled || !isCurrent} aria-label="Beginning">
+        ⏮
+      </button>
+    </div>
 
-  <input
-    class="scrub"
-    type="range"
-    min="0"
-    max={duration || 0}
-    step="1"
-    value={position}
-    oninput={onScrub}
-    {disabled}
-    aria-label="Seek"
-  />
+    <input
+      class="scrub"
+      type="range"
+      min="0"
+      max={duration || 0}
+      step="1"
+      value={position}
+      oninput={onScrub}
+      {disabled}
+      aria-label="Seek"
+    />
 
-  <span class="time">{formatTime(position)} / {formatTime(duration)}</span>
+    <span class="time">{formatTime(position)} / {formatTime(duration)}</span>
 
-  <!-- Count-in controls: a toggle and a 3/4 beat picker. Kept on their own row
-       so the transport above stays unchanged. -->
-  <div class="countin-row">
-    <label class="toggle">
-      <input type="checkbox" bind:checked={countIn} {disabled} />
-      <span>Count-in</span>
-    </label>
-    {#if countIn}
-      <label class="beats">
-        <span class="eyebrow">Beats</span>
-        <select bind:value={beats} {disabled}>
-          <option value={3}>3</option>
-          <option value={4}>4</option>
-        </select>
+    <!-- Count-in controls: a toggle and a 3/4 beat picker. Kept on their own row
+         so the transport above stays unchanged. -->
+    <div class="countin-row">
+      <label class="toggle">
+        <input type="checkbox" bind:checked={countIn} {disabled} />
+        <span>Count-in</span>
       </label>
-    {/if}
-    <!-- Visual beat indicator: a big number plus a dot that flashes on each
-         beat, so the downbeat is visible even with the sound off. -->
-    {#if countdown != null}
-      <div class="beat-indicator" aria-live="polite">
-        <span class="dot" class:pulse></span>
-        <span class="big">{countdown}</span>
-      </div>
-    {/if}
+      {#if countIn}
+        <label class="beats">
+          <span class="eyebrow">Beats</span>
+          <select bind:value={beats} {disabled}>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+          </select>
+        </label>
+      {/if}
+      <!-- Visual beat indicator: a big number plus a dot that flashes on each
+           beat, so the downbeat is visible even with the sound off. -->
+      {#if countdown != null}
+        <div class="beat-indicator" aria-live="polite">
+          <span class="dot" class:pulse></span>
+          <span class="big">{countdown}</span>
+        </div>
+      {/if}
+    </div>
   </div>
-</div>
+{/if}
 
 <style>
   .player {
@@ -327,5 +367,39 @@
     font-variant-numeric: tabular-nums;
     min-width: 1ch;
     text-align: center;
+  }
+
+  /* Compact single-row variant for the immersive Practice bar. Transparent —
+     the floating bar supplies the pill — with light text/controls for the dark
+     background. Grows to fill the bar so the slider takes the slack. */
+  .player.compact {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  .player.compact .toggle,
+  .player.compact .time {
+    color: #dfddd4;
+  }
+
+  .player.compact .scrub {
+    flex: 1;
+    min-width: 100px;
+    width: auto;
+  }
+
+  .player.compact .beats-sel {
+    min-height: 36px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    background: #2c2d31;
+    color: #fffdf7;
+    padding: 0 6px;
   }
 </style>
