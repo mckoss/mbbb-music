@@ -247,7 +247,8 @@
 
   .tabs {
     display: flex;
-    gap: 28px;
+    flex-wrap: wrap;
+    gap: 0 28px;
     padding: 0 clamp(16px, 4vw, 48px);
     border-bottom: 1px solid var(--line);
     background: var(--panel);
@@ -290,6 +291,46 @@
 
     .logo {
       width: 116px;
+    }
+  }
+
+  /* Phones (portrait): let the tab bar wrap to multiple rows instead of running
+     off the edge, with tighter spacing so it stays compact. */
+  @media (max-width: 600px) {
+    .tabs {
+      gap: 2px 18px;
+      padding: 4px 16px;
+    }
+
+    .tabs a {
+      padding: 10px 0;
+      font-size: 0.76rem;
+      letter-spacing: 0.03em;
+    }
+
+    /* Keep the masthead within the viewport: let the text column shrink next to
+       the logo (min-width:0) and the blurb wrap to the available width instead
+       of its 46ch desktop measure, and let the global selectors share the row. */
+    .brand-text {
+      min-width: 0;
+    }
+
+    .desc {
+      max-width: none;
+    }
+
+    .globals {
+      width: 100%;
+    }
+
+    .globals label {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .globals select {
+      min-width: 0;
+      width: 100%;
     }
   }
 </style>

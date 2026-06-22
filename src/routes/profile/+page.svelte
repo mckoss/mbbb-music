@@ -49,7 +49,6 @@
             Remove uploaded picture (revert to your Google/Gravatar photo or initials)
           </label>
         {/if}
-        <p class="hint">Order of preference: your upload → Google photo → Gravatar → initials.</p>
       </div>
     </div>
 
@@ -184,6 +183,10 @@
 
   .avatar-controls {
     flex: 1;
+    /* Allow this flex column to shrink below its content's intrinsic width —
+       without it, the file input's natural width forces the card (and the whole
+       page) wider than a narrow phone viewport. */
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -222,6 +225,7 @@
 
   input[type='file'] {
     font-size: 0.9rem;
+    max-width: 100%;
   }
 
   .checks {
@@ -245,11 +249,6 @@
 
   .remove {
     color: var(--muted);
-  }
-
-  .hint {
-    color: var(--muted);
-    font-size: 0.8rem;
   }
 
   .actions {
