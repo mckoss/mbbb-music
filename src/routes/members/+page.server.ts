@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
 
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
-import { instrumentLabel } from '$lib/members';
+import { instrumentLabel, tenureLabel } from '$lib/members';
 
 /** Last word of a display name (lowercased), for the secondary sort. */
 function lastNameOf(name: string): string {
@@ -15,6 +15,7 @@ function lastNameOf(name: string): string {
 export function load({ locals }) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
 
+  const today = new Date().toISOString().slice(0, 10);
   const all = listUsers().map((u) => {
     const p = getProfile(u.email);
     // Primary instrument, or the first listed one if no primary is set.
@@ -27,6 +28,7 @@ export function load({ locals }) {
       instrument: instSlug ? instrumentLabel(instSlug) : null,
       // Cache-buster so an updated profile refreshes the thumbnail.
       avatarRev: p.updatedAt ?? '',
+      tenure: tenureLabel(p.joinedDate, p.endDate, today),
       joinedDate: p.joinedDate,
       lastName: lastNameOf(name),
       isFormer: Boolean(p.endDate),

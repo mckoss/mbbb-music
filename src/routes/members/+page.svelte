@@ -69,7 +69,7 @@
   });
 </script>
 
-{#snippet card(m: Member)}
+{#snippet card(m: Member, withInstrument: boolean)}
   <li>
     <a class="card" href={`/members/${encodeURIComponent(m.email)}`}>
       <img
@@ -79,7 +79,10 @@
         loading="lazy"
       />
       <span class="name">{m.name}</span>
-      <span class="inst">{m.instrument ?? '—'}</span>
+      {#if withInstrument && m.instrumentSlug && HAS_IMG.has(m.instrumentSlug)}
+        <img class="card-inst" src={`/instruments/${m.instrumentSlug}.png`} alt={m.instrument ?? ''} title={m.instrument ?? ''} />
+      {/if}
+      {#if m.tenure}<span class="tenure">{m.tenure}</span>{/if}
     </a>
   </li>
 {/snippet}
@@ -88,7 +91,7 @@
   {#if former.length}
     <div class="divider"><span>Former members</span></div>
     <ul class="grid former">
-      {#each former as m (m.email)}{@render card(m)}{/each}
+      {#each former as m (m.email)}{@render card(m, true)}{/each}
     </ul>
   {/if}
 {/snippet}
@@ -120,7 +123,7 @@
           {sec.label} <span class="n">{sec.members.length}</span>
         </h3>
         <ul class="grid">
-          {#each sec.members as m (m.email)}{@render card(m)}{/each}
+          {#each sec.members as m (m.email)}{@render card(m, false)}{/each}
         </ul>
       </div>
     {/each}
@@ -128,7 +131,7 @@
   {:else}
     {#if active.length}
       <ul class="grid">
-        {#each active as m (m.email)}{@render card(m)}{/each}
+        {#each active as m (m.email)}{@render card(m, true)}{/each}
       </ul>
     {/if}
     {@render formerGrid()}
@@ -264,9 +267,15 @@
     word-break: break-word;
   }
 
-  .inst {
+  .card-inst {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+  }
+
+  .tenure {
     color: var(--muted);
-    font-size: 0.82rem;
+    font-size: 0.78rem;
   }
 
   /* Labeled separator before former members. */
