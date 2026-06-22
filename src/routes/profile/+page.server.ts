@@ -1,6 +1,6 @@
 // Profile editor. A member edits their own profile; an admin can edit any
 // member's by passing ?email=<target> (and the matching hidden field on save).
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 
 import { getProfile, editProfile } from '$lib/server/members';
 import { photoOf, listUsers } from '$lib/server/users';
@@ -105,6 +105,9 @@ export const actions = {
     } catch (e) {
       return fail(400, { message: (e as Error).message });
     }
-    return { message: target === me.email ? 'Profile saved.' : 'Member profile saved.' };
+    // Land on the saved member's roster card. (A synthetic open-mode user has no
+    // card, so fall back to the roster.)
+    const known = listUsers().some((u) => u.email === target);
+    throw redirect(303, known ? `/members/${encodeURIComponent(target)}` : '/members');
   },
 };
