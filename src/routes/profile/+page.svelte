@@ -1,5 +1,6 @@
 <script lang="ts">
   import { instrumentLabel } from '$lib/members';
+  import AvatarCropper from '$lib/components/AvatarCropper.svelte';
 
   let { data, form } = $props();
 
@@ -9,6 +10,30 @@
     `/members/${encodeURIComponent(p.email)}/avatar?v=${encodeURIComponent(p.updatedAt ?? '')}`
   );
   const also = $derived(new Set(p.instruments));
+
+  // Photo selection → crop → staged upload. The picked file opens the cropper;
+  // the cropped blob is shown immediately and stashed in the hidden `avatar`
+  // input so the next Save uploads it.
+  let cropFile = $state<File | null>(null);
+  let previewUrl = $state<string | null>(null);
+  let avatarInput: HTMLInputElement;
+  const previewSrc = $derived(previewUrl ?? avatarSrc);
+
+  function pick(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const f = input.files?.[0] ?? null;
+    input.value = ''; // allow re-selecting the same file later
+    if (f) cropFile = f;
+  }
+
+  function applyCrop(blob: Blob) {
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'avatar.webp', { type: 'image/webp' }));
+    avatarInput.files = dt.files;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    cropFile = null;
+  }
 
   // Human label for where the displayed photo actually comes from.
   const SOURCE_LABEL: Record<string, string> = {
@@ -36,13 +61,16 @@
 
   <form class="card" method="POST" action="?/save" enctype="multipart/form-data">
     <div class="avatar-row">
-      <img class="avatar" src={avatarSrc} alt="Your avatar" />
+      <img class="avatar" src={previewSrc} alt="Your avatar" />
       <div class="avatar-controls">
-        <p class="source">Showing {sourceLabel}.</p>
+        <p class="source">
+          {#if previewUrl}New picture ready — Save to apply.{:else}Showing {sourceLabel}.{/if}
+        </p>
         <label class="field">
-          <span class="label">{data.avatarSource === 'upload' ? 'Replace picture' : 'Upload a picture'}</span>
-          <input type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" />
+          <span class="label">{data.avatarSource === 'upload' || previewUrl ? 'Replace picture' : 'Upload a picture'}</span>
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" onchange={pick} />
         </label>
+        <input type="file" name="avatar" bind:this={avatarInput} hidden />
         {#if data.avatarSource === 'upload'}
           <label class="check remove">
             <input type="checkbox" name="removeAvatar" value="1" />
@@ -112,6 +140,10 @@
       Primary: <strong>{instrumentLabel(p.primaryInstrument)}</strong>
       {#if p.instruments.length}· also {p.instruments.map((s) => instrumentLabel(s)).join(', ')}{/if}
     </p>
+  {/if}
+
+  {#if cropFile}
+    <AvatarCropper file={cropFile} onApply={applyCrop} onCancel={() => (cropFile = null)} />
   {/if}
 </section>
 
