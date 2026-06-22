@@ -23,6 +23,7 @@ export function load({ locals }) {
     return {
       email: u.email,
       name,
+      instrumentSlug: instSlug,
       instrument: instSlug ? instrumentLabel(instSlug) : null,
       // Cache-buster so an updated profile refreshes the thumbnail.
       avatarRev: p.updatedAt ?? '',
@@ -34,7 +35,7 @@ export function load({ locals }) {
 
   // Within a group: by seniority (earliest joined date first); members without a
   // date sort after those with one; ties and the undated group fall back to last
-  // name. Former members are split out so they sit below the active roster.
+  // name.
   const bySeniority = (a: (typeof all)[number], b: (typeof all)[number]) => {
     if (a.joinedDate && b.joinedDate) {
       if (a.joinedDate !== b.joinedDate) return a.joinedDate < b.joinedDate ? -1 : 1;
@@ -43,8 +44,12 @@ export function load({ locals }) {
     return a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' });
   };
 
-  return {
-    active: all.filter((m) => !m.isFormer).sort(bySeniority),
-    former: all.filter((m) => m.isFormer).sort(bySeniority),
-  };
+  // One canonical list: active first (then former), each ordered by seniority.
+  // The client derives the seniority and by-instrument views from this; the sort
+  // keys are dropped from the payload.
+  const active = all.filter((m) => !m.isFormer).sort(bySeniority);
+  const former = all.filter((m) => m.isFormer).sort(bySeniority);
+  const members = [...active, ...former].map(({ joinedDate, lastName, ...m }) => m);
+
+  return { members };
 }
