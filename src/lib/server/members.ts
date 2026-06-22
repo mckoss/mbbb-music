@@ -129,6 +129,8 @@ function emptyProfile(email: string): MemberProfile {
     instruments: [],
     shirtSize: null,
     alternateEmail: null,
+    joinedDate: null,
+    endDate: null,
     avatarSha: null,
     updatedAt: null,
     updatedBy: null,
@@ -173,6 +175,12 @@ function applyRow(p: MemberProfile, r: { field: string; value: string | null; ed
       break;
     case 'alternateEmail':
       p.alternateEmail = r.value;
+      break;
+    case 'joinedDate':
+      p.joinedDate = r.value;
+      break;
+    case 'endDate':
+      p.endDate = r.value;
       break;
     case 'avatarSha':
       p.avatarSha = r.value;

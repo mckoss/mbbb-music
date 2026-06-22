@@ -138,6 +138,20 @@
       <input type="email" name="alternateEmail" value={p.alternateEmail ?? ''} autocomplete="email" />
     </label>
 
+    <div class="dates">
+      <label class="field">
+        <span class="label">Joined date</span>
+        <input type="date" name="joinedDate" value={p.joinedDate ?? ''} />
+      </label>
+      <label class="field">
+        <span class="label">End date <span class="muted">(past members only)</span></span>
+        <input type="date" name="endDate" value={p.endDate ?? ''} />
+      </label>
+    </div>
+    {#if data.tenure}
+      <p class="tenure">In the band: <strong>{data.tenure}</strong>{#if p.endDate} (former member){/if}</p>
+    {/if}
+
     <div class="actions">
       <button type="submit" class="save">Save profile</button>
       {#if p.updatedAt}
@@ -265,6 +279,7 @@
   input[type='text'],
   input[type='tel'],
   input[type='email'],
+  input[type='date'],
   select {
     min-height: 44px;
     border: 1px solid var(--line);
@@ -273,6 +288,17 @@
     background: var(--paper);
     color: var(--ink);
     font-size: 1rem;
+  }
+
+  .dates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .tenure {
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 
   input[type='file'] {

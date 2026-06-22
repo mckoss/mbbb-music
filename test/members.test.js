@@ -179,6 +179,36 @@ test('initialsSvg derives initials from the name, else the email', () => {
   assert.match(initialsSvg('Test Member', 'tm@x'), /^<svg /);
 });
 
+// --- joined/end dates + tenure ---------------------------------------------
+
+test('joined/end dates validated as real calendar dates; clearing allowed', () => {
+  const db = freshDb();
+  assert.throws(() => editProfileFieldDb(db, edit({ field: 'joinedDate', value: '2020-13-40' })), /invalid date/);
+  assert.throws(() => editProfileFieldDb(db, edit({ field: 'joinedDate', value: 'someday' })), /invalid date/);
+  editProfileFieldDb(db, edit({ field: 'joinedDate', value: '2019-03-15', at: '2026-06-15T00:00:00.000Z' }));
+  editProfileFieldDb(db, edit({ field: 'endDate', value: '2022-09-01', at: '2026-06-15T00:01:00.000Z' }));
+  const p = effectiveProfileDb(db, 'jo@x');
+  assert.equal(p.joinedDate, '2019-03-15');
+  assert.equal(p.endDate, '2022-09-01');
+});
+
+test('tenureLabel: years + months, end-date wins, day-of-month boundary', async () => {
+  const { tenureLabel, monthsBetween, formatDuration, monthYear } = await import('../src/lib/members.ts');
+  // Past member: joined→end.
+  assert.equal(tenureLabel('2019-03-15', '2022-05-15', '2026-01-01'), '3 years 2 months');
+  // Current member: joined→today.
+  assert.equal(tenureLabel('2025-01-10', null, '2026-03-10'), '1 year 2 months');
+  // Not a full final month yet (today's day < joined day).
+  assert.equal(monthsBetween('2025-01-20', '2025-02-10'), 0);
+  assert.equal(formatDuration(0), 'less than a month');
+  assert.equal(formatDuration(1), '1 month');
+  assert.equal(formatDuration(12), '1 year');
+  // No joined date → no tenure; reversed range → null.
+  assert.equal(tenureLabel(null, null, '2026-01-01'), null);
+  assert.equal(tenureLabel('2022-01-01', '2020-01-01', '2026-01-01'), null);
+  assert.equal(monthYear('2019-03-15'), 'March 2019');
+});
+
 // --- avatar caching (loadAvatarIn, injected dir + fetch) -------------------
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
@@ -254,6 +284,8 @@ test('empty edit history yields an empty (not missing) profile', () => {
     instruments: [],
     shirtSize: null,
     alternateEmail: null,
+    joinedDate: null,
+    endDate: null,
     avatarSha: null,
     updatedAt: null,
     updatedBy: null,

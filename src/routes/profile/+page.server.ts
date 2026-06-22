@@ -5,7 +5,7 @@ import { error, fail } from '@sveltejs/kit';
 import { getProfile, editProfile } from '$lib/server/members';
 import { photoOf, listUsers } from '$lib/server/users';
 import { saveAvatar, loadAvatar, MAX_AVATAR_BYTES } from '$lib/server/avatars';
-import { INSTRUMENT_CHOICES, SHIRT_SIZES, type ProfilePatch, type ShirtSize } from '$lib/members';
+import { INSTRUMENT_CHOICES, SHIRT_SIZES, tenureLabel, type ProfilePatch, type ShirtSize } from '$lib/members';
 
 function requireUser(locals: App.Locals) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
@@ -36,6 +36,7 @@ export async function load({ locals, url }) {
   const targetName = isOther
     ? profile.fullName || listUsers().find((u) => u.email === target)?.name || target
     : null;
+  const today = new Date().toISOString().slice(0, 10);
   return {
     profile,
     instruments: INSTRUMENT_CHOICES,
@@ -43,6 +44,7 @@ export async function load({ locals, url }) {
     avatarSource: source,
     isOther,
     targetName,
+    tenure: tenureLabel(profile.joinedDate, profile.endDate, today),
   };
 }
 
@@ -80,6 +82,12 @@ export const actions = {
     const additional = form.getAll('instruments').map(String).filter((s) => s && s !== primary);
     const shirt = String(form.get('shirtSize') ?? '') || null;
 
+    const joinedDate = str(form, 'joinedDate');
+    const endDate = str(form, 'endDate');
+    if (joinedDate && endDate && endDate < joinedDate) {
+      return fail(400, { message: 'End date is before the joined date.' });
+    }
+
     const patch: ProfilePatch = {
       fullName: str(form, 'fullName'),
       phone: str(form, 'phone'),
@@ -87,6 +95,8 @@ export const actions = {
       instruments: additional,
       shirtSize: shirt as ShirtSize | null,
       alternateEmail: str(form, 'alternateEmail'),
+      joinedDate,
+      endDate,
       ...avatarPatch,
     };
 

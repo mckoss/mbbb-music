@@ -25,6 +25,8 @@ export const PROFILE_FIELDS = [
   'instruments',
   'shirtSize',
   'alternateEmail',
+  'joinedDate',
+  'endDate',
   'avatarSha',
 ] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
@@ -42,6 +44,8 @@ export interface MemberProfile {
   instruments: string[]; // additional instrument slugs
   shirtSize: ShirtSize | null;
   alternateEmail: string | null;
+  joinedDate: string | null; // YYYY-MM-DD, when they joined the band
+  endDate: string | null; // YYYY-MM-DD, when they left (past members)
   avatarSha: string | null; // uploaded avatar blob hash, if any
   updatedAt: string | null;
   updatedBy: string | null;
@@ -55,12 +59,64 @@ export type ProfilePatch = Partial<{
   instruments: string[] | null;
   shirtSize: ShirtSize | null;
   alternateEmail: string | null;
+  joinedDate: string | null;
+  endDate: string | null;
   avatarSha: string | null;
 }>;
 
 const INSTRUMENT_SLUGS = new Set(INSTRUMENT_CHOICES.map((i) => i.slug));
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SHA_RE = /^[a-f0-9]{64}$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** A real YYYY-MM-DD calendar date (rejects e.g. 2020-13-40). */
+export function isValidDate(s: string): boolean {
+  if (!DATE_RE.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** "January 2019" for a YYYY-MM-DD date, or null if invalid. */
+export function monthYear(date: string | null): string | null {
+  if (!date || !isValidDate(date)) return null;
+  const [y, m] = date.split('-');
+  return `${MONTHS[Number(m) - 1]} ${y}`;
+}
+
+/** Whole calendar months from start→end (both YYYY-MM-DD), or null if negative/invalid. */
+export function monthsBetween(start: string, end: string): number | null {
+  if (!isValidDate(start) || !isValidDate(end)) return null;
+  const s = new Date(`${start}T00:00:00Z`);
+  const e = new Date(`${end}T00:00:00Z`);
+  let m = (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + (e.getUTCMonth() - s.getUTCMonth());
+  if (e.getUTCDate() < s.getUTCDate()) m--; // not a full month yet
+  return m < 0 ? null : m;
+}
+
+/** "3 years 2 months" from a month count (omits zero parts). */
+export function formatDuration(months: number): string {
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  const parts: string[] = [];
+  if (y) parts.push(`${y} year${y === 1 ? '' : 's'}`);
+  if (m) parts.push(`${m} month${m === 1 ? '' : 's'}`);
+  return parts.length ? parts.join(' ') : 'less than a month';
+}
+
+/**
+ * Tenure label for a member: from joinedDate to endDate (past member) or `today`
+ * (current member). Null when no joined date or the range is invalid.
+ */
+export function tenureLabel(joinedDate: string | null, endDate: string | null, today: string): string | null {
+  if (!joinedDate) return null;
+  const months = monthsBetween(joinedDate, endDate || today);
+  return months == null ? null : formatDuration(months);
+}
 
 export function isProfileField(field: string): field is ProfileField {
   return (PROFILE_FIELDS as readonly string[]).includes(field);
@@ -118,6 +174,10 @@ export function validateProfileValue(field: ProfileField, value: string | null):
     }
     case 'shirtSize':
       if (!(SHIRT_SIZES as string[]).includes(v)) throw new Error(`invalid shirt size "${v}"`);
+      return v;
+    case 'joinedDate':
+    case 'endDate':
+      if (!isValidDate(v)) throw new Error('invalid date (use YYYY-MM-DD)');
       return v;
     case 'avatarSha':
       if (!SHA_RE.test(v)) throw new Error('invalid avatar hash');

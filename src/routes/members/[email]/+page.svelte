@@ -15,6 +15,11 @@
     <div class="head">
       <h2>{m.name}</h2>
       {#if m.primary}<p class="primary">{m.primary}</p>{/if}
+      {#if m.tenure}
+        <p class="tenure">
+          {#if m.isFormer}Former member · {m.tenure}{:else}In the band {m.tenure}{/if}
+        </p>
+      {/if}
     </div>
 
     <dl class="fields">
@@ -36,6 +41,16 @@
 
       <dt>Shirt size</dt>
       <dd>{#if m.shirtSize}{m.shirtSize}{:else}<span class="empty">—</span>{/if}</dd>
+
+      {#if m.joined}
+        <dt>Joined</dt>
+        <dd>{m.joined}</dd>
+      {/if}
+
+      {#if m.left}
+        <dt>Left</dt>
+        <dd>{m.left}</dd>
+      {/if}
     </dl>
 
     {#if data.canEdit}
@@ -97,6 +112,12 @@
     font-weight: 700;
     font-size: 0.95rem;
     margin-top: 2px;
+  }
+
+  .tenure {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 4px;
   }
 
   .fields {

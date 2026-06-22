@@ -5,7 +5,7 @@ import { error } from '@sveltejs/kit';
 
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
-import { instrumentLabel } from '$lib/members';
+import { instrumentLabel, monthYear, tenureLabel } from '$lib/members';
 
 export function load({ params, locals }) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
@@ -15,6 +15,7 @@ export function load({ params, locals }) {
   if (!user) throw error(404, 'Unknown member.');
 
   const p = getProfile(email);
+  const today = new Date().toISOString().slice(0, 10);
   return {
     member: {
       email,
@@ -24,6 +25,10 @@ export function load({ params, locals }) {
       phone: p.phone,
       alternateEmail: p.alternateEmail,
       shirtSize: p.shirtSize,
+      joined: monthYear(p.joinedDate),
+      left: monthYear(p.endDate),
+      tenure: tenureLabel(p.joinedDate, p.endDate, today),
+      isFormer: Boolean(p.endDate),
       role: user.role,
       updatedAt: p.updatedAt,
       avatarRev: p.updatedAt ?? '',
