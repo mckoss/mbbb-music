@@ -33,6 +33,13 @@
   };
   const glyph = (slug: string | null) => (slug && EMOJI[slug]) || '🎵';
 
+  // Instruments with an isolated sprite in /static/instruments (the rest fall
+  // back to the emoji glyph — e.g. alto horn, which isn't in the sprite sheet).
+  const HAS_IMG = new Set([
+    'alto-sax', 'bari-sax', 'clarinet', 'drums', 'euphonium', 'flute', 'french-horn',
+    'mellophone', 'melodica', 'soprano-sax', 'tenor-sax', 'trombone', 'trumpet', 'tuba',
+  ]);
+
   const ORDER = new Map(INSTRUMENT_CHOICES.map((i, idx) => [i.slug, idx]));
 
   // Active members grouped into instrument sections, in canonical instrument
@@ -103,7 +110,14 @@
   {#if view === 'instrument'}
     {#each sections as sec (sec.slug ?? 'none')}
       <div class="section">
-        <h3 class="section-head"><span class="glyph" aria-hidden="true">{sec.glyph}</span> {sec.label} <span class="n">{sec.members.length}</span></h3>
+        <h3 class="section-head">
+          {#if sec.slug && HAS_IMG.has(sec.slug)}
+            <img class="glyph-img" src={`/instruments/${sec.slug}.png`} alt="" aria-hidden="true" />
+          {:else}
+            <span class="glyph" aria-hidden="true">{sec.glyph}</span>
+          {/if}
+          {sec.label} <span class="n">{sec.members.length}</span>
+        </h3>
         <ul class="grid">
           {#each sec.members as m (m.email)}{@render card(m)}{/each}
         </ul>
@@ -192,6 +206,12 @@
   .glyph {
     font-size: 1.4rem;
     line-height: 1;
+  }
+
+  .glyph-img {
+    height: 44px;
+    width: auto;
+    object-fit: contain;
   }
 
   .section-head .n {
