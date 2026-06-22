@@ -29,5 +29,6 @@ export function load({ params, locals }) {
       avatarRev: p.updatedAt ?? '',
     },
     isSelf: locals.user.email === email,
+    canEdit: locals.user.role === 'admin' || locals.user.email === email,
   };
 }

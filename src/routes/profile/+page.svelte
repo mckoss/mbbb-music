@@ -35,11 +35,12 @@
     cropFile = null;
   }
 
-  // Human label for where the displayed photo actually comes from.
+  // Human label for where the displayed photo actually comes from (neutral
+  // wording so it reads correctly whether editing your own or another member's).
   const SOURCE_LABEL: Record<string, string> = {
-    upload: 'your uploaded picture',
-    google: 'your Google account photo',
-    gravatar: 'a Gravatar matched to your email',
+    upload: 'an uploaded picture',
+    google: 'the Google account photo',
+    gravatar: 'a Gravatar match',
     initials: 'auto-generated initials (no photo found yet)',
   };
   const sourceLabel = $derived(SOURCE_LABEL[data.avatarSource] ?? 'unknown');
@@ -47,12 +48,21 @@
 
 <section class="profile">
   <header>
-    <p class="kicker">My Profile</p>
-    <h2>Your band member details</h2>
-    <p class="body">
-      This information populates the band roster. Your sign-in email
-      (<strong>{p.email}</strong>) is your account identity and can’t be changed here.
-    </p>
+    <p class="kicker">{data.isOther ? 'Edit Member' : 'My Profile'}</p>
+    {#if data.isOther}
+      <h2>{data.targetName}’s details</h2>
+      <p class="body">
+        Editing another member as admin. Their sign-in email
+        (<strong>{p.email}</strong>) is the account identity and can’t be changed here.
+      </p>
+      <a class="back" href={`/members/${encodeURIComponent(p.email)}`}>← Back to {data.targetName}</a>
+    {:else}
+      <h2>Your band member details</h2>
+      <p class="body">
+        This information populates the band roster. Your sign-in email
+        (<strong>{p.email}</strong>) is your account identity and can’t be changed here.
+      </p>
+    {/if}
   </header>
 
   {#if form?.message}
@@ -60,6 +70,7 @@
   {/if}
 
   <form class="card" method="POST" action="?/save" enctype="multipart/form-data">
+    <input type="hidden" name="email" value={p.email} />
     <div class="avatar-row">
       <img class="avatar" src={previewSrc} alt="Your avatar" />
       <div class="avatar-controls">
@@ -171,6 +182,15 @@
   .body {
     color: var(--muted);
     max-width: 60ch;
+  }
+
+  .back {
+    display: inline-block;
+    margin-top: 4px;
+    color: var(--accent-strong);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 700;
   }
 
   .notice {

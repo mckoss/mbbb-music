@@ -38,8 +38,10 @@
       <dd>{#if m.shirtSize}{m.shirtSize}{:else}<span class="empty">—</span>{/if}</dd>
     </dl>
 
-    {#if data.isSelf}
-      <a class="edit" href="/profile">Edit my profile</a>
+    {#if data.canEdit}
+      <a class="edit" href={data.isSelf ? '/profile' : `/profile?email=${encodeURIComponent(m.email)}`}>
+        {data.isSelf ? 'Edit my profile' : 'Edit this profile'}
+      </a>
     {/if}
   </div>
 </section>
