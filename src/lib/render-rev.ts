@@ -11,5 +11,5 @@
 // Bump RENDER_REV whenever the rasterization changes in any visible way — DPI,
 // renderer, encoder settings. RENDER_DPI is folded into the on-disk cache dir
 // name for readability; RENDER_REV is what actually invalidates client caches.
-export const RENDER_REV = 1;
+export const RENDER_REV = 2;
 export const RENDER_DPI = 200;

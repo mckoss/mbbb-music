@@ -13,7 +13,8 @@
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 
 import { createCanvas } from '@napi-rs/canvas';
 import sharp from 'sharp';
@@ -62,6 +63,17 @@ class NodeCanvasFactory {
   }
 }
 
+// pdf.js ships the "standard 14" font data (Foxit substitutes for Helvetica,
+// Times, Courier, Symbol, ZapfDingbats). Point pdf.js at it so a font in the PDF
+// that is *referenced but not embedded* still renders on a font-bare server — the
+// production container has no system fonts. Without this, such text silently drops
+// while embedded fonts survive: e.g. the Helvetica header stamped on top by
+// src/scores/stamp.js (pdf-lib's StandardFonts are not embedded) vanished on the
+// server while the embedded MuseScore music rendered. The trailing slash is
+// required — pdf.js concatenates the font filename directly onto this URL.
+const nodeRequire = createRequire(import.meta.url);
+const STANDARD_FONTS = resolve(dirname(nodeRequire.resolve('pdfjs-dist/package.json')), 'standard_fonts') + '/';
+
 /** Open a CAS-stored PDF as a PDF.js document. Caller must destroy the task. */
 async function openDoc(sha: string) {
   // The legacy build is transpiled for broad engine support and is the variant
@@ -72,7 +84,10 @@ async function openDoc(sha: string) {
   const task = pdfjs.getDocument({
     data,
     CanvasFactory: NodeCanvasFactory,
-    useSystemFonts: true,
+    // Use the bundled standard-font data (above), not host system fonts, so
+    // rasterization is identical on every machine regardless of installed fonts.
+    standardFontDataUrl: STANDARD_FONTS,
+    useSystemFonts: false,
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const doc: any = await task.promise;
