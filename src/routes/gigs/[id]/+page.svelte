@@ -15,7 +15,7 @@
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { activeScore, partsForFormat } from '$lib/resolve';
-  import { instrumentDisplay, partOptionLabel, audioLabel } from '$lib/format';
+  import { instrumentDisplay, partOptionLabel, partShortLabel, audioLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { scoreSearch } from '$lib/nav';
@@ -269,6 +269,18 @@
           >
             {#each performAudios as a (a.sha256)}
               <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+            {/each}
+          </select>
+        {/if}
+        {#if performParts.length > 1}
+          <select
+            class="part-sel"
+            value={performScore?.sha ?? ''}
+            onchange={(e) => setPerformPart(e.currentTarget.value)}
+            aria-label="Part"
+          >
+            {#each performParts as p (p.sha256)}
+              <option value={p.sha256}>{partShortLabel(p, performParts)}</option>
             {/each}
           </select>
         {/if}
@@ -1251,14 +1263,24 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .practice-bar .rec-sel {
+  .practice-bar .rec-sel,
+  .practice-bar .part-sel {
     min-height: 40px;
     border-radius: 6px;
     border: 1px solid rgba(255, 253, 247, 0.25);
     background: #2c2d31;
     color: #fffdf7;
     padding: 0 8px;
+  }
+
+  .practice-bar .rec-sel {
     max-width: 28vw;
+  }
+
+  /* Part is usually a short label (1st / 2nd …); keep it tight so it steals only
+     a little from the scrub bar. */
+  .practice-bar .part-sel {
+    max-width: 22vw;
   }
 
   /* Fills the player's slot when a song has no recording, so the nav buttons

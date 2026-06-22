@@ -66,6 +66,27 @@ export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): str
   return tag ? `${base} — ${tag}` : base;
 }
 
+/** Minimal base for {@link partShortLabel}: just the part (with key only when
+ * there's no part number), dropping the instrument name. */
+function partShortBase(part: CatalogPart): string {
+  if (part.partNumber != null) return `Part ${part.partNumber}`;
+  const k = keyLabel(part.key);
+  return k ? `Part (${k})` : 'Part';
+}
+
+/**
+ * A compact part label for contexts where the instrument is already fixed (the
+ * practice bar) — "Part 1", "Part 2" — so the picker stays narrow. Disambiguates
+ * with a variant tag only when two siblings would otherwise collide.
+ */
+export function partShortLabel(part: CatalogPart, siblings: CatalogPart[]): string {
+  const base = partShortBase(part);
+  const collides = siblings.some((p) => p.sha256 !== part.sha256 && partShortBase(p) === base);
+  if (!collides) return base;
+  const tag = variantTag(part);
+  return tag ? `${base} — ${tag}` : base;
+}
+
 /** Strip Drive's "Copy of " prefix (possibly repeated) from a filename. */
 export function stripCopyOf(name: string): string {
   return name.replace(/^(?:copy of\s+)+/i, '');

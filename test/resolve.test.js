@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { partOptionLabel } from '../src/lib/format.js';
+import { partOptionLabel, partShortLabel } from '../src/lib/format.js';
 import { activePdf } from '../src/lib/resolve.js';
 
 function part(over) {
@@ -47,6 +47,24 @@ test('partOptionLabel falls back to source when filenames are absent', () => {
   const b = part({ sha256: 'b', originalName: null, source: 'honk-all-stars' });
   assert.match(partOptionLabel(a, [a, b]), /mutiny-bay-arrangements/);
   assert.match(partOptionLabel(b, [a, b]), /honk-all-stars/);
+});
+
+test('partShortLabel drops the instrument, keeping just the part number', () => {
+  const a = part({ sha256: 'a', partNumber: 1 });
+  const b = part({ sha256: 'b', partNumber: 2 });
+  assert.equal(partShortLabel(a, [a, b]), 'Part 1');
+  assert.equal(partShortLabel(b, [a, b]), 'Part 2');
+});
+
+test('partShortLabel disambiguates same-numbered siblings by variant tag', () => {
+  // Two "Part 1" arrangements would collide, so each gets its filename tag.
+  const a = part({ sha256: 'a', partNumber: 1, originalName: 'Bella Ciao - march.pdf' });
+  const b = part({ sha256: 'b', partNumber: 1, originalName: 'Bella Ciao - v3.pdf' });
+  const la = partShortLabel(a, [a, b]);
+  const lb = partShortLabel(b, [a, b]);
+  assert.notEqual(la, lb);
+  assert.ok(la.startsWith('Part 1 — '));
+  assert.match(lb, /v3/);
 });
 
 test('activePdf selects a specific variant by its sha (not by part number)', () => {
