@@ -252,64 +252,14 @@
        performance mode. A floating cluster (top-right) holds song navigation
        and a clear Done button. -->
   <div class="overlay">
-    <div class="floating">
-      <span class="pos">
-        {performSet.name || 'Set'} · {clampedIndex + 1}/{performSongs.length}
-      </span>
-      <button class="ghost" onclick={switchMode} title="Switch run mode">
-        {isPractice ? 'Performance ▶' : '✎ Practice'}
-      </button>
-      <button class="ghost" onclick={prevSong} disabled={clampedIndex <= 0}>‹ Prev song</button>
-      <button
-        class="ghost"
-        onclick={nextSong}
-        disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button
-      >
-      {#if performParts.length > 1}
-        <label class="sel">
-          <span class="eyebrow">Part</span>
-          <select value={performScore?.sha ?? ''} onchange={(e) => setPerformPart(e.currentTarget.value)}>
-            {#each performParts as p (p.sha256)}
-              <option value={p.sha256}>{partOptionLabel(p, performParts)}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      <label class="sel">
-        <span class="eyebrow">Format</span>
-        <select value={format} onchange={(e) => setPerformFormat(e.currentTarget.value as PrintFormat)}>
-          <option value="letter">Letter</option>
-          <option value="lyre">Lyre</option>
-        </select>
-      </label>
-      <button class="primary" onclick={donePerform}>Done</button>
-    </div>
-    <div class="now-playing">
-      <span class="run-mode">{isPractice ? 'Practice' : 'Performance'}</span>
-      {performSlug ? titleOf(performSlug) : ''}
-    </div>
-    <div class="stage">
-      {#if performScore}
-        {#key performScore.sha}
-          <PdfPager
-            sha={performScore.sha}
-            title={`${performSlug ? titleOf(performSlug) : ''} — ${performScore.label}`}
-            tap={true}
-            openHref={openUrl(performScore.sha)}
-          />
-        {/key}
-      {:else}
-        <div class="no-chart">
-          <p>No {instLabel} chart for “{performSlug ? titleOf(performSlug) : ''}”{format === 'lyre' ? ' in Lyre' : ''}.</p>
-          <p class="hint">Try the Format dropdown, or switch your instrument from the main menu.</p>
-        </div>
-      {/if}
-    </div>
-
     {#if isPractice}
-      <!-- Practice run: a one-line player for the current song (shared compact
-           AudioPlayer), so you can rehearse a set with audio and count-in. -->
-      <div class="player-bar">
+      <!-- Practice run: one clean top bar, matching the single-song practice
+           layout. The compact player stretches to fill, so the set navigation
+           sits flush right with Next song pinned at the very end. -->
+      <div class="practice-bar">
+        <button class="exit" onclick={donePerform} aria-label="Done" title="Done">←</button>
+        <button class="ghost mode" onclick={switchMode} title="Switch to Performance">Performance ▶</button>
+        <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
         {#if performAudios.length > 1}
           <select
             class="rec-sel"
@@ -327,8 +277,62 @@
         {:else}
           <span class="no-audio">No recording for this song.</span>
         {/if}
+        <button class="ghost nav" onclick={prevSong} disabled={clampedIndex <= 0} aria-label="Previous song" title="Previous song">‹</button>
+        <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
+      </div>
+    {:else}
+      <div class="floating">
+        <span class="pos">
+          {performSet.name || 'Set'} · {clampedIndex + 1}/{performSongs.length}
+        </span>
+        <button class="ghost" onclick={switchMode} title="Switch run mode">✎ Practice</button>
+        <button class="ghost" onclick={prevSong} disabled={clampedIndex <= 0}>‹ Prev song</button>
+        <button
+          class="ghost"
+          onclick={nextSong}
+          disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button
+        >
+        {#if performParts.length > 1}
+          <label class="sel">
+            <span class="eyebrow">Part</span>
+            <select value={performScore?.sha ?? ''} onchange={(e) => setPerformPart(e.currentTarget.value)}>
+              {#each performParts as p (p.sha256)}
+                <option value={p.sha256}>{partOptionLabel(p, performParts)}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        <label class="sel">
+          <span class="eyebrow">Format</span>
+          <select value={format} onchange={(e) => setPerformFormat(e.currentTarget.value as PrintFormat)}>
+            <option value="letter">Letter</option>
+            <option value="lyre">Lyre</option>
+          </select>
+        </label>
+        <button class="primary" onclick={donePerform}>Done</button>
+      </div>
+      <div class="now-playing">
+        <span class="run-mode">Performance</span>
+        {performSlug ? titleOf(performSlug) : ''}
       </div>
     {/if}
+    <div class="stage">
+      {#if performScore}
+        {#key performScore.sha}
+          <PdfPager
+            sha={performScore.sha}
+            title={`${performSlug ? titleOf(performSlug) : ''} — ${performScore.label}`}
+            tap={true}
+            openHref={openUrl(performScore.sha)}
+          />
+        {/key}
+      {:else}
+        <div class="no-chart">
+          <p>No {instLabel} chart for “{performSlug ? titleOf(performSlug) : ''}”{format === 'lyre' ? ' in Lyre' : ''}.</p>
+          <p class="hint">Switch your instrument or format to find a chart for this song.</p>
+        </div>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -1189,28 +1193,80 @@
     padding: 12px;
   }
 
-  /* Practice run: a reserved player strip at the bottom, so the chart sits above
-     it (never covered) and the transport is thumb-reachable on a stand. */
-  .player-bar {
+  /* Practice run: one floating top bar (mirrors the single-song practice bar).
+     A single flex row — the compact player grows to fill, pushing the song
+     navigation flush right so Next song lands at the very end. */
+  .practice-bar {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 10;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 16px;
-    border-top: 1px solid rgba(255, 253, 247, 0.12);
-    background: rgba(32, 33, 36, 0.96);
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
-  .player-bar .rec-sel {
-    min-height: 36px;
+  /* Step-out arrow, same top-left corner and look as the single-song bar. */
+  .practice-bar .exit {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    line-height: 1;
+    background: rgba(255, 253, 247, 0.12);
+    color: #fffdf7;
+    border: 1px solid rgba(255, 253, 247, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .practice-bar .ghost {
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+    background: rgba(255, 253, 247, 0.12);
+    color: #fffdf7;
+    border: 1px solid rgba(255, 253, 247, 0.35);
+  }
+
+  .practice-bar .ghost:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .practice-bar .pos {
+    font-size: 0.78rem;
+    color: #dfddd4;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .practice-bar .rec-sel {
+    min-height: 40px;
     border-radius: 6px;
     border: 1px solid rgba(255, 253, 247, 0.25);
     background: #2c2d31;
     color: #fffdf7;
     padding: 0 8px;
-    max-width: 40vw;
+    max-width: 28vw;
   }
 
-  .no-audio {
+  /* Fills the player's slot when a song has no recording, so the nav buttons
+     still sit flush right. */
+  .practice-bar .no-audio {
+    flex: 1;
     color: #b9b6ac;
     font-size: 0.85rem;
   }
