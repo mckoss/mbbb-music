@@ -46,8 +46,8 @@ const INSTRUMENTS = [
  */
 export const DEFAULT_KEY_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.slug, i.defaultKey]));
 
-/** Public {slug,label} list of correctable instruments (for UI dropdowns). */
-export const INSTRUMENT_CHOICES = INSTRUMENTS.map(({ slug, label }) => ({ slug, label }));
+/** Public {slug,label,key} list of selectable instruments (for UI dropdowns). */
+export const INSTRUMENT_CHOICES = INSTRUMENTS.map(({ slug, label, defaultKey }) => ({ slug, label, key: defaultKey }));
 
 /** Canonical display label for an instrument slug, or null if unknown. */
 export const LABEL_BY_SLUG = Object.fromEntries(INSTRUMENTS.map((i) => [i.slug, i.label]));

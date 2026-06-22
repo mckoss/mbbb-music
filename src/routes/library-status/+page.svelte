@@ -661,7 +661,7 @@
                       <input type="hidden" name="field" value="instrumentSlug" />
                       <select name="value" aria-label="Instrument" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
                         {#each INSTRUMENT_CHOICES as inst (inst.slug)}
-                          <option value={inst.slug} selected={inst.slug === p.instrumentSlug}>{inst.label}</option>
+                          <option value={inst.slug} selected={inst.slug === p.instrumentSlug}>{instrumentDisplay(inst.label, inst.key)}</option>
                         {/each}
                       </select>
                     </form>

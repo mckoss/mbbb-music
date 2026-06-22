@@ -1,5 +1,6 @@
 <script lang="ts">
   import { instrumentLabel } from '$lib/members';
+  import { instrumentDisplay } from '$lib/format';
   import AvatarCropper from '$lib/components/AvatarCropper.svelte';
 
   let { data, form } = $props();
@@ -106,7 +107,7 @@
       <select name="primaryInstrument">
         <option value="">— none —</option>
         {#each data.instruments as inst (inst.slug)}
-          <option value={inst.slug} selected={p.primaryInstrument === inst.slug}>{inst.label}</option>
+          <option value={inst.slug} selected={p.primaryInstrument === inst.slug}>{instrumentDisplay(inst.label, inst.key)}</option>
         {/each}
       </select>
     </label>
@@ -117,7 +118,7 @@
         {#each data.instruments as inst (inst.slug)}
           <label class="check">
             <input type="checkbox" name="instruments" value={inst.slug} checked={also.has(inst.slug)} />
-            {inst.label}
+            {instrumentDisplay(inst.label, inst.key)}
           </label>
         {/each}
       </div>
