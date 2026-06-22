@@ -526,10 +526,12 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
-  /* Practice mode: the floating pill stretches into the full top line, holding
-     the Back arrow, the recording selector, and the one-line player. */
+  /* Practice mode: the bar runs along the top of the page in normal flow (not
+     floating), so it reserves its own height and the score sits below it with
+     no overlap. Holds the Back arrow, recording selector, and one-line player. */
   .floating.bar-line {
-    right: 12px;
+    position: static;
+    margin: 12px 12px 0;
     padding: 8px 12px;
   }
 

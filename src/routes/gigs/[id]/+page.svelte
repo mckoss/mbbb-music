@@ -1193,15 +1193,13 @@
     padding: 12px;
   }
 
-  /* Practice run: one floating top bar (mirrors the single-song practice bar).
-     A single flex row — the compact player grows to fill, pushing the song
-     navigation flush right so Next song lands at the very end. */
+  /* Practice run: one top bar (mirrors the single-song practice bar). It runs
+     along the top of the page in normal flow — reserving its height so the
+     score sits below with no overlap. A single flex row: the compact player
+     grows to fill, pushing the song navigation flush right so Next song lands
+     at the very end. */
   .practice-bar {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    z-index: 10;
+    margin: 12px 12px 0;
     display: flex;
     align-items: center;
     gap: 10px;
