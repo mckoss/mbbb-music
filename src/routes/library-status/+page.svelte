@@ -1045,7 +1045,7 @@
     text-transform: uppercase;
     color: var(--ink);
     border-top: 2px solid var(--line);
-    z-index: 2;
+    z-index: 1;
   }
 
   .group-count {
