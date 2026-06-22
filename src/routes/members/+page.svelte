@@ -34,10 +34,11 @@
   const glyph = (slug: string | null) => (slug && EMOJI[slug]) || '🎵';
 
   // Instruments with an isolated sprite in /static/instruments (the rest fall
-  // back to the emoji glyph — e.g. alto horn, which isn't in the sprite sheet).
+  // back to the emoji glyph).
   const HAS_IMG = new Set([
-    'alto-sax', 'bari-sax', 'clarinet', 'drums', 'euphonium', 'flute', 'french-horn',
-    'mellophone', 'melodica', 'soprano-sax', 'tenor-sax', 'trombone', 'trumpet', 'tuba',
+    'alto-horn', 'alto-sax', 'bari-sax', 'clarinet', 'drums', 'euphonium', 'flute',
+    'french-horn', 'mellophone', 'melodica', 'soprano-sax', 'tenor-sax', 'trombone',
+    'trumpet', 'tuba',
   ]);
 
   const ORDER = new Map(INSTRUMENT_CHOICES.map((i, idx) => [i.slug, idx]));
