@@ -10,8 +10,8 @@ import { INSTRUMENT_CHOICES } from '../sync/instruments.js';
 export { INSTRUMENT_CHOICES, instrumentLabel } from '../sync/instruments.js';
 
 /** Band-shirt sizes offered in the profile picker. */
-export type ShirtSize = 'S' | 'M' | 'L' | 'XL' | 'XXL';
-export const SHIRT_SIZES: ShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL'];
+export type ShirtSize = 'S' | 'S/M' | 'M' | 'L' | 'XL' | 'XXL';
+export const SHIRT_SIZES: ShirtSize[] = ['S', 'S/M', 'M', 'L', 'XL', 'XXL'];
 
 /**
  * The editable profile fields. The login email is deliberately NOT here: it's the
