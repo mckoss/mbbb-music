@@ -60,7 +60,13 @@
           <td class="added">{u.addedAt ? new Date(u.addedAt).toLocaleDateString() : '—'}</td>
           <td class="actions">
             {#if !u.bootstrap}
-              <form method="POST" action="?/remove" use:enhance>
+              <form
+                method="POST"
+                action="?/remove"
+                use:enhance={({ cancel }) => {
+                  if (!confirm(`Remove ${u.email} from the sign-in list?\nThey will lose access to the site immediately.`)) cancel();
+                }}
+              >
                 <input type="hidden" name="email" value={u.email} />
                 <button type="submit" class="remove">Remove</button>
               </form>
