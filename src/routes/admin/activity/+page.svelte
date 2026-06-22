@@ -44,7 +44,7 @@
             <span class="tag {action(item.type).tag}">{action(item.type).tag}</span>
             <span class="line">
               <span class="who">{item.who}</span>
-              {action(item.type).verb}{#if item.label} <span class="label">{item.label}</span>{/if}
+              {action(item.type).verb}{#if item.label}{' '}<span class="label">{item.label}</span>{/if}
             </span>
             <span class="when">{item.time}</span>
           </li>

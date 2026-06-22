@@ -36,6 +36,10 @@ export function load({ locals }) {
   }
   const who = (email: string) => nameOf.get(email) ?? email;
 
+  // "joinedDate" → "joined date"; avatar is stored as a hash, so name it plainly.
+  const fieldLabel = (field: string) =>
+    field === 'avatarSha' ? 'photo' : field.replace(/([A-Z])/g, ' $1').toLowerCase();
+
   const events: FeedItem[] = recentEvents(500).map((e) => ({
     at: e.at,
     time: fmt(e.at),
@@ -53,7 +57,7 @@ export function load({ locals }) {
     email: e.edited_by,
     who: who(e.edited_by),
     type: 'profile-edit',
-    label: e.edited_by === e.email ? `their ${e.field}` : `${who(e.email)}'s ${e.field}`,
+    label: e.edited_by === e.email ? `their ${fieldLabel(e.field)}` : `${who(e.email)}'s ${fieldLabel(e.field)}`,
   }));
 
   const feed = [...events, ...edits]
