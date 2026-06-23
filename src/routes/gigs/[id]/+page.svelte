@@ -268,7 +268,7 @@
             aria-label="Recording"
           >
             {#each performAudios as a (a.sha256)}
-              <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+              <option value={a.sha256}>{audioLabel(a.originalName, a.museScore)}</option>
             {/each}
           </select>
         {/if}

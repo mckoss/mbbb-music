@@ -130,8 +130,12 @@ export function stripCopyOf(name: string): string {
  * the instrument — the segment after the last "-" (so the song/arrangement
  * prefix falls away): "Copy of Bad_Guy_Sound_Machine-Alto_Sax.mp3" → "Alto Sax".
  * A file with no instrument segment is the "Full recording".
+ *
+ * The app-generated full-band mix is labeled "MuseScore Audio" regardless of its
+ * filename (set `museScore` on the asset — see catalog.js `isMuseScoreAudio`).
  */
-export function audioLabel(originalName: string | null): string {
+export function audioLabel(originalName: string | null, museScore = false): string {
+  if (museScore) return 'MuseScore Audio';
   if (!originalName) return 'Full recording';
   let s = stripCopyOf(originalName.replace(/\.[^.]+$/, '').trim()); // drop extension + "Copy of"
   const dash = s.lastIndexOf('-');

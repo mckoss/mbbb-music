@@ -94,7 +94,7 @@
       out.push({ sha: s.sha256, label: `Full score${tune!.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)` })
     );
     if (tune.musescore[0]) out.push({ sha: tune.musescore[0].sha256, label: 'MuseScore' });
-    tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName)} (MP3)` }));
+    tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName, a.museScore)} (MP3)` }));
     tune.notes.forEach((n) =>
       out.push({ sha: n.sha256, label: `${n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)` })
     );
@@ -182,7 +182,7 @@
       aria-label="Recording"
     >
       {#each audios as a (a.sha256)}
-        <option value={a.sha256}>{audioLabel(a.originalName)}</option>
+        <option value={a.sha256}>{audioLabel(a.originalName, a.museScore)}</option>
       {/each}
     </select>
   {/if}

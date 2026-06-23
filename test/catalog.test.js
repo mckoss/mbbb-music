@@ -557,3 +557,39 @@ test('app-generated scores mask manual score PDFs for the same song, keeping aud
   assert.ok(!iron.parts[0].generated, 'and its parts are not flagged generated');
   assert.equal(iron.masked.length, 0, 'a non-generated song has nothing masked');
 });
+
+test('the app-generated "-band.mp3" is the primary MuseScore Audio, additive (never masks manual audio)', () => {
+  const manifest = {
+    files: {
+      // The app-generated full-band mix in the generated source's .parts folder.
+      g: {
+        status: 'synced', sha256: 'b1', assetType: 'mp3',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'generated-scores', originalFolder: 'Bad Guy.parts',
+        originalName: 'bad-guy-band.mp3',
+      },
+      // A manual full-band mix and an isolated stem — both must survive (no masking).
+      m: {
+        status: 'synced', sha256: 'm1', assetType: 'mp3',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad_Guy.mp3',
+      },
+      d: {
+        status: 'synced', sha256: 'd1', assetType: 'mp3', instrumentSlug: 'drums',
+        songTitle: 'Bad Guy', songTitleSlug: 'bad-guy',
+        sourceFolderLabel: 'scores', originalFolder: 'Bad Guy', originalName: 'Bad_Guy-Drumset.mp3',
+      },
+    },
+  };
+  const { tunes } = buildCatalog(manifest, ['generated-scores', 'scores'], [], ['generated-scores']);
+  const bad = tunes.find((t) => t.slug === 'bad-guy');
+
+  assert.equal(bad.audio.length, 3, 'all three recordings are kept — generated audio is additive, not masking');
+  assert.equal(bad.masked.length, 0, 'no audio is masked');
+  assert.equal(bad.audio[0].originalName, 'bad-guy-band.mp3', 'the MuseScore mix sorts first / is the default');
+  assert.equal(bad.audio[0].museScore, true, 'and is tagged so the UI labels it "MuseScore Audio"');
+  // The manual full mix and the isolated stem remain, after the generated mix.
+  assert.ok(bad.audio.some((a) => a.originalName === 'Bad_Guy.mp3'), 'the manual full mix is still present');
+  assert.ok(bad.audio.some((a) => a.originalName === 'Bad_Guy-Drumset.mp3'), 'the isolated stem is still present');
+  assert.ok(bad.audio.slice(1).every((a) => !a.museScore), 'only the generated mix carries the museScore flag');
+});

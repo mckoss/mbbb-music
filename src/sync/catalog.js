@@ -341,6 +341,17 @@ function isIsolatedAudio(a) {
 }
 
 /**
+ * True for an app-generated full-band MuseScore mix: a `<song>-band.mp3` rendered
+ * by `build-scores --audio` into a generated source's `.parts` folder. These are
+ * surfaced as the song's primary "MuseScore Audio" recording — sorted first and
+ * auto-selected in the players — but, unlike generated scores/parts, they never
+ * mask the manually-uploaded audio (audio is absent from MASKED_WHEN_GENERATED).
+ */
+function isMuseScoreAudio(a) {
+  return a.generated === true && /-band\.mp3$/i.test(a.originalName || '');
+}
+
+/**
  * A recording's identity, ignoring version tokens, so "Iron Man-V1.0" and
  * "Iron Man-V1.2" share a key but distinct recordings ("…cadillacs" vs
  * "Samba Breaks") do not. Strips a leading "Copy of" and any version-number
@@ -373,6 +384,10 @@ function dedupeAudio(audio, pri) {
   for (const a of audio) if (!bySha.has(a.sha256)) bySha.set(a.sha256, a);
   const baseKey = (a) => audioBaseKey(a.originalName) || a.sha256;
   const out = [...bySha.values()].sort((a, b) => {
+    // The app-generated MuseScore mix is the primary recording: always first,
+    // ahead of every manual take (which all remain reachable below it).
+    const ms = (isMuseScoreAudio(a) ? 0 : 1) - (isMuseScoreAudio(b) ? 0 : 1);
+    if (ms) return ms;
     // Full-band mix before isolated stems (the default recording, #4)...
     const iso = (isIsolatedAudio(a) ? 1 : 0) - (isIsolatedAudio(b) ? 1 : 0);
     if (iso) return iso;
@@ -624,8 +639,9 @@ export function detectCollectionFolders(manifest, canonical) {
 
 // Asset buckets that a song's app-generated scores mask: once a generated
 // score/part exists for a song, the manual copies in these buckets are dropped
-// from the catalog. Scores and parts today; add 'audio' when generated audio
-// replaces the manual practice tracks (see the masking pass in buildCatalog).
+// from the catalog. Scores and parts only. Audio is deliberately NOT masked: the
+// generated full-band mix is surfaced as the primary "MuseScore Audio" recording
+// (see isMuseScoreAudio / dedupeAudio) but coexists with manual practice tracks.
 const MASKED_WHEN_GENERATED = ['parts', 'scores'];
 
 /**
@@ -739,7 +755,11 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       // Carry the detected instrument so the full-band mix (no instrument) can be
       // ordered ahead of isolated parts (drums, a single horn) as the default;
       // `_mtime` (transient) lets version copies of one recording dedupe to newest.
-      song.audio.push({ ...asset, instrumentSlug: e.instrumentSlug || undefined, _mtime: e.modifiedTime || '' });
+      const audio = { ...asset, instrumentSlug: e.instrumentSlug || undefined, _mtime: e.modifiedTime || '' };
+      // Tag the app-generated full-band mix so it sorts first / auto-selects and
+      // the UI can label it "MuseScore Audio" (additive — manual audio is kept).
+      if (isMuseScoreAudio(audio)) audio.museScore = true;
+      song.audio.push(audio);
     } else if (e.assetType === 'musescore') {
       song.musescore.push(asset);
     } else if (e.assetType === 'image') {

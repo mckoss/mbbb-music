@@ -40,7 +40,8 @@
 
   // Anything carrying a source + (optional) instrument/format/name — covers both
   // reachable assets/parts and unreachable items.
-  type Sourced = { source: string | null; sha256?: string } & Partial<CatalogPart> & Partial<UnreachableItem>;
+  type Sourced = { source: string | null; sha256?: string; museScore?: boolean } & Partial<CatalogPart> &
+    Partial<UnreachableItem>;
 
   interface CellItem {
     href: string;
@@ -133,7 +134,7 @@
 
   const partItemLabel = (p: Sourced) =>
     `${partLabel(p as CatalogPart)} — ${p.format === 'lyre' ? 'Lyre' : 'Letter'}`;
-  const audioItemLabel = (a: Sourced) => audioLabel(a.originalName ?? null);
+  const audioItemLabel = (a: Sourced) => audioLabel(a.originalName ?? null, a.museScore);
   const museItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'MuseScore file');
   const scoreItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : 'Full score');
   const miscItemLabel = (a: Sourced) => (a.originalName ? stripCopyOf(a.originalName) : (a.assetType ?? 'File'));
