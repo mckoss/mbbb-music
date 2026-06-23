@@ -10,7 +10,7 @@ export async function POST({ request, locals }) {
   const user = locals.user;
   if (!user?.role) throw error(403, 'Sign in required.');
 
-  let body: { type?: string; label?: string; detail?: string };
+  let body: { type?: string; label?: string; detail?: string; at?: string; replayedFromOffline?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -22,7 +22,17 @@ export async function POST({ request, locals }) {
 
   const label = body?.label != null ? String(body.label).slice(0, 200) : null;
   const detail = body?.detail != null ? String(body.detail).slice(0, 200) : null;
+  const at = body?.at != null ? normalizeBeaconTime(body.at) : undefined;
+  const offline = body?.replayedFromOffline === true;
 
-  logEvent({ email: user.email, type, label, detail });
+  logEvent({ email: user.email, type, label, detail, at, offline, uploadedAt: offline ? new Date().toISOString() : null });
   return new Response(null, { status: 204 });
+}
+
+function normalizeBeaconTime(at: unknown): string | undefined {
+  if (typeof at !== 'string') return undefined;
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return undefined;
+  if (d.getTime() > Date.now() + 5 * 60_000) return undefined;
+  return d.toISOString();
 }

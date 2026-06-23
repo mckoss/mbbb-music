@@ -29,10 +29,13 @@ const PAGES = `pages-${version}`;
 export const SCORES_CACHE = 'mbbb-scores';
 export const META_CACHE = 'mbbb-offline-meta';
 export const AVATARS_CACHE = 'mbbb-avatars';
+const ACTIVITY_QUEUE = 'mbbb-activity-queue';
+const ACTIVITY_QUEUE_LIMIT = 100;
 
 // Everything we can serve straight from the install-time precache.
 const PRECACHE = [...build, ...files];
 const PRECACHE_SET = new Set(PRECACHE);
+let flushingActivity = false;
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(
@@ -70,6 +73,10 @@ function isDataRequest(url: URL): boolean {
 
 function isAvatarRequest(url: URL): boolean {
   return url.pathname.startsWith('/members/') && url.pathname.endsWith('/avatar');
+}
+
+function isActivityPost(url: URL, request: Request): boolean {
+  return request.method === 'POST' && url.pathname === '/activity';
 }
 
 /** Cache-first against a named cache; never falls through to network. */
@@ -116,6 +123,68 @@ async function matchPage(cacheName: string, request: Request): Promise<Response 
   return (await cache.match(request)) ?? (await cache.match(request, { ignoreSearch: true }));
 }
 
+async function queueActivity(request: Request): Promise<void> {
+  let payload: Record<string, unknown>;
+  try {
+    const parsed = await request.clone().json();
+    if (!parsed || typeof parsed !== 'object') return;
+    payload = parsed as Record<string, unknown>;
+  } catch {
+    return;
+  }
+
+  const queued = {
+    ...payload,
+    at: typeof payload.at === 'string' ? payload.at : new Date().toISOString(),
+    replayedFromOffline: true,
+  };
+  const cache = await caches.open(ACTIVITY_QUEUE);
+  const key = new Request(`/_activity-queue/${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  await cache.put(key, new Response(JSON.stringify(queued), { headers: { 'content-type': 'application/json' } }));
+
+  const keys = await cache.keys();
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - ACTIVITY_QUEUE_LIMIT)).map((old) => cache.delete(old)));
+}
+
+async function flushQueuedActivity(): Promise<void> {
+  if (flushingActivity) return;
+  flushingActivity = true;
+  try {
+    const cache = await caches.open(ACTIVITY_QUEUE);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      const hit = await cache.match(key);
+      if (!hit) {
+        await cache.delete(key);
+        continue;
+      }
+      const payload = await hit.json();
+      const res = await fetch('/activity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...payload, replayedFromOffline: true }),
+      });
+      if (!res.ok) break;
+      await cache.delete(key);
+    }
+  } catch {
+    // Still offline or the server is unavailable; keep queued items for later.
+  } finally {
+    flushingActivity = false;
+  }
+}
+
+async function handleActivityPost(request: Request): Promise<Response> {
+  try {
+    const res = await fetch(request.clone());
+    if (res.ok) void flushQueuedActivity();
+    return res;
+  } catch {
+    await queueActivity(request);
+    return new Response(null, { status: 202 });
+  }
+}
+
 const OFFLINE_HTML =
   '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>Offline</title><body style="font:16px/1.5 system-ui;padding:2rem;color:#202124;background:#faf8f2">' +
@@ -128,10 +197,15 @@ function offlineFallback(): Response {
 
 sw.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
   if (url.origin !== location.origin) return; // let cross-origin pass through
+
+  if (isActivityPost(url, request)) {
+    event.respondWith(handleActivityPost(request));
+    return;
+  }
+
+  if (request.method !== 'GET') return;
 
   // 1) Hashed build assets + static files: cache-first from the shell.
   if (PRECACHE_SET.has(url.pathname)) {
@@ -179,4 +253,5 @@ sw.addEventListener('fetch', (event) => {
 // Lets the page trigger an immediate update after a deploy.
 sw.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') sw.skipWaiting();
+  if (event.data?.type === 'flush-activity') event.waitUntil(flushQueuedActivity());
 });

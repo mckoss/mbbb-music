@@ -47,3 +47,19 @@ test('email is lowercased on store', () => {
   logEventDb(db, ev({ email: 'Jo@X', at: '2026-06-15T00:00:00.000Z' }));
   assert.equal(recentEventsDb(db)[0].email, 'jo@x');
 });
+
+test('offline replay metadata is stored with the original activity time', () => {
+  const db = freshDb();
+  logEventDb(
+    db,
+    ev({
+      at: '2026-06-15T00:00:00.000Z',
+      offline: true,
+      uploadedAt: '2026-06-15T02:00:00.000Z',
+    }),
+  );
+  const row = recentEventsDb(db)[0];
+  assert.equal(row.at, '2026-06-15T00:00:00.000Z');
+  assert.equal(row.offline, 1);
+  assert.equal(row.uploaded_at, '2026-06-15T02:00:00.000Z');
+});

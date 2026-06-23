@@ -29,6 +29,8 @@ export interface EventInput {
   label: string | null;
   detail?: string | null;
   at?: string;
+  offline?: boolean;
+  uploadedAt?: string | null;
 }
 
 export interface EventRow {
@@ -38,6 +40,8 @@ export interface EventRow {
   type: string;
   label: string | null;
   detail: string | null;
+  offline: number;
+  uploaded_at: string | null;
 }
 
 export function ensureSchema(db: DatabaseSync): void {
@@ -53,6 +57,14 @@ export function ensureSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_events_at ON events (at);
     CREATE INDEX IF NOT EXISTS idx_events_dedup ON events (email, type, label, at);
   `);
+  ensureColumn(db, 'offline', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'uploaded_at', 'TEXT');
+}
+
+function ensureColumn(db: DatabaseSync, name: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(events)`).all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === name)) return;
+  db.exec(`ALTER TABLE events ADD COLUMN ${name} ${definition}`);
 }
 
 /**
@@ -64,6 +76,8 @@ export function logEventDb(db: DatabaseSync, input: EventInput): EventRow | null
   const email = input.email.trim().toLowerCase();
   const label = input.label ?? null;
   const cutoff = new Date(Date.parse(at) - DEDUP_MS).toISOString();
+  const offline = input.offline ? 1 : 0;
+  const uploadedAt = input.uploadedAt ?? null;
 
   const dup = db
     .prepare(
@@ -75,8 +89,8 @@ export function logEventDb(db: DatabaseSync, input: EventInput): EventRow | null
   if (dup) return null;
 
   const info = db
-    .prepare(`INSERT INTO events (at, email, type, label, detail) VALUES (?, ?, ?, ?, ?)`)
-    .run(at, email, input.type, label, input.detail ?? null);
+    .prepare(`INSERT INTO events (at, email, type, label, detail, offline, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(at, email, input.type, label, input.detail ?? null, offline, uploadedAt);
 
   return db.prepare(`SELECT * FROM events WHERE id = ?`).get(Number(info.lastInsertRowid)) as unknown as EventRow;
 }

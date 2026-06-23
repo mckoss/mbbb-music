@@ -6,20 +6,16 @@ import { error } from '@sveltejs/kit';
 import { recentEvents } from '$lib/server/activity';
 import { recentProfileEdits, getProfile } from '$lib/server/members';
 import { listUsers } from '$lib/server/users';
+import { formatPacificDateTime } from '$lib/time';
 
 function requireAdmin(locals: App.Locals) {
   if (locals.user?.role !== 'admin') throw error(403, 'Admins only');
 }
 
-/** Server-side absolute time string, so SSR and client agree (no hydration drift). */
-function fmt(at: string): string {
-  const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? at : d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
 interface FeedItem {
   at: string;
   time: string;
+  offline: boolean;
   email: string;
   who: string;
   type: string;
@@ -42,7 +38,8 @@ export function load({ locals }) {
 
   const events: FeedItem[] = recentEvents(500).map((e) => ({
     at: e.at,
-    time: fmt(e.at),
+    time: formatPacificDateTime(e.at),
+    offline: Boolean(e.offline),
     email: e.email,
     who: who(e.email),
     type: e.type,
@@ -53,7 +50,8 @@ export function load({ locals }) {
   // profile and which field.
   const edits: FeedItem[] = recentProfileEdits(200).map((e) => ({
     at: e.edited_at,
-    time: fmt(e.edited_at),
+    time: formatPacificDateTime(e.edited_at),
+    offline: false,
     email: e.edited_by,
     who: who(e.edited_by),
     type: 'profile-edit',

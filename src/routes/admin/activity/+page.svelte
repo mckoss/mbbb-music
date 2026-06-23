@@ -45,6 +45,7 @@
             <span class="line">
               <span class="who">{item.who}</span>
               {action(item.type).verb}{#if item.label}{' '}<span class="label">{item.label}</span>{/if}
+              {#if item.offline}<span class="offline">offline</span>{/if}
             </span>
             <span class="when">{item.time}</span>
           </li>
@@ -152,6 +153,15 @@
 
   .label {
     color: var(--accent-strong);
+  }
+
+  .offline {
+    margin-left: 6px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .when {

@@ -7,6 +7,7 @@
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
   import { warmCorePages } from '$lib/offline';
+  import { startActivitySync } from '$lib/track';
   import type { Catalog, SessionUser } from '$lib/types';
 
   let {
@@ -65,6 +66,7 @@
   $effect(() => {
     if (!authed || !user?.email || warmedFor === user.email) return;
     warmedFor = user.email;
+    startActivitySync();
     void warmCorePages();
   });
 </script>
