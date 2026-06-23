@@ -6,6 +6,7 @@
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
+  import { warmCorePages } from '$lib/offline';
   import type { Catalog, SessionUser } from '$lib/types';
 
   let {
@@ -59,6 +60,13 @@
 
   const path = $derived(page.url.pathname);
   const overlayOpen = $derived(page.url.searchParams.get('view') === 'score');
+
+  let warmedFor = $state<string | null>(null);
+  $effect(() => {
+    if (!authed || !user?.email || warmedFor === user.email) return;
+    warmedFor = user.email;
+    void warmCorePages();
+  });
 </script>
 
 {#if authed && !overlayOpen}

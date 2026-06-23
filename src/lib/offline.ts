@@ -5,22 +5,24 @@
 // The Cache API work is thin; the interesting logic (URL building, refcounted
 // removal) is pure and unit-tested in test/offline.test.js.
 
-import { browser } from '$app/environment';
+import { browser, version } from '$app/environment';
 
 import {
   scoreUrls,
   gigPageUrls,
+  corePageUrls,
   urlsToDelete,
   shaFromRenderPath,
   buildShaSongMap,
   type GigManifest,
 } from './offline-urls';
 
-export { scoreUrls, gigPageUrls, urlsToDelete, type GigManifest };
+export { scoreUrls, gigPageUrls, corePageUrls, urlsToDelete, type GigManifest };
 
 // Must match the names in src/service-worker.ts.
 const SCORES_CACHE = 'mbbb-scores';
 const META_CACHE = 'mbbb-offline-meta';
+const PAGES_CACHE = `pages-${version}`;
 
 // Synthetic request key under which a gig's manifest is parked in META_CACHE.
 const metaKey = (gigId: string) => `/_offline-meta/${encodeURIComponent(gigId)}`;
@@ -141,6 +143,24 @@ export async function storageEstimate(): Promise<{ usage: number; quota: number 
   if (!available() || !navigator.storage?.estimate) return null;
   const { usage = 0, quota = 0 } = await navigator.storage.estimate();
   return { usage, quota };
+}
+
+/**
+ * Quietly visit the main app pages while online so the service worker has
+ * navigable HTML + SvelteKit data for offline Home-Screen launches. Failed or
+ * forbidden pages are ignored; the service worker only stores successful copies.
+ */
+export async function warmCorePages(): Promise<void> {
+  if (!available()) return;
+  const cache = await caches.open(PAGES_CACHE);
+  for (const url of corePageUrls()) {
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (res.ok) await cache.put(url, res.clone());
+    } catch {
+      // Best-effort cache warming only; a disconnected device keeps what it has.
+    }
+  }
 }
 
 // --- Cached-scores management (the Offline page) ----------------------------

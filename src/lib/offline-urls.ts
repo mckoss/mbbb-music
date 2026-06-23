@@ -15,6 +15,33 @@ export interface GigManifest {
   savedAt: string;
 }
 
+// Main app pages worth keeping warm once an approved member is online. The
+// service worker still only stores successful responses, so admin-only pages
+// naturally cache only for admins.
+export const CORE_OFFLINE_PATHS = [
+  '/',
+  '/extras',
+  '/gigs',
+  '/offline',
+  '/library-status',
+  '/members',
+  '/profile',
+  '/admin/users',
+  '/admin/activity',
+];
+
+/** SvelteKit page + data URLs for a route so hard loads work offline. */
+export function pageUrls(path: string): string[] {
+  const clean = path.startsWith('/') ? path : `/${path}`;
+  const base = clean === '/' ? '' : clean.replace(/\/$/, '');
+  return [clean, `${base}/__data.json`];
+}
+
+/** Core navigation pages and their SvelteKit data loads. */
+export function corePageUrls(paths: string[] = CORE_OFFLINE_PATHS): string[] {
+  return paths.flatMap(pageUrls);
+}
+
 /** The render URLs for one score: its page-count sidecar + every page image. */
 export function scoreUrls(sha: string, pages: number, rev: number = RENDER_REV): string[] {
   const urls = [`/render/${sha}/info`];
@@ -24,8 +51,7 @@ export function scoreUrls(sha: string, pages: number, rev: number = RENDER_REV):
 
 /** SvelteKit page + data URLs so the gig opens offline as a hard load. */
 export function gigPageUrls(gigId: string): string[] {
-  const id = encodeURIComponent(gigId);
-  return [`/gigs/${id}`, `/gigs/${id}/__data.json`];
+  return pageUrls(`/gigs/${encodeURIComponent(gigId)}`);
 }
 
 /**

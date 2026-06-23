@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   scoreUrls,
   gigPageUrls,
+  pageUrls,
+  corePageUrls,
   urlsToDelete,
   shaFromRenderPath,
   buildShaSongMap,
@@ -29,6 +31,25 @@ test('gigPageUrls covers the page and its SvelteKit data load, id-encoded', () =
   assert.deepEqual(gigPageUrls('summer fair'), [
     '/gigs/summer%20fair',
     '/gigs/summer%20fair/__data.json',
+  ]);
+});
+
+test('pageUrls covers a route page and its SvelteKit data load', () => {
+  assert.deepEqual(pageUrls('/'), ['/', '/__data.json']);
+  assert.deepEqual(pageUrls('/offline'), ['/offline', '/offline/__data.json']);
+  assert.deepEqual(pageUrls('extras'), ['/extras', '/extras/__data.json']);
+});
+
+test('corePageUrls includes main navigation, members, and admin pages', () => {
+  assert.deepEqual(corePageUrls(['/gigs', '/members', '/profile', '/admin/users']), [
+    '/gigs',
+    '/gigs/__data.json',
+    '/members',
+    '/members/__data.json',
+    '/profile',
+    '/profile/__data.json',
+    '/admin/users',
+    '/admin/users/__data.json',
   ]);
 });
 

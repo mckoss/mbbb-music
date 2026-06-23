@@ -110,11 +110,17 @@ async function networkFirst(cacheName: string, request: Request): Promise<Respon
   }
 }
 
+/** Match an offline page/data load, allowing query-string variants of the same page. */
+async function matchPage(cacheName: string, request: Request): Promise<Response | undefined> {
+  const cache = await caches.open(cacheName);
+  return (await cache.match(request)) ?? (await cache.match(request, { ignoreSearch: true }));
+}
+
 const OFFLINE_HTML =
   '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>Offline</title><body style="font:16px/1.5 system-ui;padding:2rem;color:#202124;background:#faf8f2">' +
   "<h1>You're offline</h1><p>This page hasn't been saved for offline use. " +
-  'Open a gig you downloaded for offline, or reconnect to load it.</p>';
+  'Open the saved Offline page or a downloaded gig, or reconnect to load it.</p>';
 
 function offlineFallback(): Response {
   return new Response(OFFLINE_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
@@ -154,7 +160,7 @@ sw.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate' || isDataRequest(url)) {
     event.respondWith(
       networkFirst(PAGES, request).catch(async () => {
-        const cached = await caches.match(request);
+        const cached = await matchPage(PAGES, request);
         if (cached) return cached;
         if (request.mode === 'navigate') return offlineFallback();
         return new Response('{"type":"data","nodes":[]}', {
