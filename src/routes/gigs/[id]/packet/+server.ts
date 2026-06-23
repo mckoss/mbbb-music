@@ -2,10 +2,12 @@
 // requested instrument/format and streams them merged into one PDF as an
 // attachment. The instrument/format come from the query string (the download
 // box's local pickers), independent of the viewer's global cookie choice.
+import { readFile } from 'node:fs/promises';
+
 import { error } from '@sveltejs/kit';
 
 import { getGig } from '$lib/server/gigs';
-import { getCatalog } from '$lib/server/library';
+import { getCatalog, casPath } from '$lib/server/library';
 import { instrumentDisplay } from '$lib/format';
 import type { Catalog } from '$lib/types';
 import type { PrintFormat } from '$lib/stores';
@@ -34,7 +36,10 @@ export async function GET({ params, url }) {
   const instLabel = inst ? instrumentDisplay(inst.label, inst.key) : instrument || 'All parts';
   const fmtLabel = format === 'lyre' ? 'Lyre' : 'Letter';
 
-  const pdf = await buildPacketPdf(charts, `${gig.name} — ${instLabel} (${fmtLabel})`);
+  const pdf = await buildPacketPdf(charts, (sha) => readFile(casPath(sha)), {
+    title: `${gig.name} — ${instLabel} (${fmtLabel})`,
+    lyreMode: format === 'lyre',
+  });
   if (!pdf) throw error(404, 'No charts could be assembled into a PDF');
 
   // RFC 5987: an ASCII-only fallback plus a UTF-8 name so keys like "B♭" survive.
