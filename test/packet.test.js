@@ -234,6 +234,112 @@ test('packetCharts: Lyre packets pre-shrink Letter fallbacks', () => {
   assert.equal(chart.lyreFit, true);
 });
 
+test('packetCharts: Lyre packets include every available Lyre part for the instrument', () => {
+  const gig = { sets: [{ songSlugs: ['multi-lyre'] }] };
+  const catalog = {
+    tunes: [
+      {
+        slug: 'multi-lyre',
+        title: 'Multi Lyre',
+        parts: [
+          {
+            sha256: 'letter-1',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: 1,
+            format: 'letter',
+            originalName: 'multi-trumpet-1.pdf',
+            source: null,
+          },
+          {
+            sha256: 'lyre-1',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: 1,
+            format: 'lyre',
+            originalName: 'multi-trumpet-1-lyre.pdf',
+            source: null,
+          },
+          {
+            sha256: 'lyre-2',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: 2,
+            format: 'lyre',
+            originalName: 'multi-trumpet-2-lyre.pdf',
+            source: null,
+          },
+        ],
+        scores: [],
+        audio: [],
+      },
+    ],
+  };
+
+  const charts = packetCharts(gig, catalog, 'trumpet', 'lyre');
+  assert.deepEqual(
+    charts.map((chart) => chart.sha),
+    ['lyre-1', 'lyre-2']
+  );
+  assert.deepEqual(
+    charts.map((chart) => chart.label),
+    ['Trumpet (B♭) 1', 'Trumpet (B♭) 2']
+  );
+  assert.deepEqual(
+    charts.map((chart) => chart.lyreFit),
+    [false, false]
+  );
+});
+
+test('packetCharts: Lyre packets fall back to every Letter part when no Lyre part exists', () => {
+  const gig = { sets: [{ songSlugs: ['multi-letter'] }] };
+  const catalog = {
+    tunes: [
+      {
+        slug: 'multi-letter',
+        title: 'Multi Letter',
+        parts: [
+          {
+            sha256: 'letter-1',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: 1,
+            format: 'letter',
+            originalName: 'multi-trumpet-1.pdf',
+            source: null,
+          },
+          {
+            sha256: 'letter-2',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: 2,
+            format: 'letter',
+            originalName: 'multi-trumpet-2.pdf',
+            source: null,
+          },
+        ],
+        scores: [],
+        audio: [],
+      },
+    ],
+  };
+
+  const charts = packetCharts(gig, catalog, 'trumpet', 'lyre');
+  assert.deepEqual(
+    charts.map((chart) => chart.sha),
+    ['letter-1', 'letter-2']
+  );
+  assert.deepEqual(
+    charts.map((chart) => chart.lyreFit),
+    [true, true]
+  );
+});
+
 test('packetCharts: actual Lyre-format Drive-library parts pass through without downscaling', () => {
   const gig = { sets: [{ songSlugs: ['drive-lyre'] }] };
   const catalog = {

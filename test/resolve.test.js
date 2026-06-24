@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { partOptionLabel, partShortLabel } from '../src/lib/format.js';
-import { activePdf } from '../src/lib/resolve.js';
+import { activePdf, activePdfs } from '../src/lib/resolve.js';
 
 function part(over) {
   return {
@@ -96,4 +96,32 @@ test("activePdf's label is the disambiguated variant label", () => {
   const b = part({ sha256: 'bbb', originalName: 'Bella Ciao v3.1 - Trumpet in Bb.pdf' });
   const t = tune([a, b]);
   assert.match(activePdf(t, 'trumpet', 'letter', 'bbb')?.label ?? '', /v3\.1/);
+});
+
+test('activePdfs keeps every part in the selected format for packets', () => {
+  const letter = part({ sha256: 'letter', partNumber: 1, format: 'letter' });
+  const lyre1 = part({ sha256: 'lyre-1', partNumber: 1, format: 'lyre' });
+  const lyre2 = part({ sha256: 'lyre-2', partNumber: 2, format: 'lyre' });
+  const t = tune([letter, lyre1, lyre2]);
+
+  const out = activePdfs(t, 'trumpet', 'lyre');
+  assert.deepEqual(
+    out.map((p) => p.sha),
+    ['lyre-1', 'lyre-2']
+  );
+  assert.deepEqual(
+    out.map((p) => p.label),
+    ['Trumpet (B♭) 1', 'Trumpet (B♭) 2']
+  );
+});
+
+test('activePdfs falls back to all instrument parts when none match the selected format', () => {
+  const letter1 = part({ sha256: 'letter-1', partNumber: 1, format: 'letter' });
+  const letter2 = part({ sha256: 'letter-2', partNumber: 2, format: 'letter' });
+  const t = tune([letter1, letter2]);
+
+  assert.deepEqual(
+    activePdfs(t, 'trumpet', 'lyre').map((p) => p.sha),
+    ['letter-1', 'letter-2']
+  );
 });

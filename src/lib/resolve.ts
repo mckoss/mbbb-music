@@ -74,6 +74,45 @@ export function activePdf(
   return null;
 }
 
+/**
+ * Resolve every printable PDF for an instrument/format packet. This follows the
+ * same fallback rule as {@link activePdf}, but keeps every matching part instead
+ * of selecting just the first one: parts in the requested format, otherwise all
+ * of that instrument's parts, otherwise the first full score.
+ */
+export function activePdfs(
+  tune: Tune,
+  instrumentSlug: string,
+  printFormat: PrintFormat
+): ActivePdf[] {
+  const matches = partsForFormat(tune, instrumentSlug, printFormat);
+  if (matches.length > 0) {
+    return matches.map((part) => ({
+      sha: part.sha256,
+      label: partOptionLabel(part, matches),
+      instrumentSlug: part.instrumentSlug,
+      key: part.key,
+      partNumber: part.partNumber,
+      format: part.format as PrintFormat,
+      isScore: false,
+      ...(part.generated ? { generated: true } : {}),
+    }));
+  }
+  const score = tune.scores[0];
+  if (!score) return [];
+  return [
+    {
+      sha: score.sha256,
+      label: 'Full score',
+      instrumentSlug: null,
+      key: null,
+      partNumber: null,
+      format: printFormat,
+      isScore: true,
+    },
+  ];
+}
+
 export type DocKind = 'part' | 'score' | 'notes';
 
 export interface ViewableDoc {

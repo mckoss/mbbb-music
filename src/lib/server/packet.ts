@@ -15,7 +15,7 @@ import type { PrintFormat } from '$lib/stores';
 // Relative (not `$lib/…`) so this assembly module stays importable under the test
 // runner, which doesn't resolve the Vite alias. Blob I/O is the caller's job (see
 // `loadBlob`), keeping this module free of server-only filesystem/catalog imports.
-import { activeScore } from '../resolve.js';
+import { activePdfs } from '../resolve.js';
 
 export interface PacketChart {
   slug: string;
@@ -57,9 +57,9 @@ export function lyreFitPlacement(w: number, h: number): { dw: number; dh: number
 
 /**
  * The charts that belong in a packet for the chosen instrument/format: every
- * set's songs in order, each resolved to its printable PDF and de-duplicated by
- * content sha (a chart used in two sets appears once). Mirrors the page's
- * `downloads` derivation so the two views stay in lockstep.
+ * set's songs in order, each resolved to all matching printable PDFs and
+ * de-duplicated by content sha (a chart used in two sets appears once). Mirrors
+ * the page's packet download derivation so the two views stay in lockstep.
  */
 export function packetCharts(
   gig: Gig,
@@ -74,8 +74,8 @@ export function packetCharts(
     for (const slug of set.songSlugs) {
       const tune = bySlug.get(slug);
       if (!tune) continue;
-      const sc = activeScore(tune, instrument, format, null);
-      if (sc && !seen.has(sc.sha)) {
+      for (const sc of activePdfs(tune, instrument, format)) {
+        if (seen.has(sc.sha)) continue;
         seen.add(sc.sha);
         // In a Lyre packet, shrink Letter/score fallbacks to a 7" page width.
         // Actual Lyre-format music is already authored for the lyre card and must

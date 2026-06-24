@@ -14,7 +14,7 @@
   } from '$lib/gig';
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
-  import { activeScore, partsForFormat } from '$lib/resolve';
+  import { activePdfs, activeScore, partsForFormat } from '$lib/resolve';
   import { instrumentDisplay, partOptionLabel, partShortLabel, audioLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
@@ -120,17 +120,18 @@
     )
   );
 
-  // The charts for the box's chosen instrument/format — same resolution as
-  // `downloads`, but keyed off the local pickers. Drives both the per-chart list
-  // and the combined-PDF link.
+  // The charts for the box's chosen instrument/format — every matching part,
+  // keyed off the local pickers. Drives both the per-chart list and the
+  // combined-PDF link.
   const packetDownloads = $derived.by(() => {
     const seen = new Set<string>();
     const out: { slug: string; title: string; sha: string; label: string }[] = [];
     for (const set of gig.sets) {
       for (const slug of set.songSlugs) {
         const tune = bySlug.get(slug);
-        const sc = tune ? activeScore(tune, packetInstrument, packetFormat, null) : null;
-        if (sc && !seen.has(sc.sha)) {
+        const scores = tune ? activePdfs(tune, packetInstrument, packetFormat) : [];
+        for (const sc of scores) {
+          if (seen.has(sc.sha)) continue;
           seen.add(sc.sha);
           out.push({ slug, title: titleOf(slug), sha: sc.sha, label: sc.label });
         }
