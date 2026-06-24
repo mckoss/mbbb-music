@@ -359,8 +359,8 @@ test('generated parts classify Letter/Lyre from the filename token, not page sha
     files: {
       gl: gp('gl', 'Bad Guy-trumpet-letter.pdf'),
       gy: gp('gy', 'Bad Guy-trumpet-lyre.pdf'),
-      // A MANUAL lyre-named part with the same letter geometry still classifies by
-      // shape (its filename tokens are unreliable) — the generated rule is scoped.
+      // A manually uploaded Drive-library Lyre part with Letter carrier geometry
+      // is still presumed purpose-made for Lyre when its title says Lyre.
       ml: {
         driveFileId: 'ml', status: 'synced', sha256: 'ml', assetType: 'pdf',
         songTitle: 'Iron Man', songTitleSlug: 'iron-man',
@@ -377,7 +377,7 @@ test('generated parts classify Letter/Lyre from the filename token, not page sha
   assert.equal(gen.find((p) => p.originalName.includes('letter')).format, 'letter', 'generated letter → letter by name');
 
   const manual = tunes.find((t) => t.slug === 'iron-man').parts[0];
-  assert.equal(manual.format, 'letter', 'a manual part keeps shape-based classification');
+  assert.equal(manual.format, 'lyre', 'a manual Lyre-titled part is trusted over page shape');
 });
 
 test('distinct copies of one slot order by source priority, newest as tiebreak — none hidden', () => {

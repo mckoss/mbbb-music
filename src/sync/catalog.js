@@ -155,10 +155,11 @@ export function formatFromShape(widthPt, heightPt, landscapeIsLyre = false) {
 }
 
 /**
- * The print format of a PDF. Prefers the physical page shape (recorded at sync
- * time as pageWidthPt/pageHeightPt) — the ground truth of what prints — and falls
- * back to a 'lyre' token in the filename when the shape is unknown. Accepts a
- * manifest entry, or a bare filename string for filename-only callers/tests.
+ * The print format of a PDF. An explicit 'lyre' token in the Drive file title/name
+ * wins, because manually uploaded Lyre charts and generated Lyre carrier sheets
+ * may still be physically 8.5×11 PDFs. Otherwise, use the physical page shape
+ * recorded at sync time, falling back to Letter. Accepts a manifest entry, or a
+ * bare filename string for filename-only callers/tests.
  *
  * The landscape-means-Lyre rule applies only to instrument parts (an entry with
  * an instrumentSlug); a whole-band score in landscape stays size-classified.
@@ -173,8 +174,10 @@ export function formatOf(entry, { fromName = false } = {}) {
   if (typeof entry === 'string' || entry == null) {
     return /\blyre\b/i.test(String(entry ?? '')) ? 'lyre' : 'letter';
   }
-  const nameSaysLyre = /\blyre\b/i.test(String(entry.originalName ?? ''));
+  const title = entry.originalName ?? entry.name ?? entry.title ?? '';
+  const nameSaysLyre = /\blyre\b/i.test(String(title));
   if (fromName) return nameSaysLyre ? 'lyre' : 'letter';
+  if (nameSaysLyre) return 'lyre';
   const isPart = Boolean(entry.instrumentSlug);
   const byShape =
     entry.pageWidthPt && entry.pageHeightPt

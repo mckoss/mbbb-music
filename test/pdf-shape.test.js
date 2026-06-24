@@ -27,16 +27,23 @@ test('formatFromShape returns null for missing/degenerate dimensions', () => {
   assert.equal(formatFromShape(undefined, undefined), null);
 });
 
-test('formatOf prefers the physical page shape over the filename', () => {
+test('formatOf lets an explicit Lyre file title override physical page shape', () => {
   // Filename says nothing, but the page is lyre-sized → lyre.
   assert.equal(
     formatOf({ originalName: 'Song - Trumpet.pdf', pageWidthPt: inToPt(5), pageHeightPt: inToPt(7) }),
     'lyre',
   );
-  // Filename says "Lyre" but the page is physically Letter → letter (shape wins).
+  // Filename says "Lyre" and the page is physically Letter → lyre (title wins).
   assert.equal(
     formatOf({ originalName: 'Song - Trumpet-Lyre.pdf', pageWidthPt: inToPt(8.5), pageHeightPt: inToPt(11) }),
-    'letter',
+    'lyre',
+  );
+});
+
+test('formatOf also recognizes Lyre in a Drive title field', () => {
+  assert.equal(
+    formatOf({ title: 'Song - Trumpet Lyre', pageWidthPt: inToPt(8.5), pageHeightPt: inToPt(11) }),
+    'lyre',
   );
 });
 

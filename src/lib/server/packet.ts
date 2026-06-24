@@ -22,17 +22,19 @@ export interface PacketChart {
   sha: string;
   label: string;
   /**
-   * True when this chart has no real Lyre rendition (it resolved to a Letter/other
-   * format in a Lyre packet) and so must be shrunk to the lyre card width. See
-   * {@link lyreFitPlacement} and the assembly in {@link buildPacketPdf}.
+   * True when this chart is not actual Lyre-format music in a Lyre packet, so it
+   * should be re-homed onto the lyre carrier sheet at a 7" page width.
    */
   lyreFit?: boolean;
+  /** True for app-generated MuseScore output; these lyre cards are preformatted. */
+  generated?: boolean;
 }
 
 // Lyre-fit target: a 7" content width pinned to the TOP-LEFT of an 8.5×11 sheet,
-// leaving the rest as blank carrier the player cuts away to lyre-card size. (The
-// real Lyre renditions are already 7" cards on an 8.5×11 sheet, so they pass
-// through untouched — only too-wide fallbacks are scaled here.) Units: points.
+// leaving the rest as blank carrier the player cuts away to lyre-card size.
+// Real Lyre renditions, including build-scores output from generated sources,
+// may also be 8.5×11 carrier pages; the catalog format/provenance decides
+// whether a chart is already Lyre music, not the PDF page dimensions.
 const LYRE_W = 7 * 72;
 const PAGE_W = 8.5 * 72;
 const PAGE_H = 11 * 72;
@@ -75,24 +77,34 @@ export function packetCharts(
       const sc = activeScore(tune, instrument, format, null);
       if (sc && !seen.has(sc.sha)) {
         seen.add(sc.sha);
-        // In a Lyre packet, flag for shrink-to-fit anything that isn't a true Lyre
-        // card: a chart that resolved to a non-Lyre part (no lyre rendition exists),
-        // or a full-band score fallback (always letter-wide, never a 7" card).
+        // In a Lyre packet, shrink Letter/score fallbacks to a 7" page width.
+        // Actual Lyre-format music is already authored for the lyre card and must
+        // pass through unchanged, including generated MuseScore Lyre PDFs.
         const lyreFit = format === 'lyre' && (sc.format !== 'lyre' || sc.isScore);
-        out.push({ slug, sha: sc.sha, label: sc.label, lyreFit });
+        out.push({ slug, sha: sc.sha, label: sc.label, lyreFit, ...(sc.generated ? { generated: true } : {}) });
       }
     }
   }
   return out;
 }
 
+export function shouldLyreFitPage(
+  chart: Pick<PacketChart, 'lyreFit' | 'generated'>,
+  _pageWidth: number,
+  _pageHeight: number,
+  lyreMode: boolean
+): boolean {
+  if (!lyreMode) return false;
+  return chart.lyreFit === true;
+}
+
 /**
  * Merge the charts' source PDFs into one document, in order. A chart whose blob
  * is missing or isn't a loadable PDF is skipped rather than failing the whole
- * packet. Charts flagged {@link PacketChart.lyreFit} are scaled to ≤7" wide and
- * pinned top-left on an 8.5×11 sheet (see {@link lyreFitPlacement}); all others
- * keep their vector pages verbatim. Returns the saved bytes, or null when nothing
- * could be merged.
+ * packet. Letter/score fallbacks in a Lyre packet are scaled to ≤7" wide and
+ * pinned top-left on an 8.5×11 sheet (see {@link lyreFitPlacement}); actual
+ * Lyre-format pages keep their vector pages verbatim. Returns the saved bytes,
+ * or null when nothing could be merged.
  *
  * @param loadBlob  Resolves a chart sha to its PDF bytes (the caller supplies the
  *                  CAS reader; tests pass synthetic PDFs).
@@ -114,12 +126,10 @@ export async function buildPacketPdf(
       const srcPages = src.getPages();
       for (let i = 0; i < srcPages.length; i++) {
         const { width, height } = srcPages[i].getSize();
-        // Lyre-fit a page when its chart has no true-Lyre rendition (chart.lyreFit),
-        // OR — as a hard safety in a Lyre packet — whenever a page is physically
-        // wider than a letter sheet (landscape/oversized art that would overrun the
-        // card). A normal ≤8.5"-wide lyre card is copied verbatim.
-        const tooWide = lyreMode && width > PAGE_W + 0.5;
-        if (chart.lyreFit || tooWide) {
+        // Lyre-fit only charts that resolved to Letter/score fallbacks. Actual
+        // Lyre-format pages, including generated MuseScore Lyre output, pass
+        // through unchanged.
+        if (shouldLyreFitPage(chart, width, height, lyreMode)) {
           // Shrink to ≤7" wide, pinned top-left, leaving carrier to cut for the lyre.
           const embedded = await merged.embedPage(srcPages[i]);
           const { dw, dh, x, y } = lyreFitPlacement(width, height);

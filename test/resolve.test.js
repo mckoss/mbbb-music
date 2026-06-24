@@ -85,6 +85,12 @@ test('activePdf selects a specific variant by its sha (not by part number)', () 
   assert.equal(activePdf(t, 'trumpet', 'letter', 'nope')?.sha, 'aaa');
 });
 
+test('activePdf carries generated MuseScore metadata through to packet resolution', () => {
+  const p = part({ sha256: 'gen', format: 'lyre', generated: true });
+  const t = tune([p]);
+  assert.equal(activePdf(t, 'trumpet', 'lyre', null)?.generated, true);
+});
+
 test("activePdf's label is the disambiguated variant label", () => {
   const a = part({ sha256: 'aaa', originalName: 'bella-ciao-for-marching-band-Trompette_en_Sib.pdf' });
   const b = part({ sha256: 'bbb', originalName: 'Bella Ciao v3.1 - Trumpet in Bb.pdf' });

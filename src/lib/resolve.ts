@@ -11,6 +11,7 @@ export interface ActivePdf {
   partNumber: number | null;
   format: PrintFormat;
   isScore: boolean;
+  generated?: boolean;
 }
 
 /** Parts of a tune matching the given instrument slug. */
@@ -55,6 +56,7 @@ export function activePdf(
       partNumber: part.partNumber,
       format: part.format as PrintFormat,
       isScore: false,
+      ...(part.generated ? { generated: true } : {}),
     };
   }
   const score = tune.scores[0];
