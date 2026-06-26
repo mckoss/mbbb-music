@@ -187,3 +187,22 @@ export function activeScore(
   const chosen = part != null ? parts.find((p) => p.partNumber === part) : null;
   return activePdf(tune, instrumentSlug, printFormat, chosen?.sha256 ?? null);
 }
+
+/**
+ * Resolve the gig-run PDF from an exact current-song part selection plus the
+ * cross-song part-number preference. The exact sha wins when it still belongs to
+ * the current tune; otherwise the part number carries forward to the next tune.
+ */
+export function activeScoreForRun(
+  tune: Tune,
+  instrumentSlug: string,
+  printFormat: PrintFormat,
+  selectedSha: string | null,
+  preferredPart: number | null
+): ActivePdf | null {
+  const parts = partsForFormat(tune, instrumentSlug, printFormat);
+  const exact = selectedSha ? parts.find((p) => p.sha256 === selectedSha) : null;
+  if (exact) return activePdf(tune, instrumentSlug, printFormat, exact.sha256);
+  const chosen = preferredPart != null ? parts.find((p) => p.partNumber === preferredPart) : null;
+  return activePdf(tune, instrumentSlug, printFormat, chosen?.sha256 ?? null);
+}

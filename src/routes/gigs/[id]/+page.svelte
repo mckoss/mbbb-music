@@ -14,7 +14,7 @@
   } from '$lib/gig';
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
-  import { activePdfs, activeScore, partsForFormat } from '$lib/resolve';
+  import { activePdfs, activeScore, activeScoreForRun, partsForFormat } from '$lib/resolve';
   import { instrumentDisplay, partOptionLabel, partShortLabel, audioLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
@@ -169,12 +169,13 @@
 
   // Perform-mode Part + Format pickers. Instrument stays the player's global
   // choice (they're playing their instrument); here they only pick which part of
-  // it and the print format. The part preference is a part number so it carries
-  // song-to-song, falling back to the song's default when it has no such part.
+  // it and the print format. The exact part sha lets same-number alternates
+  // switch within the current song; the part number still carries song-to-song.
   let performPart = $state<number | null>(null);
+  let performPartSha = $state<string | null>(null);
   const performParts = $derived(performTune ? partsForFormat(performTune, instrument, format) : []);
   const performScore = $derived(
-    performTune ? activeScore(performTune, instrument, format, performPart) : null
+    performTune ? activeScoreForRun(performTune, instrument, format, performPartSha, performPart) : null
   );
   const performing = $derived(Boolean(performSet && performSongs.length > 0));
 
@@ -197,6 +198,7 @@
   );
 
   function setPerformPart(sha: string) {
+    performPartSha = sha || null;
     performPart = performParts.find((p) => p.sha256 === sha)?.partNumber ?? null;
   }
   function setPerformFormat(value: PrintFormat) {
