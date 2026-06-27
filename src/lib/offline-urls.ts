@@ -9,9 +9,11 @@ export interface GigManifest {
   title: string;
   instrument: string;
   format: string;
-  /** Every URL cached for this gig (page, data, score info + pages). */
+  /** Every URL cached for this gig (page, data, score info + pages, recordings). */
   urls: string[];
   pageCount: number;
+  /** Recordings (audio blobs) saved for this gig. Absent on pre-audio manifests. */
+  audioCount?: number;
   savedAt: string;
 }
 
@@ -54,6 +56,11 @@ export function gigPageUrls(gigId: string): string[] {
   return pageUrls(`/gigs/${encodeURIComponent(gigId)}`);
 }
 
+/** The content-addressed blob URL for each recording, so audio plays offline. */
+export function audioUrls(shas: string[]): string[] {
+  return shas.map((sha) => `/blob/${sha}`);
+}
+
 /**
  * Which of a removed gig's URLs are safe to delete: those not referenced by any
  * other still-downloaded gig (shared score pages must survive). Pure set math.
@@ -67,6 +74,16 @@ export function urlsToDelete(target: GigManifest, others: GigManifest[]): string
 /** The content hash in a `/render/<sha>/…` path, or null if it isn't one. */
 export function shaFromRenderPath(pathname: string): string | null {
   return /^\/render\/([a-f0-9]{64})\//.exec(pathname)?.[1] ?? null;
+}
+
+/** The content hash in a `/blob/<sha>` path (recordings, PDFs), or null. */
+export function shaFromBlobPath(pathname: string): string | null {
+  return /^\/blob\/([a-f0-9]{64})$/.exec(pathname)?.[1] ?? null;
+}
+
+/** The content hash in either a `/render/<sha>/…` or `/blob/<sha>` path, or null. */
+export function shaFromCachePath(pathname: string): string | null {
+  return shaFromRenderPath(pathname) ?? shaFromBlobPath(pathname);
 }
 
 // Minimal catalog shapes (a structural subset — both player and server catalogs
@@ -89,6 +106,7 @@ interface TuneLike {
   parts: PartLike[];
   scores: AssetLike[];
   notes: AssetLike[];
+  audio?: AssetLike[];
 }
 
 export interface ShaSong {
@@ -105,9 +123,10 @@ function partLabel(p: PartLike): string {
 }
 
 /**
- * Map every renderable PDF hash (instrument parts, full scores, notes) to the
- * song it belongs to, so a flat list of cached `/render/<sha>` pages can be
- * grouped and labelled by song. Pure — fed the catalog's tunes.
+ * Map every content hash (instrument parts, full scores, notes, recordings) to
+ * the song it belongs to, so a flat list of cached `/render/<sha>` pages and
+ * `/blob/<sha>` recordings can be grouped and labelled by song. Pure — fed the
+ * catalog's tunes.
  */
 export function buildShaSongMap(catalog: { tunes: TuneLike[] }): Map<string, ShaSong> {
   const map = new Map<string, ShaSong>();
@@ -118,6 +137,7 @@ export function buildShaSongMap(catalog: { tunes: TuneLike[] }): Map<string, Sha
     for (const p of t.parts) add(p.sha256, partLabel(p));
     t.scores.forEach((s, i) => add(s.sha256, t.scores.length > 1 ? `Full score ${i + 1}` : 'Full score'));
     t.notes.forEach((n, i) => add(n.sha256, t.notes.length > 1 ? `Notes ${i + 1}` : 'Notes'));
+    (t.audio ?? []).forEach((a, i) => add(a.sha256, (t.audio?.length ?? 0) > 1 ? `Recording ${i + 1}` : 'Recording'));
   }
   return map;
 }

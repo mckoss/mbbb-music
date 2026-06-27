@@ -6,36 +6,51 @@
 // Offline support for the band's library. The headline use case: walk into a
 // gig with no wifi and still pull up the setlist's charts.
 //
-// Cache layout (see also src/lib/offline.ts, which fills the durable caches):
+// The request-routing strategy (and the all-important network timeouts) live in
+// the pure, unit-tested src/lib/sw-core.ts; this file is the thin worker shell:
+// install/activate of the version caches, the offline activity-POST queue, and
+// wiring sw-core to the real Cache API and clients.
+//
+// Cache layout:
 //  - app-shell-<version> : the built JS/CSS/static (hashed → safe cache-first).
 //  - pages-<version>     : runtime cache of visited HTML + SvelteKit data loads,
-//                          so a hard reload / Home-Screen launch works offline.
+//                          served stale-while-revalidate so launches are instant.
 //  - mbbb-scores         : DURABLE, user-managed. Rasterized score pages
-//                          (/render/.../*.webp) + page-count sidecars, populated
-//                          only by an explicit "Download for offline" — never by
-//                          casual browsing, so storage stays under the user's
-//                          control. Survives version bumps (content-addressed).
+//                          (/render/.../*.webp) + page-count sidecars, plus the
+//                          /blob/<sha> recordings pulled by an explicit
+//                          "Download for offline". Survives version bumps
+//                          (content-addressed), managed on the Offline page.
 //  - mbbb-offline-meta   : DURABLE. One manifest per downloaded gig.
+//  - mbbb-avatars        : roster photos (stale-while-revalidate).
 //
 // The version-keyed caches bust automatically on every deploy because `version`
 // is kit.version.name = package.json version (see svelte.config.js).
 
 import { build, files, version } from '$service-worker';
 
+import { routeGet, appShellCache, pagesCache, type SwEnv } from '$lib/sw-core';
+
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
-const APP_SHELL = `app-shell-${version}`;
-const PAGES = `pages-${version}`;
-export const SCORES_CACHE = 'mbbb-scores';
-export const META_CACHE = 'mbbb-offline-meta';
-export const AVATARS_CACHE = 'mbbb-avatars';
+const APP_SHELL = appShellCache(version);
+const PAGES = pagesCache(version);
 const ACTIVITY_QUEUE = 'mbbb-activity-queue';
 const ACTIVITY_QUEUE_LIMIT = 100;
+
+// Network timeout before we fall back to cache / fail fast. Short enough that a
+// dead radio never strands the UI, long enough for a slow-but-live connection.
+const NETWORK_TIMEOUT_MS = 4000;
 
 // Everything we can serve straight from the install-time precache.
 const PRECACHE = [...build, ...files];
 const PRECACHE_SET = new Set(PRECACHE);
 let flushingActivity = false;
+
+const OFFLINE_HTML =
+  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>Offline</title><body style="font:16px/1.5 system-ui;padding:2rem;color:#202124;background:#faf8f2">' +
+  "<h1>You're offline</h1><p>This page hasn't been saved for offline use. " +
+  'Open the saved Offline page or a downloaded gig, or reconnect to load it.</p>';
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(
@@ -47,7 +62,7 @@ sw.addEventListener('install', (event) => {
 });
 
 sw.addEventListener('activate', (event) => {
-  // Drop superseded version caches; keep the durable score/meta caches.
+  // Drop superseded version caches; keep the durable score/meta/avatar caches.
   event.waitUntil(
     caches
       .keys()
@@ -62,65 +77,8 @@ sw.addEventListener('activate', (event) => {
   );
 });
 
-function isRenderRequest(url: URL): boolean {
-  return url.pathname.startsWith('/render/');
-}
-
-function isDataRequest(url: URL): boolean {
-  // SvelteKit client-side load data, plus the catalog endpoint.
-  return url.pathname.endsWith('/__data.json') || url.pathname === '/api/catalog';
-}
-
-function isAvatarRequest(url: URL): boolean {
-  return url.pathname.startsWith('/members/') && url.pathname.endsWith('/avatar');
-}
-
 function isActivityPost(url: URL, request: Request): boolean {
   return request.method === 'POST' && url.pathname === '/activity';
-}
-
-/** Cache-first against a named cache; never falls through to network. */
-async function fromCache(cacheName: string, request: Request): Promise<Response | undefined> {
-  const cache = await caches.open(cacheName);
-  return cache.match(request);
-}
-
-/**
- * Cache-first, but populate on a miss: serve the stored copy if present, else
- * fetch and store it. This is what makes any score you *view* available offline
- * automatically. A failed network fetch (offline, uncached) yields a 504.
- */
-async function cacheFirstStore(cacheName: string, request: Request): Promise<Response> {
-  const cache = await caches.open(cacheName);
-  const hit = await cache.match(request);
-  if (hit) return hit;
-  try {
-    const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
-    return res;
-  } catch {
-    return new Response(null, { status: 504 });
-  }
-}
-
-/** Network-first; store a successful copy in `cacheName`, else fall back to it. */
-async function networkFirst(cacheName: string, request: Request): Promise<Response> {
-  const cache = await caches.open(cacheName);
-  try {
-    const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
-    return res;
-  } catch (err) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw err;
-  }
-}
-
-/** Match an offline page/data load, allowing query-string variants of the same page. */
-async function matchPage(cacheName: string, request: Request): Promise<Response | undefined> {
-  const cache = await caches.open(cacheName);
-  return (await cache.match(request)) ?? (await cache.match(request, { ignoreSearch: true }));
 }
 
 async function queueActivity(request: Request): Promise<void> {
@@ -185,14 +143,11 @@ async function handleActivityPost(request: Request): Promise<Response> {
   }
 }
 
-const OFFLINE_HTML =
-  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<title>Offline</title><body style="font:16px/1.5 system-ui;padding:2rem;color:#202124;background:#faf8f2">' +
-  "<h1>You're offline</h1><p>This page hasn't been saved for offline use. " +
-  'Open the saved Offline page or a downloaded gig, or reconnect to load it.</p>';
-
-function offlineFallback(): Response {
-  return new Response(OFFLINE_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+/** Tell every open page that `url` has fresher content (drives the refresh nudge). */
+function notifyUpdate(url: string): void {
+  void sw.clients.matchAll({ type: 'window' }).then((clients) => {
+    for (const client of clients) client.postMessage({ type: 'content-updated', url });
+  });
 }
 
 sw.addEventListener('fetch', (event) => {
@@ -207,47 +162,17 @@ sw.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return;
 
-  // 1) Hashed build assets + static files: cache-first from the shell.
-  if (PRECACHE_SET.has(url.pathname)) {
-    event.respondWith(fromCache(APP_SHELL, request).then((r) => r ?? fetch(request)));
-    return;
-  }
-
-  // 2) Score pages: cache-first, and store on a miss — so anything you view is
-  //    saved offline automatically. Growth is bounded by the library's scores
-  //    and managed on the Offline page (per-song eject + clear-all).
-  if (isRenderRequest(url)) {
-    event.respondWith(cacheFirstStore(SCORES_CACHE, request));
-    return;
-  }
-
-  // 2b) Member avatars: same-origin image bytes (external sources are cached
-  //     server-side). Network-first into a durable cache so a roster viewed
-  //     online stays available offline; an updated photo refreshes when online.
-  if (isAvatarRequest(url)) {
-    event.respondWith(networkFirst(AVATARS_CACHE, request));
-    return;
-  }
-
-  // 3) Navigations + data loads: network-first, falling back to the cached copy
-  //    (a downloaded gig page, or any page visited while online), then a notice.
-  if (request.mode === 'navigate' || isDataRequest(url)) {
-    event.respondWith(
-      networkFirst(PAGES, request).catch(async () => {
-        const cached = await matchPage(PAGES, request);
-        if (cached) return cached;
-        if (request.mode === 'navigate') return offlineFallback();
-        return new Response('{"type":"data","nodes":[]}', {
-          status: 503,
-          headers: { 'content-type': 'application/json' },
-        });
-      }),
-    );
-    return;
-  }
-
-  // 4) Anything else: cache if we have it, otherwise network.
-  event.respondWith(caches.match(request).then((r) => r ?? fetch(request)));
+  const env: SwEnv = {
+    caches,
+    fetch: (req, init) => fetch(req, init),
+    waitUntil: (p) => event.waitUntil(p),
+    notifyUpdate,
+    precache: PRECACHE_SET,
+    version,
+    timeoutMs: NETWORK_TIMEOUT_MS,
+    offlineHtml: OFFLINE_HTML,
+  };
+  event.respondWith(routeGet(env, request));
 });
 
 // Lets the page trigger an immediate update after a deploy.

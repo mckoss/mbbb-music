@@ -1,8 +1,8 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/state';
-  import { version } from '$app/environment';
-  import { goto } from '$app/navigation';
+  import { browser, version } from '$app/environment';
+  import { goto, invalidateAll } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
@@ -69,6 +69,50 @@
     startActivitySync();
     void warmCorePages();
   });
+
+  // Refresh nudge. When the service worker's background revalidate finds newer
+  // data for the page we're on (or the shared catalog), it posts a message; we
+  // surface a small, dismissible prompt rather than swapping content under the
+  // user's hands (which matters mid-performance) — tapping it reloads the data.
+  let updateReady = $state(false);
+
+  // Does an updated data URL pertain to what we're currently looking at?
+  function nudgeRelevant(url: string): boolean {
+    try {
+      const p = new URL(url, location.origin).pathname;
+      if (p === '/api/catalog') return true; // catalog feeds every page
+      if (p.endsWith('/__data.json')) {
+        const route = p.slice(0, -'/__data.json'.length) || '/';
+        return route === page.url.pathname;
+      }
+    } catch {
+      // Malformed URL — ignore.
+    }
+    return false;
+  }
+
+  $effect(() => {
+    if (!browser || !('serviceWorker' in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'content-updated' && nudgeRelevant(e.data.url)) updateReady = true;
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  });
+
+  // A navigation supersedes any pending nudge for the page we just left.
+  let nudgePath = $state('');
+  $effect(() => {
+    if (page.url.pathname !== nudgePath) {
+      nudgePath = page.url.pathname;
+      updateReady = false;
+    }
+  });
+
+  async function applyUpdate() {
+    updateReady = false;
+    await invalidateAll();
+  }
 </script>
 
 {#if authed && !overlayOpen}
@@ -131,9 +175,55 @@
   {@render children()}
 </main>
 
+{#if updateReady}
+  <!-- Eventually-fresh nudge: sits below the perform/score overlays (z-index
+       1000) so it never interrupts a performance; surfaces once they exit. -->
+  <div class="update-nudge" role="status">
+    <span>Newer content is available.</span>
+    <button onclick={applyUpdate}>Refresh</button>
+    <button class="dismiss" onclick={() => (updateReady = false)} aria-label="Dismiss">✕</button>
+  </div>
+{/if}
+
 <ScoreOverlay />
 
 <style>
+  .update-nudge {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #202124;
+    color: #fffdf7;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+    font-size: 0.85rem;
+    max-width: calc(100vw - 32px);
+  }
+
+  .update-nudge button {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-strong);
+    background: var(--accent);
+    color: #fffdf7;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .update-nudge .dismiss {
+    padding: 0 10px;
+    background: transparent;
+    border-color: rgba(255, 253, 247, 0.35);
+  }
+
   .masthead {
     background: #050505;
     color: #fffdf7;

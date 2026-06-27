@@ -11,8 +11,10 @@ import {
   scoreUrls,
   gigPageUrls,
   corePageUrls,
+  audioUrls,
   urlsToDelete,
   shaFromRenderPath,
+  shaFromCachePath,
   buildShaSongMap,
   type GigManifest,
 } from './offline-urls';
@@ -66,11 +68,20 @@ export interface DownloadProgress {
 }
 
 /**
- * Cache a gig's charts for offline use. `shas` are the resolved score hashes
- * for the chosen instrument/format. Reports progress as pages are fetched.
+ * Cache a gig's charts for offline use. `shas` are the resolved score hashes for
+ * the chosen instrument/format; `audioShas` are the gig's recordings (cached as
+ * content-addressed blobs so practice playback works offline). Reports progress
+ * as pages and recordings are fetched.
  */
 export async function downloadGig(
-  gig: { id: string; title: string; instrument: string; format: string; shas: string[] },
+  gig: {
+    id: string;
+    title: string;
+    instrument: string;
+    format: string;
+    shas: string[];
+    audioShas?: string[];
+  },
   onProgress?: (p: DownloadProgress) => void,
 ): Promise<GigManifest> {
   if (!available()) throw new Error('Offline storage is not available in this browser.');
@@ -87,8 +98,10 @@ export async function downloadGig(
 
   const renderUrls = perScore.flat();
   const pageUrls = gigPageUrls(gig.id);
-  const allUrls = [...pageUrls, ...renderUrls];
+  const audioBlobUrls = audioUrls(gig.audioShas ?? []);
+  const allUrls = [...pageUrls, ...renderUrls, ...audioBlobUrls];
   const pageCount = renderUrls.filter((u) => u.includes('.webp')).length;
+  const audioCount = audioBlobUrls.length;
 
   const cache = await caches.open(SCORES_CACHE);
   let done = 0;
@@ -114,6 +127,7 @@ export async function downloadGig(
     format: gig.format,
     urls: allUrls,
     pageCount,
+    audioCount,
     savedAt: new Date().toISOString(),
   };
   const meta = await caches.open(META_CACHE);
@@ -174,6 +188,7 @@ export async function cachedRenderShas(): Promise<Set<string>> {
   if (!available()) return out;
   const cache = await caches.open(SCORES_CACHE);
   for (const req of await cache.keys()) {
+    // Chart-saved semantics: only score pages count, not audio/PDF blobs.
     const sha = shaFromRenderPath(new URL(req.url).pathname);
     if (sha) out.add(sha);
   }
@@ -186,6 +201,8 @@ export interface CachedSong {
   shas: string[];
   /** Cached page images (excludes the small `info` sidecars). */
   pages: number;
+  /** Cached recordings (audio blobs). */
+  recordings: number;
   /** Total cached bytes for the song, from response Content-Length. */
   bytes: number;
 }
@@ -202,17 +219,18 @@ export async function listCachedScores(catalog: GroupCatalog): Promise<CachedSon
 
   for (const req of await cache.keys()) {
     const url = new URL(req.url);
-    const sha = shaFromRenderPath(url.pathname);
+    const sha = shaFromCachePath(url.pathname);
     if (!sha) continue;
     const song = songMap.get(sha);
     const slug = song?.songSlug ?? 'other';
     let g = groups.get(slug);
     if (!g) {
-      g = { songSlug: slug, songTitle: song?.songTitle ?? 'Other files', shas: [], pages: 0, bytes: 0 };
+      g = { songSlug: slug, songTitle: song?.songTitle ?? 'Other files', shas: [], pages: 0, recordings: 0, bytes: 0 };
       groups.set(slug, g);
     }
     if (!g.shas.includes(sha)) g.shas.push(sha);
     if (url.pathname.endsWith('.webp')) g.pages += 1;
+    else if (url.pathname.startsWith('/blob/')) g.recordings += 1;
     const res = await cache.match(req);
     const len = Number(res?.headers.get('content-length') ?? 0);
     if (Number.isFinite(len)) g.bytes += len;
@@ -227,7 +245,7 @@ export async function ejectShas(shas: string[]): Promise<void> {
   const want = new Set(shas);
   const cache = await caches.open(SCORES_CACHE);
   for (const req of await cache.keys()) {
-    const sha = shaFromRenderPath(new URL(req.url).pathname);
+    const sha = shaFromCachePath(new URL(req.url).pathname);
     if (sha && want.has(sha)) await cache.delete(req);
   }
 }

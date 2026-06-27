@@ -96,7 +96,7 @@
             {:else}
               <span class="title">{s.songTitle}</span>
             {/if}
-            <span class="sub">{s.pages} page{s.pages === 1 ? '' : 's'} · {fmtBytes(s.bytes)}</span>
+            <span class="sub">{s.pages} page{s.pages === 1 ? '' : 's'}{s.recordings ? ` · ${s.recordings} recording${s.recordings === 1 ? '' : 's'}` : ''} · {fmtBytes(s.bytes)}</span>
           </div>
           <button class="eject" onclick={() => eject(s)}>Eject</button>
         </li>
