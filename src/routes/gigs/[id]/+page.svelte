@@ -96,6 +96,18 @@
   // Inputs for the offline-download control: the resolved chart hashes plus
   // human labels for the chosen instrument/format.
   const offlineShas = $derived(downloads.map((d) => d.sha));
+
+  // Every recording across the gig (de-duped) so offline practice has playback.
+  // Audio isn't instrument-specific, so this is independent of the chosen part.
+  const offlineAudioShas = $derived.by(() => {
+    const seen = new Set<string>();
+    for (const set of gig.sets) {
+      for (const slug of set.songSlugs) {
+        for (const a of bySlug.get(slug)?.audio ?? []) seen.add(a.sha256);
+      }
+    }
+    return [...seen];
+  });
   const instLabel = $derived(
     instrumentDisplay(
       catalog.instruments.find((i) => i.slug === instrument)?.label ?? instrument,
@@ -586,6 +598,7 @@
     instrumentLabel={instLabel}
     formatLabel={fmtLabel}
     shas={offlineShas}
+    audioShas={offlineAudioShas}
   />
 
   <!-- Downloads -->

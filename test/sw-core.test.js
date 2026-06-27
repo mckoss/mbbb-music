@@ -1,0 +1,245 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  routeGet,
+  cacheFirst,
+  staleWhileRevalidate,
+  fetchWithTimeout,
+  buildRangeResponse,
+  bodyChanged,
+  isRenderRequest,
+  isBlobRequest,
+  isDataRequest,
+  isAvatarRequest,
+  appShellCache,
+  pagesCache,
+  SCORES_CACHE,
+} from '../src/lib/sw-core.js';
+
+// --- Fakes ------------------------------------------------------------------
+
+class FakeCache {
+  constructor() {
+    this.store = new Map(); // url -> Response
+  }
+  async match(req, opts) {
+    const url = typeof req === 'string' ? req : req.url;
+    const hit = this.store.get(url);
+    if (hit) return hit.clone();
+    if (opts?.ignoreSearch) {
+      const base = url.split('?')[0];
+      for (const [k, v] of this.store) if (k.split('?')[0] === base) return v.clone();
+    }
+    return undefined;
+  }
+  async put(req, res) {
+    this.store.set(typeof req === 'string' ? req : req.url, res);
+  }
+}
+
+class FakeCaches {
+  constructor() {
+    this.caches = new Map();
+  }
+  async open(name) {
+    if (!this.caches.has(name)) this.caches.set(name, new FakeCache());
+    return this.caches.get(name);
+  }
+  async match(req) {
+    for (const c of this.caches.values()) {
+      const r = await c.match(req);
+      if (r) return r;
+    }
+    return undefined;
+  }
+}
+
+// A same-origin request stand-in. (Real Request forbids constructing a
+// `navigate`-mode request, so route inputs are plain objects with what
+// routeGet/strategies actually read: url, mode, headers.)
+function req(url, { mode, range } = {}) {
+  const headers = new Headers();
+  if (range) headers.set('range', range);
+  return { url: `https://app.test${url}`, mode, headers };
+}
+
+const okFetch = (body, init) => async () => new Response(body, init);
+const failFetch = () => {
+  throw new Error('fetch should not have been called');
+};
+// Never resolves on its own; rejects when the timeout aborts it.
+const hangingFetch = () => (_request, opts) =>
+  new Promise((_resolve, reject) => {
+    opts?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+  });
+
+function makeEnv(over = {}) {
+  const waited = [];
+  const notified = [];
+  const env = {
+    caches: new FakeCaches(),
+    fetch: okFetch('network'),
+    waitUntil: (p) => waited.push(Promise.resolve(p).catch(() => {})),
+    notifyUpdate: (url) => notified.push(url),
+    precache: new Set(),
+    version: 'test',
+    timeoutMs: 20,
+    offlineHtml: '<offline-page>',
+    ...over,
+  };
+  return { env, waited, notified };
+}
+const settle = (waited) => Promise.all(waited);
+
+const SHA = 'a'.repeat(64);
+
+// --- Classification ---------------------------------------------------------
+
+test('request classification matches each resource kind', () => {
+  assert.ok(isRenderRequest(new URL(`https://x/render/${SHA}/1.webp`)));
+  assert.ok(isBlobRequest(new URL(`https://x/blob/${SHA}`)));
+  assert.ok(isDataRequest(new URL('https://x/gigs/a/__data.json')));
+  assert.ok(isDataRequest(new URL('https://x/api/catalog')));
+  assert.ok(isAvatarRequest(new URL('https://x/members/123/avatar')));
+  assert.ok(!isRenderRequest(new URL('https://x/blob/abc')));
+});
+
+// --- fetchWithTimeout (the linchpin) ----------------------------------------
+
+test('fetchWithTimeout rejects instead of hanging when the network never answers', async () => {
+  await assert.rejects(fetchWithTimeout(hangingFetch(), req('/x'), 15));
+});
+
+test('fetchWithTimeout resolves with a prompt response', async () => {
+  const res = await fetchWithTimeout(okFetch('hi'), req('/x'), 1000);
+  assert.equal(await res.text(), 'hi');
+});
+
+// --- cacheFirst (content-addressed) -----------------------------------------
+
+test('cacheFirst serves a hit without touching the network', async () => {
+  const { env } = makeEnv({ fetch: failFetch });
+  const cache = await env.caches.open(SCORES_CACHE);
+  await cache.put(req(`/render/${SHA}/1.webp?r=1`).url, new Response('IMG'));
+  const res = await cacheFirst(env, SCORES_CACHE, req(`/render/${SHA}/1.webp?r=1`), { store: true });
+  assert.equal(await res.text(), 'IMG');
+});
+
+test('cacheFirst on an uncached miss while offline fails fast with 504', async () => {
+  const { env } = makeEnv({ fetch: hangingFetch() });
+  const res = await cacheFirst(env, SCORES_CACHE, req(`/render/${SHA}/1.webp?r=1`), { store: true });
+  assert.equal(res.status, 504); // resolves at all => no 60s hang
+});
+
+test('cacheFirst stores a fetched miss when store is set', async () => {
+  const { env, waited } = makeEnv({ fetch: okFetch('FRESH') });
+  const r = req(`/render/${SHA}/1.webp?r=1`);
+  const res = await cacheFirst(env, SCORES_CACHE, r, { store: true });
+  assert.equal(await res.text(), 'FRESH');
+  await settle(waited);
+  const cache = await env.caches.open(SCORES_CACHE);
+  assert.equal(await (await cache.match(r)).text(), 'FRESH');
+});
+
+test('cacheFirst satisfies a Range request from a cached body with a 206', async () => {
+  const { env } = makeEnv({ fetch: failFetch });
+  const cache = await env.caches.open(SCORES_CACHE);
+  await cache.put(req(`/blob/${SHA}`).url, new Response(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])));
+  const res = await cacheFirst(env, SCORES_CACHE, req(`/blob/${SHA}`, { range: 'bytes=2-5' }));
+  assert.equal(res.status, 206);
+  assert.equal(res.headers.get('content-range'), 'bytes 2-5/10');
+  assert.deepEqual([...new Uint8Array(await res.arrayBuffer())], [2, 3, 4, 5]);
+});
+
+// --- staleWhileRevalidate (mutable) -----------------------------------------
+
+test('SWR serves the cached page instantly even when the network hangs', async () => {
+  const { env } = makeEnv({ fetch: hangingFetch() });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put(req('/gigs/a').url, new Response('CACHED PAGE'));
+  const res = await staleWhileRevalidate(env, pagesCache('test'), req('/gigs/a', { mode: 'navigate' }), {
+    ignoreSearch: true,
+  });
+  assert.equal(await res.text(), 'CACHED PAGE'); // returns before the hung fetch
+});
+
+test('SWR navigation with nothing cached and offline returns the offline page', async () => {
+  const { env } = makeEnv({ fetch: hangingFetch() });
+  const res = await routeGet(env, req('/never-seen', { mode: 'navigate' }));
+  assert.equal(await res.text(), '<offline-page>');
+});
+
+test('SWR data load with nothing cached and offline returns an empty data shell', async () => {
+  const { env } = makeEnv({ fetch: hangingFetch() });
+  const res = await routeGet(env, req('/gigs/a/__data.json'));
+  assert.equal(res.status, 503);
+  assert.match(await res.text(), /"nodes":\[\]/);
+});
+
+test('SWR revalidate nudges the page when the data changed', async () => {
+  const { env, waited, notified } = makeEnv({ fetch: okFetch('NEW') });
+  const cache = await env.caches.open(pagesCache('test'));
+  const r = req('/gigs/a/__data.json');
+  await cache.put(r.url, new Response('OLD'));
+  const res = await routeGet(env, r);
+  assert.equal(await res.text(), 'OLD'); // stale served immediately
+  await settle(waited);
+  assert.deepEqual(notified, [r.url]); // nudge fired
+  assert.equal(await (await cache.match(r)).text(), 'NEW'); // cache refreshed
+});
+
+test('SWR revalidate does not nudge when the data is unchanged', async () => {
+  const { env, waited, notified } = makeEnv({ fetch: okFetch('SAME') });
+  const cache = await env.caches.open(pagesCache('test'));
+  const r = req('/gigs/a/__data.json');
+  await cache.put(r.url, new Response('SAME'));
+  await routeGet(env, r);
+  await settle(waited);
+  assert.deepEqual(notified, []);
+});
+
+// --- routeGet dispatch ------------------------------------------------------
+
+test('routeGet serves precached app-shell assets cache-first', async () => {
+  const { env } = makeEnv({ fetch: failFetch, precache: new Set(['/_app/immutable/x.js']) });
+  const cache = await env.caches.open(appShellCache('test'));
+  await cache.put(req('/_app/immutable/x.js').url, new Response('JS'));
+  const res = await routeGet(env, req('/_app/immutable/x.js'));
+  assert.equal(await res.text(), 'JS');
+});
+
+test('routeGet does not auto-store blob bytes on a miss (storage stays explicit)', async () => {
+  const { env, waited } = makeEnv({ fetch: okFetch('PDF') });
+  const r = req(`/blob/${SHA}`);
+  await routeGet(env, r);
+  await settle(waited);
+  const cache = await env.caches.open(SCORES_CACHE);
+  assert.equal(await cache.match(r), undefined); // not cached by casual fetch
+});
+
+// --- buildRangeResponse -----------------------------------------------------
+
+const tenBytes = () => new Response(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
+
+test('buildRangeResponse handles open-ended and suffix ranges', async () => {
+  const open = await buildRangeResponse(tenBytes(), 'bytes=5-');
+  assert.equal(open.headers.get('content-range'), 'bytes 5-9/10');
+  assert.deepEqual([...new Uint8Array(await open.arrayBuffer())], [5, 6, 7, 8, 9]);
+
+  const suffix = await buildRangeResponse(tenBytes(), 'bytes=-3');
+  assert.equal(suffix.headers.get('content-range'), 'bytes 7-9/10');
+  assert.deepEqual([...new Uint8Array(await suffix.arrayBuffer())], [7, 8, 9]);
+});
+
+test('buildRangeResponse returns 416 for an unsatisfiable range', async () => {
+  const res = await buildRangeResponse(tenBytes(), 'bytes=20-30');
+  assert.equal(res.status, 416);
+});
+
+// --- bodyChanged ------------------------------------------------------------
+
+test('bodyChanged compares response bodies', async () => {
+  assert.equal(await bodyChanged(new Response('a'), new Response('b')), true);
+  assert.equal(await bodyChanged(new Response('a'), new Response('a')), false);
+});

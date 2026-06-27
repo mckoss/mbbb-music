@@ -6,8 +6,11 @@ import {
   gigPageUrls,
   pageUrls,
   corePageUrls,
+  audioUrls,
   urlsToDelete,
   shaFromRenderPath,
+  shaFromBlobPath,
+  shaFromCachePath,
   buildShaSongMap,
 } from '../src/lib/offline-urls.js';
 
@@ -109,4 +112,45 @@ test('buildShaSongMap keeps the first song a shared hash is seen under', () => {
     ],
   };
   assert.equal(buildShaSongMap(catalog).get(SHA).songSlug, 'a');
+});
+
+test('audioUrls maps recording hashes to their content-addressed blob URLs', () => {
+  assert.deepEqual(audioUrls([SHA, SHB]), [`/blob/${SHA}`, `/blob/${SHB}`]);
+  assert.deepEqual(audioUrls([]), []);
+});
+
+test('shaFromBlobPath / shaFromCachePath extract the hash from blob and render paths', () => {
+  assert.equal(shaFromBlobPath(`/blob/${SHA}`), SHA);
+  assert.equal(shaFromBlobPath(`/render/${SHA}/1.webp`), null);
+  assert.equal(shaFromBlobPath('/blob/notahash'), null);
+  assert.equal(shaFromCachePath(`/blob/${SHA}`), SHA);
+  assert.equal(shaFromCachePath(`/render/${SHA}/info`), SHA);
+  assert.equal(shaFromCachePath('/gigs/x'), null);
+});
+
+test('buildShaSongMap labels recordings and includes them in the map', () => {
+  const catalog = {
+    tunes: [
+      {
+        slug: 'el-matador',
+        title: 'El Matador',
+        parts: [],
+        scores: [],
+        notes: [],
+        audio: [
+          { sha256: SHA, originalName: null },
+          { sha256: SHB, originalName: null },
+        ],
+      },
+    ],
+  };
+  const map = buildShaSongMap(catalog);
+  assert.equal(map.get(SHA).label, 'Recording 1');
+  assert.equal(map.get(SHB).label, 'Recording 2');
+});
+
+test('urlsToDelete keeps recording blobs still used by another downloaded gig', () => {
+  const target = manifest('a', [`/blob/${SHA}`, `/blob/${SHB}`]);
+  const other = manifest('b', [`/blob/${SHB}`]); // shares recording SHB
+  assert.deepEqual(urlsToDelete(target, [other]), [`/blob/${SHA}`]);
 });

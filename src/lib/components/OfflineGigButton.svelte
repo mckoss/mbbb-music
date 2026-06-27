@@ -16,6 +16,7 @@
     instrumentLabel,
     formatLabel,
     shas,
+    audioShas = [],
   }: {
     gigId: string;
     title: string;
@@ -24,6 +25,7 @@
     instrumentLabel: string;
     formatLabel: string;
     shas: string[];
+    audioShas?: string[];
   } = $props();
 
   type Status = 'unknown' | 'idle' | 'downloading' | 'saved' | 'unsupported';
@@ -57,10 +59,10 @@
   async function onDownload() {
     error = null;
     status = 'downloading';
-    progress = { done: 0, total: shas.length + 2 };
+    progress = { done: 0, total: shas.length + audioShas.length + 2 };
     try {
       manifest = await downloadGig(
-        { id: gigId, title, instrument, format, shas },
+        { id: gigId, title, instrument, format, shas, audioShas },
         (p) => (progress = p)
       );
       status = 'saved';
@@ -95,7 +97,8 @@
       <div class="copy">
         <h3>Offline access</h3>
         <p class="sub">
-          Save these {shas.length} chart{shas.length === 1 ? '' : 's'} ({instrumentLabel} · {formatLabel})
+          Save these {shas.length} chart{shas.length === 1 ? '' : 's'} ({instrumentLabel} · {formatLabel}){#if audioShas.length}
+            and {audioShas.length} recording{audioShas.length === 1 ? '' : 's'}{/if}
           so they open with no wifi at the gig.
         </p>
       </div>
@@ -108,7 +111,7 @@
       <p class="status">Downloading… {progress?.done ?? 0}/{progress?.total ?? 0}</p>
     {:else if status === 'saved'}
       <p class="status ok">
-        ✓ Available offline{manifest ? ` — ${manifest.pageCount} page${manifest.pageCount === 1 ? '' : 's'}, saved ${manifest.instrument}/${manifest.format}` : ''}.
+        ✓ Available offline{manifest ? ` — ${manifest.pageCount} page${manifest.pageCount === 1 ? '' : 's'}${manifest.audioCount ? `, ${manifest.audioCount} recording${manifest.audioCount === 1 ? '' : 's'}` : ''}, saved ${manifest.instrument}/${manifest.format}` : ''}.
       </p>
       {#if stale}
         <p class="status warn">
