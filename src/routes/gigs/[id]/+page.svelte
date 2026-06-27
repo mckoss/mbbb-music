@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto, pushState, replaceState } from '$app/navigation';
   import { enhance } from '$app/forms';
   import { track } from '$lib/track';
   import type { Gig, GigSet } from '$lib/gig';
@@ -205,19 +205,24 @@
     printFormat.set(value);
   }
 
+  function searchUrl(p: URLSearchParams): string {
+    const qs = p.toString();
+    return qs ? `?${qs}` : page.url.pathname;
+  }
+
   function startSet(setId: string, mode: 'practice' | 'performance') {
     const p = new URLSearchParams(page.url.search);
     p.set('perform', setId);
     p.set('i', '0');
     if (mode === 'practice') p.set('mode', 'practice');
     else p.delete('mode');
-    goto(`?${p}`); // pushState so Back/Done returns to detail
+    pushState(searchUrl(p), page.state); // shallow: Back/Done works, no offline data reload
   }
 
   function gotoIndex(i: number) {
     const p = new URLSearchParams(page.url.search);
     p.set('i', String(i));
-    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+    replaceState(searchUrl(p), page.state);
   }
   function prevSong() {
     if (clampedIndex > 0) gotoIndex(clampedIndex - 1);
@@ -230,8 +235,7 @@
     p.delete('perform');
     p.delete('i');
     p.delete('mode');
-    const qs = p.toString();
-    goto(qs ? `?${qs}` : page.url.pathname, { replaceState: true });
+    replaceState(searchUrl(p), page.state);
   }
 
   // Flip practice <-> performance without leaving the set or losing your place.
@@ -239,7 +243,7 @@
     const p = new URLSearchParams(page.url.search);
     if (isPractice) p.delete('mode');
     else p.set('mode', 'practice');
-    goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
+    replaceState(searchUrl(p), page.state);
   }
 
   function onKey(e: KeyboardEvent) {
