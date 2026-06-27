@@ -149,12 +149,21 @@
   // Driven by the URL (?perform=<setId>&i=<index>) so it's refresh-safe and the
   // browser Back button steps out. We chain through a set's songs, paging each
   // score with the shared PdfPager, then advancing to the next song.
+  type PerformMode = 'practice' | 'performance';
+  interface PerformRunState {
+    setId: string;
+    index: number;
+    mode: PerformMode;
+  }
+  type GigPageState = App.PageState & { performRun?: PerformRunState };
+
   const params = $derived(page.url.searchParams);
-  const performSetId = $derived(params.get('perform'));
+  const performRun = $derived((page.state as GigPageState).performRun);
+  const performSetId = $derived(performRun?.setId ?? params.get('perform'));
   const performSet = $derived<GigSet | null>(
     performSetId ? gig.sets.find((s) => s.id === performSetId) ?? null : null
   );
-  const iParam = $derived(params.get('i'));
+  const iParam = $derived(performRun ? String(performRun.index) : params.get('i'));
   const performIndex = $derived(iParam && /^\d+$/.test(iParam) ? Number(iParam) : 0);
   // The full set list, in order. We keep songs with no chart in the chosen part/
   // format rather than dropping them — a player needs to see every song in the
@@ -182,7 +191,9 @@
   // Practice vs performance run (mirrors the score overlay). Practice keeps the
   // same set chaining and tap-paging but adds the compact one-line player for
   // the current song so you can rehearse a set with audio + count-in.
-  const performMode = $derived(params.get('mode') === 'practice' ? 'practice' : 'performance');
+  const performMode = $derived<PerformMode>(
+    performRun?.mode ?? (params.get('mode') === 'practice' ? 'practice' : 'performance')
+  );
   const isPractice = $derived(performMode === 'practice');
 
   // The current song's recordings, for the practice player. Reset the picker to
@@ -205,24 +216,40 @@
     printFormat.set(value);
   }
 
+  function currentSearch(): URLSearchParams {
+    return new URLSearchParams(browser ? window.location.search : page.url.search);
+  }
+
   function searchUrl(p: URLSearchParams): string {
     const qs = p.toString();
     return qs ? `?${qs}` : page.url.pathname;
   }
 
-  function startSet(setId: string, mode: 'practice' | 'performance') {
-    const p = new URLSearchParams(page.url.search);
+  function stateWith(run: PerformRunState | null): App.PageState {
+    const next: GigPageState = { ...(page.state as GigPageState) };
+    if (run) next.performRun = run;
+    else delete next.performRun;
+    return next;
+  }
+
+  function startSet(setId: string, mode: PerformMode) {
+    const p = currentSearch();
     p.set('perform', setId);
     p.set('i', '0');
     if (mode === 'practice') p.set('mode', 'practice');
     else p.delete('mode');
-    pushState(searchUrl(p), page.state); // shallow: Back/Done works, no offline data reload
+    pushState(searchUrl(p), stateWith({ setId, index: 0, mode }));
   }
 
   function gotoIndex(i: number) {
-    const p = new URLSearchParams(page.url.search);
-    p.set('i', String(i));
-    replaceState(searchUrl(p), page.state);
+    if (!performSetId) return;
+    const p = currentSearch();
+    const nextIndex = Math.min(Math.max(0, i), Math.max(0, performSongs.length - 1));
+    p.set('perform', performSetId);
+    p.set('i', String(nextIndex));
+    if (performMode === 'practice') p.set('mode', 'practice');
+    else p.delete('mode');
+    replaceState(searchUrl(p), stateWith({ setId: performSetId, index: nextIndex, mode: performMode }));
   }
   function prevSong() {
     if (clampedIndex > 0) gotoIndex(clampedIndex - 1);
@@ -231,19 +258,23 @@
     if (clampedIndex < performSongs.length - 1) gotoIndex(clampedIndex + 1);
   }
   function donePerform() {
-    const p = new URLSearchParams(page.url.search);
+    const p = currentSearch();
     p.delete('perform');
     p.delete('i');
     p.delete('mode');
-    replaceState(searchUrl(p), page.state);
+    replaceState(searchUrl(p), stateWith(null));
   }
 
   // Flip practice <-> performance without leaving the set or losing your place.
   function switchMode() {
-    const p = new URLSearchParams(page.url.search);
-    if (isPractice) p.delete('mode');
-    else p.set('mode', 'practice');
-    replaceState(searchUrl(p), page.state);
+    if (!performSetId) return;
+    const nextMode: PerformMode = isPractice ? 'performance' : 'practice';
+    const p = currentSearch();
+    p.set('perform', performSetId);
+    p.set('i', String(clampedIndex));
+    if (nextMode === 'practice') p.set('mode', 'practice');
+    else p.delete('mode');
+    replaceState(searchUrl(p), stateWith({ setId: performSetId, index: clampedIndex, mode: nextMode }));
   }
 
   function onKey(e: KeyboardEvent) {
