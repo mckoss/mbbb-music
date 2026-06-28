@@ -31,7 +31,7 @@
   </div>
 
   {#key sha}
-    <PdfPager {sha} tap={true} {title} openHref={`/blob/${sha}`} />
+    <PdfPager {sha} tap={true} pageBadge={true} {title} openHref={`/blob/${sha}`} />
   {/key}
 </div>
 

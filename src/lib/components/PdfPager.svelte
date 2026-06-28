@@ -11,7 +11,17 @@
     tap = false,
     title = '',
     openHref,
-  }: { sha: string; tap?: boolean; title?: string; openHref?: string } = $props();
+    pageBadge = false,
+  }: {
+    sha: string;
+    tap?: boolean;
+    title?: string;
+    openHref?: string;
+    // Show an always-visible "page n / N" badge (the bottom nav is hidden in tap
+    // mode). Used by the standalone viewer so a player can read off a page number
+    // to print from the gig page.
+    pageBadge?: boolean;
+  } = $props();
 
   // Friendly URL for the "Open the PDF" fallback; defaults to the raw blob if a
   // caller didn't supply a slug-based one.
@@ -160,6 +170,12 @@
         aria-label="Next page"
       ></button>
     {/if}
+
+    {#if pageBadge && numPages > 0}
+      <!-- Informational page indicator (purely read-only, never eats a tap), so
+           the standalone viewer always shows a page number even in tap mode. -->
+      <div class="page-badge" aria-live="polite">Page {pageNum} / {numPages}</div>
+    {/if}
   </div>
 
   {#if numPages > 1 && !tap}
@@ -266,6 +282,29 @@
 
   .tapzone:disabled {
     cursor: default;
+  }
+
+  .page-badge {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    pointer-events: none;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    color: #fffdf7;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  @media print {
+    .page-badge {
+      display: none;
+    }
   }
 
   .nav {
