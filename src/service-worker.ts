@@ -46,11 +46,28 @@ const PRECACHE = [...build, ...files];
 const PRECACHE_SET = new Set(PRECACHE);
 let flushingActivity = false;
 
-const OFFLINE_HTML =
-  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<title>Offline</title><body style="font:16px/1.5 system-ui;padding:2rem;color:#202124;background:#faf8f2">' +
-  "<h1>You're offline</h1><p>This page hasn't been saved for offline use. " +
-  'Open the saved Offline page or a downloaded gig, or reconnect to load it.</p>';
+// The page shown when an uncached route is opened offline. Crucially it is NOT a
+// dead end: a standalone Home-Screen app has no browser chrome, so the page must
+// carry its own way out — a "Try again" link to the exact route the user wanted,
+// links into the cached app, and an auto-reload the moment connectivity returns.
+function offlinePage(requestedPath: string): string {
+  const href = requestedPath.replace(/&/g, '&amp;').replace(/"/g, '%22').replace(/</g, '%3C');
+  const link = 'display:inline-block;margin:6px 8px 6px 0;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700';
+  return (
+    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Offline</title><body style="font:16px/1.5 system-ui;margin:0;padding:2rem;color:#202124;background:#faf8f2">' +
+    "<h1>You're offline</h1>" +
+    "<p>This page hasn't been saved for offline use. Try again once you're back online, " +
+    'or open a page you’ve already saved.</p>' +
+    `<p><a href="${href}" style="${link};background:#164e55;color:#fff">Try again</a>` +
+    `<a href="/" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Home</a>` +
+    `<a href="/offline" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Saved scores</a>` +
+    `<a href="/gigs" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Gig packets</a></p>` +
+    "<p id=s style=color:#5f6368;font-size:.85rem>You'll be reconnected automatically when wifi returns.</p>" +
+    '<script>addEventListener("online",function(){location.reload()});' +
+    'if(navigator.onLine){location.reload()}</script>'
+  );
+}
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(
@@ -170,7 +187,7 @@ sw.addEventListener('fetch', (event) => {
     precache: PRECACHE_SET,
     version,
     timeoutMs: NETWORK_TIMEOUT_MS,
-    offlineHtml: OFFLINE_HTML,
+    offlinePage,
   };
   event.respondWith(routeGet(env, request));
 });
