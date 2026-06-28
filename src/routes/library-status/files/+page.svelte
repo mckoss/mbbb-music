@@ -28,6 +28,7 @@
     <nav class="tabs">
       <a href="/library-status">Coverage</a>
       <a class="active" aria-current="page" href="/library-status/files">Files</a>
+      <a href="/library-status/generated-scores">Generated</a>
     </nav>
     <h2>File browser</h2>
     <p class="body">
