@@ -77,6 +77,7 @@ const hangingFetch = () => (_request, opts) =>
 function makeEnv(over = {}) {
   const waited = [];
   const notified = [];
+  const marks = [];
   const env = {
     caches: new FakeCaches(),
     fetch: okFetch('network'),
@@ -85,12 +86,14 @@ function makeEnv(over = {}) {
     precache: new Set(),
     version: 'test',
     online: () => true,
+    markOffline: () => marks.push('offline'),
+    markReachable: () => marks.push('reachable'),
     timeoutMs: 20,
     mediaTimeoutMs: 40,
     offlinePage: (path) => `<offline-page>${path}`,
     ...over,
   };
-  return { env, waited, notified };
+  return { env, waited, notified, marks };
 }
 const settle = (waited) => Promise.all(waited);
 
@@ -117,6 +120,26 @@ test('fetchWithTimeout enforces the bound even if the fetch ignores abort', asyn
   // A platform fetch that never settles and does not honor the abort signal.
   const neverSettles = () => new Promise(() => {});
   await assert.rejects(fetchWithTimeout(neverSettles, req('/x'), 15));
+});
+
+// --- circuit-breaker feedback ----------------------------------------------
+
+test('a network timeout trips the breaker (markOffline)', async () => {
+  const { env, marks } = makeEnv({ fetch: hangingFetch() });
+  await cacheFirst(env, SCORES_CACHE, req(`/render/${SHA}/1.webp?r=1`), { store: true });
+  assert.deepEqual(marks, ['offline']);
+});
+
+test('a reachable server clears the breaker (markReachable)', async () => {
+  const { env, marks } = makeEnv({ fetch: okFetch('IMG') });
+  await cacheFirst(env, SCORES_CACHE, req(`/render/${SHA}/1.webp?r=1`), { store: true });
+  assert.deepEqual(marks, ['reachable']);
+});
+
+test('SWR with no cache marks offline when the fetch fails', async () => {
+  const { env, marks } = makeEnv({ fetch: hangingFetch() });
+  await routeGet(env, req('/gigs/x', { mode: 'navigate' }));
+  assert.deepEqual(marks, ['offline']);
 });
 
 test('fetchWithTimeout resolves with a prompt response', async () => {

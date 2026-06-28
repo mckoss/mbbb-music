@@ -2,7 +2,7 @@
 // attaches the signed-in identity; we only report the kind of view. The service
 // worker owns offline queueing/replay for this endpoint.
 
-type BeaconType = 'score-view' | 'performance';
+type BeaconType = 'score-view' | 'performance' | 'gig-view';
 
 let listenersInstalled = false;
 

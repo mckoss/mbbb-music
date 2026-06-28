@@ -27,6 +27,17 @@
   const catalog = $derived(page.data.catalog as Catalog);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
 
+  // Record a gig view from the client (the page no longer has a server load).
+  // Skipped in perform mode — that's a performance, logged below. Offline views
+  // are queued by the service worker and replayed when back online.
+  let viewedGig = '';
+  $effect(() => {
+    if (!browser || page.url.searchParams.has('perform')) return;
+    if (viewedGig === gig.id) return;
+    viewedGig = gig.id;
+    track('gig-view', gig.name, gig.id);
+  });
+
   // Record a set run when entering it (?perform=<setId>[&mode=practice]). A
   // performance run is a real performance; a practice run is logged as a score
   // view (rehearsal), matching the score overlay's practice/performance split.
