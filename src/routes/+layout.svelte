@@ -143,12 +143,33 @@
   // exists; we read version.json for the actual number to show.
   let newVersion = $state<string | null>(null);
 
+  // Kick off the new worker's install (precaches the whole shell) in the
+  // background the moment a new build is detected, so clicking Update only has to
+  // activate + reload — near-instant. The worker no longer skip-waits on install
+  // (see service-worker.ts), so this preloads into the "waiting" state and never
+  // disturbs the running session. Done once per detected version; in a SPA the
+  // browser won't auto-check the worker on client-side navigations, so we must.
+  let preloadedFor: string | null = null;
+  async function preloadUpdate(v: string) {
+    if (!('serviceWorker' in navigator) || preloadedFor === v) return;
+    preloadedFor = v;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      await reg?.update();
+    } catch {
+      preloadedFor = null; // let a later navigation retry the preload
+    }
+  }
+
   async function checkVersion() {
     if (!browser) return;
     try {
       if (!(await updated.check())) return;
       const res = await fetch(`${base}/_app/version.json`, { cache: 'no-store' });
-      if (res.ok) newVersion = (await res.json())?.version ?? null;
+      if (!res.ok) return;
+      const v = (await res.json())?.version ?? null;
+      newVersion = v;
+      if (v && v !== version) void preloadUpdate(v); // start the background preload
     } catch {
       // Offline or fetch failed — leave the offer hidden.
     }
@@ -182,11 +203,13 @@
       // Reload the instant the new worker takes control (see above).
       navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
 
-      await reg.update(); // fetch the new worker; it skip-waits on install itself
+      await reg.update(); // ensure the new worker is fetched (usually already preloaded)
       const next = reg.waiting ?? reg.installing;
       if (next) {
-        // Nudge it to activate as soon as it finishes installing (belt-and-
-        // suspenders alongside the worker's own skipWaiting()).
+        // The worker doesn't skip-wait on its own anymore (it preloads into the
+        // "waiting" state), so we tell it to activate now — immediately if it's
+        // already installed (the common, preloaded case → instant), else as soon
+        // as it finishes installing.
         const activate = () => {
           if (next.state === 'installed') next.postMessage('skip-waiting');
         };

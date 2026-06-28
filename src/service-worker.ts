@@ -93,12 +93,13 @@ function offlinePage(requestedPath: string): string {
 }
 
 sw.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(APP_SHELL)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => sw.skipWaiting()),
-  );
+  // Precache the new app shell, but DON'T skipWaiting: the worker installs into
+  // the "waiting" state and the running app is left completely untouched (old
+  // code + old cached chunks intact) until the user affirmatively clicks Update,
+  // which posts 'skip-waiting'. This preloads the next build in the background so
+  // the eventual swap is instant, without ever interrupting the current session.
+  // (On a first-ever visit there's no active worker, so it activates immediately.)
+  event.waitUntil(caches.open(APP_SHELL).then((cache) => cache.addAll(PRECACHE)));
 });
 
 sw.addEventListener('activate', (event) => {
