@@ -85,7 +85,7 @@ function makeEnv(over = {}) {
     precache: new Set(),
     version: 'test',
     timeoutMs: 20,
-    offlineHtml: '<offline-page>',
+    offlinePage: (path) => `<offline-page>${path}`,
     ...over,
   };
   return { env, waited, notified };
@@ -164,10 +164,11 @@ test('SWR serves the cached page instantly even when the network hangs', async (
   assert.equal(await res.text(), 'CACHED PAGE'); // returns before the hung fetch
 });
 
-test('SWR navigation with nothing cached and offline returns the offline page', async () => {
+test('SWR navigation with nothing cached and offline returns the offline page with a retry path', async () => {
   const { env } = makeEnv({ fetch: hangingFetch() });
-  const res = await routeGet(env, req('/never-seen', { mode: 'navigate' }));
-  assert.equal(await res.text(), '<offline-page>');
+  const res = await routeGet(env, req('/gigs/summer?perform=1', { mode: 'navigate' }));
+  // The offline page is handed the exact route so it can offer "try again".
+  assert.equal(await res.text(), '<offline-page>/gigs/summer?perform=1');
 });
 
 test('SWR data load with nothing cached and offline returns an empty data shell', async () => {

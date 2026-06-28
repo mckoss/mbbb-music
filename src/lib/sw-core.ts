@@ -41,8 +41,9 @@ export interface SwEnv {
   version: string;
   /** Network timeout (ms) before we fall back to cache / fail fast. */
   timeoutMs: number;
-  /** HTML returned for an uncached navigation while offline. */
-  offlineHtml: string;
+  /** HTML for an uncached navigation while offline. Given the requested path so
+   *  the page can offer a "try again" link back to exactly where the user was. */
+  offlinePage: (requestedPath: string) => string;
 }
 
 export const appShellCache = (version: string) => `app-shell-${version}`;
@@ -265,7 +266,10 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
       ignoreSearch: true,
       notify: isDataRequest(url),
       fallback: navigation
-        ? () => new Response(env.offlineHtml, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+        ? () =>
+            new Response(env.offlinePage(url.pathname + url.search), {
+              headers: { 'content-type': 'text/html; charset=utf-8' },
+            })
         : emptyDataResponse,
     });
   }
