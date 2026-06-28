@@ -3,6 +3,7 @@
   import type { Catalog, Tune } from '$lib/types';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { stripCopyOf, fmtDate } from '$lib/format';
+  import { sourceStyle } from '$lib/sources';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref } from '$lib/view';
 
@@ -21,7 +22,7 @@
   interface GenRow {
     slug: string;
     title: string;
-    master: { name: string; href: string } | null; // the .mscz master, if on file
+    master: { name: string; href: string; source: string | null } | null; // the .mscz master, if on file
     masterDate: string | null; // when the .mscz master was last modified (source)
     genDate: string | null; // when the parts were generated (most recent output mtime)
     stale: boolean; // master is newer than the generated output → needs a rebuild
@@ -91,6 +92,9 @@
                     url: openUrl(m.sha256),
                   })
                 : '#',
+              // The Drive source this master came from — shown (with the Coverage
+              // color key) beneath the filename so its location is clear.
+              source: m.source ?? null,
             }
           : null,
         masterDate,
@@ -129,6 +133,18 @@
   const masters = $derived(genRows.filter((r) => r.master));
   const processedMasters = $derived(masters.filter(hasGen));
 </script>
+
+<!-- Master filename with the Drive source (friendly name + Coverage color key)
+     beneath it, so the file's location is clear in both lists. -->
+{#snippet masterBlock(master: { name: string; href: string; source: string | null })}
+  {@const ss = sourceStyle(master.source)}
+  <span class="master">
+    <a class="mscz" href={master.href} title={master.name}>{master.name}</a>
+    <span class="src" title={`Source: ${ss.name}`}>
+      <span class="src-swatch" style:background={ss.color}></span>({ss.name})
+    </span>
+  </span>
+{/snippet}
 
 <section class="status">
   <header>
@@ -179,9 +195,7 @@
           <li>
             <span class="song">{r.title}</span>
             {#if r.master}
-              <a class="mscz" href={r.master.href} title={r.master.name}>
-                {r.master.name}
-              </a>
+              {@render masterBlock(r.master)}
             {/if}
             {#if r.masterDate}
               <span class="when">MuseScore {fmtDate(r.masterDate)}</span>
@@ -231,9 +245,7 @@
                 </th>
                 <td>
                   {#if r.master}
-                    <a class="mscz" href={r.master.href} title={r.master.name}>
-                      {r.master.name}
-                    </a>
+                    {@render masterBlock(r.master)}
                   {:else}
                     <span class="missing" title="No .mscz master in the synced library">— no master —</span>
                   {/if}
@@ -418,6 +430,14 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .master {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    max-width: 22rem;
+  }
+
   .mscz {
     font-size: 0.78rem;
     color: var(--accent-strong);
@@ -426,6 +446,23 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 22rem;
+  }
+
+  /* Drive source beneath the master filename, with the Coverage color key. */
+  .src {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .src-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.18);
   }
 
   .missing {
