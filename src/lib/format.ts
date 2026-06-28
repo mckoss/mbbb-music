@@ -1,5 +1,22 @@
 import type { CatalogPart } from './types';
 
+// Render dates in the band's local time (Seattle) so "last modified" reads as the
+// day a person actually touched the file, not a UTC date that can be a day off.
+const PACIFIC_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Los_Angeles',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** An ISO timestamp -> its Pacific-time calendar date "YYYY-MM-DD". Empty when
+ * missing or unparseable. */
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : PACIFIC_DATE.format(d);
+}
+
 /** Seconds -> "M:SS". */
 export function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) sec = 0;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import type { Catalog } from '$lib/types';
-  import { stripCopyOf } from '$lib/format';
+  import { stripCopyOf, fmtDate } from '$lib/format';
   import { audio, playSha, toggle } from '$lib/audio';
   import { RENDER_REV } from '$lib/render-rev';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
@@ -65,6 +65,7 @@
         {/if}
         <div class="meta">
           <span class="name">{e.name}</span>
+          {#if e.modifiedTime}<span class="date">{fmtDate(e.modifiedTime)}</span>{/if}
           <span class="actions">
             {#if e.assetType === 'mp3'}
               <button class="act" onclick={() => playAudio(e)}>
@@ -199,6 +200,14 @@
     flex: 1;
     font-size: 0.86rem;
     word-break: break-word;
+  }
+
+  .date {
+    flex: none;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .actions {

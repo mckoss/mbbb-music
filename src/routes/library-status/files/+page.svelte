@@ -5,6 +5,7 @@
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref, viewKindFromName } from '$lib/view';
+  import { fmtDate } from '$lib/format';
 
   const inv = $derived(page.data.inventory as Inventory);
 
@@ -27,10 +28,9 @@
   const primaryLoc = (p: { source: string | null; path: string[]; name: string | null }) =>
     [p.source, ...(p.path ?? []), p.name].filter(Boolean).join(' / ');
 
-  /** Total files in a node and its descendants — for the folder summary count. */
-  function countFiles(node: InvNode): number {
-    return node.files.length + node.folders.reduce((n, f) => n + countFiles(f), 0);
-  }
+  // A folder is all-dup when every file in its subtree is a duplicate (and it
+  // holds at least one file) — then the whole folder carries the "Dup" tag.
+  const allDup = (node: InvNode) => node.fileCount > 0 && node.dupCount === node.fileCount;
 </script>
 
 <section class="files">
@@ -50,14 +50,16 @@
         </p>
         <p>
           The same content can appear in several places (a song folder, a
-          by-instrument index, a shortcut from another archive…); only one copy — the
-          <strong>Primary</strong> — is used by the library. A real song folder is
-          always preferred over an index/container as the primary.
+          by-instrument index, a shortcut from another archive…); only one copy is the
+          one the library uses. A real song folder is always preferred over an
+          index/container. Every other copy is tagged <span class="badge dup-tag">Dup</span>;
+          a folder whose files are <em>all</em> duplicates is tagged
+          <span class="badge dup-tag">Dup</span> too. Primary copies carry no tag.
         </p>
         <p>
           Nothing is hidden: every other appearance, including
-          <span class="sc">↗ shortcuts</span>, is shown where it lives and points at
-          its primary.
+          <span class="sc">↗ shortcuts</span>, is shown where it lives. The date is each
+          file's last-modified time (YYYY-MM-DD), so you can tell current from stale copies.
         </p>
       </HelpPopup>
     </div>
@@ -85,8 +87,10 @@
     <!-- All folders start collapsed; the viewer expands what they need. -->
     <details>
       <summary>
-        <span class="fname">📁 {fol.name}</span>
-        <span class="meta">{countFiles(fol)} file{countFiles(fol) === 1 ? '' : 's'}</span>
+        <span class="fname"
+          >📁 {fol.name}{#if allDup(fol)} <span class="badge dup-tag" title="Every file in this folder is a duplicate of a higher-priority copy">Dup</span>{/if}</span
+        >
+        <span class="meta">{fol.fileCount} file{fol.fileCount === 1 ? '' : 's'}</span>
       </summary>
       <div class="children">
         {@render treeNode(fol)}
@@ -99,11 +103,14 @@
         <li class:dup={!f.isPrimary}>
           {#if f.viaShortcut}<span class="sc" title="Reached via a Drive shortcut">↗</span>{/if}
           <a class="file" href={viewLink(f.sha256, f.name)}>{f.name}</a>
-          {#if f.isPrimary}
-            <span class="badge primary">Primary</span>
-          {:else if f.primary}
-            <span class="badge dupof">↳ primary in {primaryLoc(f.primary)}</span>
+          {#if !f.isPrimary}
+            <span
+              class="badge dup-tag"
+              title={f.primary ? `Primary copy: ${primaryLoc(f.primary)}` : 'Duplicate of a higher-priority copy'}
+              >Dup</span
+            >
           {/if}
+          {#if f.modifiedTime}<span class="date">{fmtDate(f.modifiedTime)}</span>{/if}
         </li>
       {/each}
     </ul>
@@ -238,15 +245,24 @@
     padding: 1px 7px;
     white-space: nowrap;
   }
-  .badge.primary {
-    background: #e6f4ea;
-    color: #2e7d4f;
-    border: 1px solid #b6dcc4;
+  .badge.dup-tag {
+    background: #f3e6e6;
+    color: #9a3b3b;
+    border: 1px solid #e0bcbc;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
-  .badge.dupof {
-    background: var(--panel);
+  /* The folder-name "Dup" tag sits inline after the name, not pushed right. */
+  summary .fname .badge.dup-tag {
+    font-weight: 700;
+  }
+  .date {
+    margin-left: auto;
     color: var(--muted);
-    border: 1px solid var(--line);
+    font-size: 0.74rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .empty {
     color: var(--muted);

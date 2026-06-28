@@ -26,6 +26,8 @@ export interface InvFileRow {
   name: string;
   sha256: string | null;
   assetType: string | null;
+  /** Drive last-modified time, ISO string (null when the manifest lacks it). */
+  modifiedTime: string | null;
   isPrimary: boolean;
   /** This appearance is reached through a Drive shortcut. */
   viaShortcut: boolean;
@@ -37,6 +39,11 @@ export interface InvNode {
   name: string;
   folders: InvNode[];
   files: InvFileRow[];
+  /** Files in this subtree (set by finalize); 0 until then. */
+  fileCount: number;
+  /** Duplicate (non-primary) files in this subtree; a folder is all-dup when
+   * fileCount > 0 && dupCount === fileCount. */
+  dupCount: number;
 }
 export interface InvSource {
   source: string;
@@ -74,7 +81,7 @@ function appearancesOf(e: Entry): Appearance[] {
 }
 
 function emptyNode(name: string): InvNode {
-  return { name, folders: [], files: [] };
+  return { name, folders: [], files: [], fileCount: 0, dupCount: 0 };
 }
 
 /** Descend (creating folders as needed) to the node at `path` under `root`. */
@@ -102,6 +109,8 @@ function finalize(node: InvNode): { files: number; dups: number } {
     files += c.files;
     dups += c.dups;
   }
+  node.fileCount = files;
+  node.dupCount = dups;
   return { files, dups };
 }
 
@@ -146,6 +155,7 @@ export function fileInventory(): Inventory {
         name: ap.name ?? (e.originalName as string) ?? (e.driveFileId as string),
         sha256: (e.sha256 as string) ?? null,
         assetType: (e.assetType as string) ?? null,
+        modifiedTime: (e.modifiedTime as string) ?? null,
         isPrimary,
         viaShortcut: !!ap.viaShortcut,
         primary: isPrimary ? null : primaryLoc,
