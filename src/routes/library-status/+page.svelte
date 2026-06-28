@@ -449,6 +449,7 @@
     <nav class="tabs">
       <a class="active" aria-current="page" href="/library-status">Coverage</a>
       <a href="/library-status/files">Files</a>
+      <a href="/library-status/generated-scores">Generated</a>
     </nav>
     <h2>Coverage by song &amp; instrument</h2>
     <p class="body">
