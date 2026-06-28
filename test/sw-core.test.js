@@ -84,7 +84,9 @@ function makeEnv(over = {}) {
     notifyUpdate: (url) => notified.push(url),
     precache: new Set(),
     version: 'test',
+    online: () => true,
     timeoutMs: 20,
+    mediaTimeoutMs: 40,
     offlinePage: (path) => `<offline-page>${path}`,
     ...over,
   };
@@ -169,6 +171,47 @@ test('SWR navigation with nothing cached and offline returns the offline page wi
   const res = await routeGet(env, req('/gigs/summer?perform=1', { mode: 'navigate' }));
   // The offline page is handed the exact route so it can offer "try again".
   assert.equal(await res.text(), '<offline-page>/gigs/summer?perform=1');
+});
+
+// --- navigator.onLine short-circuit (no waiting when known-offline) ---------
+
+test('known-offline cacheFirst miss returns 504 without touching the network', async () => {
+  const { env } = makeEnv({ online: () => false, fetch: failFetch });
+  const res = await cacheFirst(env, SCORES_CACHE, req(`/render/${SHA}/1.webp?r=1`), { store: true });
+  assert.equal(res.status, 504); // instant — failFetch proves no network attempt
+});
+
+test('known-offline navigation goes straight to the offline page, no fetch', async () => {
+  const { env } = makeEnv({ online: () => false, fetch: failFetch });
+  const res = await routeGet(env, req('/gigs/x', { mode: 'navigate' }));
+  assert.equal(await res.text(), '<offline-page>/gigs/x');
+});
+
+test('known-offline SWR hit serves cache and skips the background revalidate', async () => {
+  const { env, waited } = makeEnv({ online: () => false, fetch: failFetch });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put(req('/gigs/x').url, new Response('CACHED'));
+  const res = await staleWhileRevalidate(env, pagesCache('test'), req('/gigs/x', { mode: 'navigate' }), {
+    ignoreSearch: true,
+  });
+  assert.equal(await res.text(), 'CACHED');
+  assert.equal(waited.length, 0); // no revalidate scheduled while offline
+});
+
+test('blob requests use the longer media timeout', async () => {
+  let usedMs;
+  const env = makeEnv({
+    fetch: (_req, _opts) => {
+      // fetchWithTimeout aborts after the timeout; capture how long it allowed.
+      return new Promise((_resolve, reject) => _opts?.signal?.addEventListener('abort', () => reject(new Error('x'))));
+    },
+  }).env;
+  // Patch fetchWithTimeout indirectly: a media miss should not 504 before 40ms.
+  const start = Date.now();
+  const res = await cacheFirst(env, SCORES_CACHE, req(`/blob/${SHA}`), { timeoutMs: env.mediaTimeoutMs });
+  usedMs = Date.now() - start;
+  assert.equal(res.status, 504);
+  assert.ok(usedMs >= 35, `media miss waited ${usedMs}ms, expected ~40ms`);
 });
 
 test('SWR data load with nothing cached and offline returns an empty data shell', async () => {

@@ -37,9 +37,12 @@ const PAGES = pagesCache(version);
 const ACTIVITY_QUEUE = 'mbbb-activity-queue';
 const ACTIVITY_QUEUE_LIMIT = 100;
 
-// Network timeout before we fall back to cache / fail fast. Short enough that a
-// dead radio never strands the UI, long enough for a slow-but-live connection.
+// Network timeout before we fall back to cache / fail fast. We only ever wait
+// this long when navigator.onLine claims we're connected but the server is
+// unreachable (e.g. a captive portal); a truly offline device skips the wait
+// entirely. Standard pages get a short timeout; large media gets a longer one.
 const NETWORK_TIMEOUT_MS = 4000;
+const MEDIA_TIMEOUT_MS = 30000;
 
 // Everything we can serve straight from the install-time precache.
 const PRECACHE = [...build, ...files];
@@ -186,7 +189,9 @@ sw.addEventListener('fetch', (event) => {
     notifyUpdate,
     precache: PRECACHE_SET,
     version,
+    online: () => navigator.onLine,
     timeoutMs: NETWORK_TIMEOUT_MS,
+    mediaTimeoutMs: MEDIA_TIMEOUT_MS,
     offlinePage,
   };
   event.respondWith(routeGet(env, request));

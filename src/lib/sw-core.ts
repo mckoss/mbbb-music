@@ -39,8 +39,17 @@ export interface SwEnv {
   /** Pathnames served straight from the install-time precache (app shell). */
   precache: Set<string>;
   version: string;
-  /** Network timeout (ms) before we fall back to cache / fail fast. */
+  /**
+   * Best-effort connectivity check (navigator.onLine). Trusted only in the
+   * negative: `false` means definitely offline, so we skip the network entirely
+   * and fall back instantly. `true` can lie (captive portal) — there the timeout
+   * still guards us.
+   */
+  online: () => boolean;
+  /** Network timeout (ms) for standard pages/data before we fall back. */
   timeoutMs: number;
+  /** Longer timeout (ms) for large media blobs, which can legitimately be slow. */
+  mediaTimeoutMs: number;
   /** HTML for an uncached navigation while offline. Given the requested path so
    *  the page can offer a "try again" link back to exactly where the user was. */
   offlinePage: (requestedPath: string) => string;
@@ -141,12 +150,14 @@ interface CacheFirstOpts {
   /** Persist a successful network response on a cache miss (score pages do; the
    *  app shell and downloaded blobs are pre-populated, so they don't). */
   store?: boolean;
+  /** Override the network timeout for this request (e.g. longer for media). */
+  timeoutMs?: number;
 }
 
 /**
  * Content-addressed: return the cached copy (honoring a Range request), and only
- * touch the network on a miss — with a timeout so an uncached resource offline
- * fails fast rather than hanging. Never revalidates a hit.
+ * touch the network on a miss. When known-offline we skip the network entirely
+ * (instant 504); otherwise the fetch is timeout-bounded. Never revalidates a hit.
  */
 export async function cacheFirst(
   env: SwEnv,
@@ -160,8 +171,9 @@ export async function cacheFirst(
     const range = request.headers.get('range');
     return range ? buildRangeResponse(hit, range) : hit;
   }
+  if (!env.online()) return new Response(null, { status: 504 });
   try {
-    const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+    const res = await fetchWithTimeout(env.fetch, request, opts.timeoutMs ?? env.timeoutMs);
     if (opts.store && res.ok) env.waitUntil(cache.put(request, res.clone()));
     return res;
   } catch {
@@ -193,8 +205,13 @@ export async function staleWhileRevalidate(
   const hit =
     (await cache.match(request)) ??
     (opts.ignoreSearch ? await cache.match(request, { ignoreSearch: true }) : undefined);
-  const hitForCompare = opts.notify && hit ? hit.clone() : null;
+  const fallback = () => (opts.fallback ? opts.fallback() : new Response(null, { status: 504 }));
 
+  // Known-offline: don't wait on a fetch that can't succeed — serve cache or fall
+  // back immediately (and skip the pointless background revalidate on a hit).
+  if (!env.online()) return hit ?? fallback();
+
+  const hitForCompare = opts.notify && hit ? hit.clone() : null;
   const revalidate = (async (): Promise<Response | undefined> => {
     try {
       const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
@@ -215,13 +232,14 @@ export async function staleWhileRevalidate(
 
   const res = await revalidate;
   if (res && res.ok) return res;
-  return opts.fallback ? opts.fallback() : new Response(null, { status: 504 });
+  return fallback();
 }
 
 /** Last-resort: serve from any cache, else a timeout-bounded network fetch. */
 async function cacheAnyFirst(env: SwEnv, request: Request): Promise<Response> {
   const hit = await env.caches.match(request);
   if (hit) return hit;
+  if (!env.online()) return new Response(null, { status: 504 });
   try {
     return await fetchWithTimeout(env.fetch, request, env.timeoutMs);
   } catch {
@@ -252,8 +270,9 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
   }
   if (isBlobRequest(url)) {
     // PDFs/recordings: served from cache when downloaded; not stored on casual
-    // view, so the durable cache stays under the user's explicit control.
-    return cacheFirst(env, SCORES_CACHE, request);
+    // view, so the durable cache stays under the user's explicit control. These
+    // can be large, so a slow-but-live download gets a longer timeout.
+    return cacheFirst(env, SCORES_CACHE, request, { timeoutMs: env.mediaTimeoutMs });
   }
 
   // Mutable → stale-while-revalidate.
