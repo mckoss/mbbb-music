@@ -20,8 +20,8 @@
     slug: string;
     title: string;
     master: { name: string; href: string } | null; // the .mscz master, if on file
-    parts: number; // app-generated instrument parts
-    scores: number; // app-generated whole-band scores
+    parts: number; // app-generated core-roster instrument parts
+    extraParts: number; // app-generated parts for instruments outside the core roster
     audio: number; // app-generated audio (band mix + any stems)
   }
 
@@ -38,13 +38,16 @@
             }
           : null,
         parts: t.parts.filter((p) => p.generated).length,
-        scores: t.scores.filter((s) => s.generated).length,
+        // The catalog's instrument-less `scores` bucket; for generated output these
+        // are parts for instruments off the core roster (e.g. accordion), not
+        // whole-band conductor scores.
+        extraParts: t.scores.filter((s) => s.generated).length,
         audio: t.audio.filter((a) => a.generated || a.museScore).length,
       };
     })
   );
 
-  const hasGen = (r: GenRow) => r.parts > 0 || r.scores > 0 || r.audio > 0;
+  const hasGen = (r: GenRow) => r.parts > 0 || r.extraParts > 0 || r.audio > 0;
   const byTitle = (a: GenRow, b: GenRow) => a.title.localeCompare(b.title);
 
   // 1. Masters that still need building: a .mscz is on file but no output yet.
@@ -57,14 +60,14 @@
 
   const totals = $derived.by(() => {
     let parts = 0,
-      scores = 0,
+      extraParts = 0,
       audio = 0;
     for (const r of processed) {
       parts += r.parts;
-      scores += r.scores;
+      extraParts += r.extraParts;
       audio += r.audio;
     }
-    return { parts, scores, audio };
+    return { parts, extraParts, audio };
   });
 
   // Master count drives the "x of y processed" headline.
@@ -80,17 +83,18 @@
       <a href="/library-status/files">Files</a>
       <a class="active" aria-current="page" href="/library-status/generated-scores">Generated</a>
     </nav>
-    <h2>Generated scores &amp; audio</h2>
+    <h2>Generated parts &amp; audio</h2>
     <p class="body">
       Tracks which MuseScore (<code>.mscz</code>) masters in the library have been
-      built into app-generated parts, whole-band scores, and audio by
-      <code>build-scores</code>. The top list is your to-do: masters with nothing
-      generated yet. This reflects the synced Drive catalog, so masters that only
-      live on a local disk (never synced) won't show here.
+      built into app-generated parts and audio by <code>build-scores</code>.
+      <strong>Extra parts</strong> are charts for instruments off the core roster
+      (e.g. accordion). The top list is your to-do: masters with nothing generated
+      yet. This reflects the synced Drive catalog, so masters that only live on a
+      local disk (never synced) won't show here.
     </p>
     <p class="count">
       {processedMasters.length} of {masters.length} masters processed ·
-      {totals.parts} parts · {totals.scores} scores · {totals.audio} audio generated
+      {totals.parts} parts · {totals.extraParts} extra parts · {totals.audio} audio generated
     </p>
   </header>
 
@@ -128,7 +132,7 @@
               <th scope="col" class="song-col">Song</th>
               <th scope="col">Master</th>
               <th scope="col" class="num">Parts</th>
-              <th scope="col" class="num">Scores</th>
+              <th scope="col" class="num">Extra Parts</th>
               <th scope="col" class="num">Audio</th>
             </tr>
           </thead>
@@ -146,7 +150,7 @@
                   {/if}
                 </td>
                 <td class="num" class:zero={r.parts === 0}>{r.parts || '·'}</td>
-                <td class="num" class:zero={r.scores === 0}>{r.scores || '·'}</td>
+                <td class="num" class:zero={r.extraParts === 0}>{r.extraParts || '·'}</td>
                 <td class="num" class:zero={r.audio === 0}>{r.audio || '·'}</td>
               </tr>
             {/each}
@@ -156,7 +160,7 @@
               <th scope="row" class="song-col">Total</th>
               <td></td>
               <td class="num">{totals.parts}</td>
-              <td class="num">{totals.scores}</td>
+              <td class="num">{totals.extraParts}</td>
               <td class="num">{totals.audio}</td>
             </tr>
           </tfoot>
@@ -177,7 +181,7 @@
         {#each orphanGenerated as r (r.slug)}
           <li>
             <span class="song">{r.title}</span>
-            <span class="counts">{r.parts} parts · {r.scores} scores · {r.audio} audio</span>
+            <span class="counts">{r.parts} parts · {r.extraParts} extra parts · {r.audio} audio</span>
           </li>
         {/each}
       </ul>
