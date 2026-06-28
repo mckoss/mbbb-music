@@ -3,6 +3,7 @@
   import type { Catalog, Tune } from '$lib/types';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { stripCopyOf } from '$lib/format';
+  import HelpPopup from '$lib/components/HelpPopup.svelte';
 
   // Build-pipeline view: which MuseScore (.mscz) masters in the library have been
   // turned into app-generated parts/scores/audio (by `bin/build-scores.js`) and
@@ -102,16 +103,25 @@
       <a href="/library-status/files">Files</a>
       <a class="active" aria-current="page" href="/library-status/generated-scores">Generated</a>
     </nav>
-    <h2>Generated parts &amp; audio</h2>
-    <p class="body">
-      Tracks which MuseScore (<code>.mscz</code>) masters in the library have been
-      built into app-generated parts and audio by <code>build-scores</code>.
-      <strong>Extra parts</strong> are charts for instruments off the core roster
-      (e.g. accordion). Part counts read <em>charts × formats</em> (each chart is
-      rendered in Letter and Lyre). The top list is your to-do: masters with nothing
-      generated yet. This reflects the synced Drive catalog, so masters that only
-      live on a local disk (never synced) won't show here.
-    </p>
+    <div class="title-row">
+      <h2>Generated parts &amp; audio</h2>
+      <HelpPopup title="About generated parts &amp; audio" label="About generated parts &amp; audio">
+        <p>
+          Tracks which MuseScore (<code>.mscz</code>) masters in the library have been
+          built into app-generated parts and audio by <code>build-scores</code>.
+        </p>
+        <p>
+          <strong>Extra parts</strong> are charts for instruments off the core roster
+          (e.g. accordion). Part counts read <em>charts × formats</em> — each chart is
+          rendered in Letter and Lyre.
+        </p>
+        <p>
+          The top list is your to-do: masters with nothing generated yet. This reflects
+          the synced Drive catalog, so masters that only live on a local disk (never
+          synced) won't show here.
+        </p>
+      </HelpPopup>
+    </div>
     <p class="count">
       {processedMasters.length} of {masters.length} masters processed ·
       {show(totals.parts)} parts · {show(totals.extra)} extra parts · {totals.audio} audio generated
@@ -229,9 +239,11 @@
     font-size: clamp(1.4rem, 3vw, 2rem);
   }
 
-  .body {
-    color: var(--muted);
-    max-width: 80ch;
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .count {

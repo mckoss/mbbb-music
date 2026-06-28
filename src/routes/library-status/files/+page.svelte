@@ -3,6 +3,7 @@
   import type { Inventory, InvNode } from '$lib/server/inventory';
   import type { Catalog } from '$lib/types';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
+  import HelpPopup from '$lib/components/HelpPopup.svelte';
 
   const inv = $derived(page.data.inventory as Inventory);
 
@@ -30,17 +31,26 @@
       <a class="active" aria-current="page" href="/library-status/files">Files</a>
       <a href="/library-status/generated-scores">Generated</a>
     </nav>
-    <h2>File browser</h2>
-    <p class="body">
-      Every scanned file, nested exactly as it sits in Drive — the full folder
-      hierarchy, not a flattened list. The same content can appear in several
-      places (a song folder, a by-instrument index, a shortcut from another
-      archive…); only one copy — the <strong>Primary</strong> — is used by the
-      library. Nothing is hidden: every other appearance, including
-      <span class="sc">↗ shortcuts</span>, is shown where it lives and points at its
-      primary. A real song folder is always preferred over an index/container as the
-      primary.
-    </p>
+    <div class="title-row">
+      <h2>File browser</h2>
+      <HelpPopup title="About the file browser" label="About the file browser">
+        <p>
+          Every scanned file, nested exactly as it sits in Drive — the full folder
+          hierarchy, not a flattened list.
+        </p>
+        <p>
+          The same content can appear in several places (a song folder, a
+          by-instrument index, a shortcut from another archive…); only one copy — the
+          <strong>Primary</strong> — is used by the library. A real song folder is
+          always preferred over an index/container as the primary.
+        </p>
+        <p>
+          Nothing is hidden: every other appearance, including
+          <span class="sc">↗ shortcuts</span>, is shown where it lives and points at
+          its primary.
+        </p>
+      </HelpPopup>
+    </div>
     <p class="count">
       {inv.totals.files} appearances · {inv.totals.primaries} primary · {inv.totals.duplicates} duplicate
     </p>
@@ -106,9 +116,11 @@
   h2 {
     font-size: clamp(1.4rem, 3vw, 2rem);
   }
-  .body {
-    color: var(--muted);
-    max-width: 80ch;
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
   }
   .count {
     color: var(--muted);
