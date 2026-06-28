@@ -1,8 +1,9 @@
 <script lang="ts">
   import '../app.css';
-  import { page, navigating } from '$app/state';
+  import { page, navigating, updated } from '$app/state';
   import { browser, version } from '$app/environment';
-  import { goto, invalidateAll } from '$app/navigation';
+  import { base } from '$app/paths';
+  import { goto, invalidateAll, afterNavigate } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
@@ -134,6 +135,50 @@
     await invalidateAll();
   }
 
+  // App-version update offer. We deliberately don't poll in the background;
+  // instead we ask SvelteKit to check the deployed version.json on each
+  // client-side navigation (afterNavigate also fires once on first mount). When
+  // the running build is behind the deploy, surface an "Update to X.Y.Z" button
+  // by the version number. `updated.check()` reports whether a newer build
+  // exists; we read version.json for the actual number to show.
+  let newVersion = $state<string | null>(null);
+
+  async function checkVersion() {
+    if (!browser) return;
+    try {
+      if (!(await updated.check())) return;
+      const res = await fetch(`${base}/_app/version.json`, { cache: 'no-store' });
+      if (res.ok) newVersion = (await res.json())?.version ?? null;
+    } catch {
+      // Offline or fetch failed — leave the offer hidden.
+    }
+  }
+  afterNavigate(() => void checkVersion());
+
+  // Hand off to the new build: pull the waiting service worker, tell it to take
+  // over, and reload onto the fresh app shell once it controls the page. The SW
+  // skip-waits on install, so a controllerchange follows shortly; a timeout
+  // fallback covers the rare case where it doesn't fire.
+  let reloading = false;
+  function reloadOnce() {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  }
+  async function applyVersionUpdate() {
+    if (!browser || !('serviceWorker' in navigator)) return reloadOnce();
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return reloadOnce();
+      navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
+      await reg.update();
+      (reg.waiting ?? reg.installing)?.postMessage('skip-waiting');
+      setTimeout(reloadOnce, 3000);
+    } catch {
+      reloadOnce();
+    }
+  }
+
   // Themed loading indicator for navigations that actually have to wait (a genuine
   // network round-trip). Most navigations are instant (data is already loaded), so
   // only show after a short delay — no flash on quick ones, clear feedback that a
@@ -162,7 +207,18 @@
         <p class="eyebrow brand-eyebrow">Mutiny Bay Brass Band</p>
         <h1>Music Portfolio</h1>
         <p class="desc">Browse the music library, choose an instrument and part, and assemble gig packets in set-list order.</p>
-        <p class="version">v {version}</p>
+        <p class="version">
+          v {version}
+          {#if newVersion && newVersion !== version}
+            <button
+              class="update-link"
+              onclick={applyVersionUpdate}
+              title="A new version is available — tap to reload and update"
+            >
+              Update to {newVersion}
+            </button>
+          {/if}
+        </p>
       </div>
     </div>
 
@@ -347,6 +403,29 @@
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* New-build offer: brand-gold pill next to the version, distinct from the muted
+     version text so it reads as an action. */
+  .update-link {
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid #f2d36b;
+    background: rgba(242, 211, 107, 0.16);
+    color: #f2d36b;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+
+  .update-link:hover {
+    background: rgba(242, 211, 107, 0.28);
   }
 
   .right {
