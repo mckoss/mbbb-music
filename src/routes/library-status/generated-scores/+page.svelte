@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import type { Catalog, Tune } from '$lib/types';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
-  import { stripCopyOf } from '$lib/format';
+  import { stripCopyOf, fmtDate } from '$lib/format';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref } from '$lib/view';
 
@@ -22,6 +22,9 @@
     slug: string;
     title: string;
     master: { name: string; href: string } | null; // the .mscz master, if on file
+    masterDate: string | null; // when the .mscz master was last modified (source)
+    genDate: string | null; // when the parts were generated (most recent output mtime)
+    stale: boolean; // master is newer than the generated output → needs a rebuild
     partFmts: string[]; // print format of each generated core-roster part
     extraFmts: string[]; // print format of each generated off-roster ("extra") part
     audio: number; // app-generated audio (band mix + any stems)
@@ -52,9 +55,25 @@
   const deriveFormat = (name: string | null): string =>
     name && /(^|[^a-z])lyre([^a-z]|$)/i.test(name) ? 'lyre' : 'letter';
 
+  // The most recent last-modified time across a tune's generated output. They're
+  // all built in one pass so the dates cluster; the newest is a safe representative
+  // of "when this was generated". null when nothing carries a date.
+  const newestGenDate = (t: Tune): string | null => {
+    const dates = [
+      ...t.parts.filter((p) => p.generated),
+      ...t.scores.filter((s) => s.generated),
+      ...t.audio.filter((a) => a.generated || a.museScore),
+    ]
+      .map((a) => a.modifiedTime)
+      .filter((d): d is string => !!d);
+    return dates.length ? dates.reduce((a, b) => (b > a ? b : a)) : null;
+  };
+
   const genRows = $derived.by<GenRow[]>(() =>
     tunes.map((t: Tune) => {
       const m = t.musescore[0];
+      const masterDate = m?.modifiedTime ?? null;
+      const genDate = newestGenDate(t);
       return {
         slug: t.slug,
         title: t.title,
@@ -74,6 +93,11 @@
                 : '#',
             }
           : null,
+        masterDate,
+        genDate,
+        // Compare the displayed (Pacific) calendar dates so the badge only shows
+        // when the dates a user can see actually differ.
+        stale: !!(masterDate && genDate && fmtDate(masterDate) > fmtDate(genDate)),
         partFmts: t.parts.filter((p) => p.generated).map((p) => p.format),
         // The catalog's instrument-less `scores` bucket; for generated output these
         // are parts for instruments off the core roster (e.g. accordion), not
@@ -127,6 +151,11 @@
           rendered in Letter and Lyre.
         </p>
         <p>
+          Each processed row shows when its MuseScore master was last modified and when
+          the parts were generated (dates in Pacific time). An <span class="badge update">Update</span>
+          tag means the master is newer than the parts — regenerate to pick up the changes.
+        </p>
+        <p>
           The top list is your to-do: masters with nothing generated yet. This reflects
           the synced Drive catalog, so masters that only live on a local disk (never
           synced) won't show here.
@@ -154,7 +183,9 @@
                 {r.master.name}
               </a>
             {/if}
-            <span class="flag">⏳ not processed</span>
+            {#if r.masterDate}
+              <span class="when">MuseScore {fmtDate(r.masterDate)}</span>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -182,7 +213,22 @@
               {@const p = tally(r.partFmts)}
               {@const x = tally(r.extraFmts)}
               <tr>
-                <th scope="row" class="song-col">{r.title}</th>
+                <th scope="row" class="song-col">
+                  <div class="song-cell">
+                    <span class="song-title">{r.title}</span>
+                    <span class="dates">
+                      {#if r.masterDate}
+                        <span class="d" title="MuseScore master last modified">MuseScore {fmtDate(r.masterDate)}</span>
+                      {/if}
+                      {#if r.genDate}
+                        <span class="d" title="Parts last generated">Generated {fmtDate(r.genDate)}</span>
+                      {/if}
+                      {#if r.stale}
+                        <span class="badge update" title="The MuseScore master is newer than the generated parts — regenerate to pick up the changes">Update</span>
+                      {/if}
+                    </span>
+                  </div>
+                </th>
                 <td>
                   {#if r.master}
                     <a class="mscz" href={r.master.href} title={r.master.name}>
@@ -224,6 +270,7 @@
         {#each orphanGenerated as r (r.slug)}
           <li>
             <span class="song">{r.title}</span>
+            {#if r.genDate}<span class="when">Generated {fmtDate(r.genDate)}</span>{/if}
             <span class="counts">{show(tally(r.partFmts))} parts · {show(tally(r.extraFmts))} extra parts · {r.audio} audio</span>
           </li>
         {/each}
@@ -357,11 +404,10 @@
     color: var(--ink);
   }
 
-  .todo .flag {
-    margin-left: auto;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #b06a00;
+  .todo .when {
+    font-size: 0.76rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
@@ -424,6 +470,46 @@
     font-weight: 600;
     color: var(--ink);
     min-width: 14rem;
+  }
+
+  /* The numeric columns line up with the song title's first line, not its
+     (taller) dated cell. */
+  tbody td,
+  tbody th {
+    vertical-align: top;
+  }
+
+  .song-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* Dates wrap under the title on narrow / progressive screens rather than
+     forcing the column wider. */
+  .dates {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-weight: 400;
+  }
+
+  .dates .d {
+    font-size: 0.74rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .badge.update {
+    font-weight: 700;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #9a5b00;
+    background: #fdf0d8;
+    border-color: #e8c98c;
   }
 
   .num {
