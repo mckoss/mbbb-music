@@ -309,17 +309,17 @@
 <svelte:window onkeydown={onKey} />
 
 {#if performing && performSet}
-  <!-- Dark full-screen perform-set overlay, mirroring ScoreOverlay's
-       performance mode. A floating cluster (top-right) holds song navigation
-       and a clear Done button. -->
+  <!-- Dark full-screen perform-set overlay, mirroring ScoreOverlay's immersive
+       modes. The back arrow (top-left) is the single, consistent exit to the
+       packet; Practice adds a one-line player, Perform stays chrome-light. -->
   <div class="overlay">
     {#if isPractice}
       <!-- Practice run: one clean top bar, matching the single-song practice
            layout. The compact player stretches to fill, so the set navigation
            sits flush right with Next song pinned at the very end. -->
       <div class="practice-bar">
-        <button class="exit" onclick={donePerform} aria-label="Done" title="Done">←</button>
-        <button class="ghost mode" onclick={switchMode} title="Switch to Performance">Performance ▶</button>
+        <button class="exit" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
+        <button class="ghost switch" onclick={switchMode} title="Switch to Perform">▶ Perform</button>
         <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
         {#if performAudios.length > 1}
           <select
@@ -354,17 +354,13 @@
         <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
       </div>
     {:else}
+      <!-- Perform: the back arrow (top-left) is the single exit, matching the
+           single-song Perform view. A floating cluster (top-right) holds the
+           mode switch, Part/Format, and song nav. -->
+      <button class="exit floating-back" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
       <div class="floating">
-        <span class="pos">
-          {performSet.name || 'Set'} · {clampedIndex + 1}/{performSongs.length}
-        </span>
-        <button class="ghost" onclick={switchMode} title="Switch run mode">✎ Practice</button>
-        <button class="ghost" onclick={prevSong} disabled={clampedIndex <= 0}>‹ Prev song</button>
-        <button
-          class="ghost"
-          onclick={nextSong}
-          disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button
-        >
+        <button class="ghost switch" onclick={switchMode} title="Switch to Practice">✎ Practice</button>
+        <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
         {#if performParts.length > 1}
           <label class="sel">
             <span class="eyebrow">Part</span>
@@ -382,10 +378,11 @@
             <option value="lyre">Lyre</option>
           </select>
         </label>
-        <button class="primary" onclick={donePerform}>Done</button>
+        <button class="ghost nav" onclick={prevSong} disabled={clampedIndex <= 0} aria-label="Previous song" title="Previous song">‹</button>
+        <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
       </div>
       <div class="now-playing">
-        <span class="run-mode">Performance</span>
+        <span class="run-mode">{performSet.name || 'Set'}</span>
         {performSlug ? titleOf(performSlug) : ''}
       </div>
     {/if}
@@ -918,8 +915,8 @@
   }
 
   .perform {
-    min-height: 38px;
-    padding: 0 14px;
+    min-height: 44px;
+    padding: 0 16px;
     border-radius: 6px;
     border: 1px solid var(--accent-strong);
     background: var(--accent);
@@ -931,8 +928,8 @@
 
   /* Practice is the lower-key sibling of Perform: same shape, outlined. */
   .practice-set {
-    min-height: 38px;
-    padding: 0 14px;
+    min-height: 44px;
+    padding: 0 16px;
     border-radius: 6px;
     border: 1px solid var(--accent-strong);
     background: var(--paper);
@@ -1166,12 +1163,13 @@
   }
 
   .floating button {
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 14px;
     border-radius: 6px;
     font-weight: 700;
     font-size: 0.8rem;
     cursor: pointer;
+    white-space: nowrap;
   }
 
   .floating .ghost {
@@ -1185,10 +1183,33 @@
     cursor: default;
   }
 
-  .floating .primary {
-    background: var(--accent);
+  /* Back arrow — the single, consistent exit, top-left on every overlay. Shared
+     look between the Practice top bar and the floating Perform arrow. */
+  .overlay .exit {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    line-height: 1;
+    background: rgba(255, 253, 247, 0.12);
     color: #fffdf7;
-    border: 1px solid var(--accent-strong);
+    border: 1px solid rgba(255, 253, 247, 0.35);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .overlay .exit:hover {
+    background: rgba(255, 253, 247, 0.22);
+  }
+
+  .floating-back {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
   }
 
   /* Part / Format pickers, styled for the dark cluster. */
@@ -1206,7 +1227,7 @@
   }
 
   .floating .sel select {
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 8px;
     border-radius: 6px;
     background: rgba(255, 253, 247, 0.12);
@@ -1234,15 +1255,16 @@
     margin-top: 8px;
   }
 
+  /* Sits just below the floating back arrow (top-left), so the two never overlap. */
   .now-playing {
     position: absolute;
-    top: 16px;
-    left: 16px;
+    top: 64px;
+    left: 12px;
     z-index: 5;
     font-size: 0.9rem;
     color: #f2d36b;
     font-weight: 700;
-    max-width: 50vw;
+    max-width: 60vw;
   }
 
   .run-mode {
@@ -1283,25 +1305,8 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
-  /* Step-out arrow, same top-left corner and look as the single-song bar. */
-  .practice-bar .exit {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.4rem;
-    line-height: 1;
-    background: rgba(255, 253, 247, 0.12);
-    color: #fffdf7;
-    border: 1px solid rgba(255, 253, 247, 0.35);
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
   .practice-bar .ghost {
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 12px;
     border-radius: 6px;
     font-weight: 700;
@@ -1327,7 +1332,7 @@
 
   .practice-bar .rec-sel,
   .practice-bar .part-sel {
-    min-height: 40px;
+    min-height: 44px;
     border-radius: 6px;
     border: 1px solid rgba(255, 253, 247, 0.25);
     background: #2c2d31;
