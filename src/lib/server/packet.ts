@@ -28,6 +28,12 @@ export interface PacketChart {
   lyreFit?: boolean;
   /** True for app-generated MuseScore output; these lyre cards are preformatted. */
   generated?: boolean;
+  /**
+   * 1-based page to keep from this chart's PDF (the rest are dropped). Used to
+   * pull a single page out of an undifferentiated full score. Out-of-range or
+   * absent means "all pages".
+   */
+  onlyPage?: number;
 }
 
 // Lyre-fit target: a 7" content width pinned to the TOP-LEFT of an 8.5×11 sheet,
@@ -65,6 +71,12 @@ export interface PacketSelection {
   omit?: Set<string>;
   /** Pin a song to a single part by sha; its other parts are dropped. */
   partBySlug?: Map<string, string>;
+  /**
+   * Keep only one (1-based) page of a song's full score — for picking a single
+   * page out of an undifferentiated combined score. Applies only when the song
+   * resolves to a full score, not to instrument parts.
+   */
+  pageBySlug?: Map<string, number>;
 }
 
 /**
@@ -101,7 +113,17 @@ export function packetCharts(
         // Actual Lyre-format music is already authored for the lyre card and must
         // pass through unchanged, including generated MuseScore Lyre PDFs.
         const lyreFit = format === 'lyre' && (sc.format !== 'lyre' || sc.isScore);
-        out.push({ slug, sha: sc.sha, label: sc.label, lyreFit, ...(sc.generated ? { generated: true } : {}) });
+        // A page pin only makes sense on a full score (a single combined PDF);
+        // instrument parts are already one chart per part.
+        const onlyPage = sc.isScore ? selection?.pageBySlug?.get(slug) : undefined;
+        out.push({
+          slug,
+          sha: sc.sha,
+          label: sc.label,
+          lyreFit,
+          ...(sc.generated ? { generated: true } : {}),
+          ...(onlyPage ? { onlyPage } : {}),
+        });
       }
     }
   }
@@ -144,7 +166,14 @@ export async function buildPacketPdf(
       const bytes = await loadBlob(chart.sha);
       const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
       const srcPages = src.getPages();
-      for (let i = 0; i < srcPages.length; i++) {
+      // A valid page pin narrows this chart to that single page; otherwise every
+      // page is copied (an out-of-range pin falls back to all, never empty).
+      const pinned = chart.onlyPage;
+      const indices =
+        pinned != null && pinned >= 1 && pinned <= srcPages.length
+          ? [pinned - 1]
+          : srcPages.map((_, i) => i);
+      for (const i of indices) {
         const { width, height } = srcPages[i].getSize();
         // Lyre-fit only charts that resolved to Letter/score fallbacks. Actual
         // Lyre-format pages, including generated MuseScore Lyre output, pass
