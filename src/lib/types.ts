@@ -29,6 +29,7 @@ export interface CatalogPart {
   originalName: string | null;
   source: string | null; // canonical source label this copy came from
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
+  modifiedTime?: string | null; // Drive last-modified ISO time
 }
 
 export interface CatalogAsset {
@@ -42,7 +43,7 @@ export interface CatalogAsset {
   instrumentSlug?: string; // set on audio: the isolated-part instrument, if any
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
   museScore?: boolean; // set on audio: the app-generated full-band "MuseScore Audio" mix
-  modifiedTime?: string | null; // Drive last-modified ISO time (populated on extras)
+  modifiedTime?: string | null; // Drive last-modified ISO time
 }
 
 // A manually-created score/part hidden by an app-generated replacement. Kept off

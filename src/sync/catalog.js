@@ -727,6 +727,9 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       folder: e.originalFolder || null,
       originalName: e.originalName || null,
       source: e.sourceFolderLabel || null,
+      // Drive last-modified time — lets the UI date assets (e.g. compare a .mscz
+      // master against the parts generated from it). Survives the `_mtime` strip.
+      modifiedTime: e.modifiedTime || null,
       // Carry the generated flag so the masking pass can keep these and drop the
       // manual copies; a truthy value also lets the UI badge a standardized score.
       ...(isGenerated ? { generated: true } : {}),
