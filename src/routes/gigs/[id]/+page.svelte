@@ -147,6 +147,14 @@
     )
   );
 
+  // Save-name for the combined PDF. The download anchor's `download` attribute is
+  // what makes it save as a file rather than render inline — iOS Safari ignores
+  // the server's Content-Disposition: attachment for PDFs and previews them in
+  // the window (a dead-end in the standalone PWA) without it.
+  const packetFileName = $derived(
+    `MBBB - ${gig.name} - ${packetInstLabel} (${packetFormat === 'lyre' ? 'Lyre' : 'Letter'}).pdf`
+  );
+
   // The packet, one row per song (in set order, a song shared across sets shown
   // once), each carrying every matching part for the box's chosen instrument/
   // format. Songs with no chart in that instrument/format are dropped — they
@@ -732,7 +740,7 @@
 
       {#if packetSongs.length > 0}
         {#if packetCount > 0}
-          <a class="packet-btn" href={packetHref}>
+          <a class="packet-btn" href={packetHref} download={packetFileName}>
             ⬇ Download as one PDF ({packetCount} chart{packetCount === 1 ? '' : 's'})
           </a>
         {:else}
