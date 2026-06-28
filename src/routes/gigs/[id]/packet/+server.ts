@@ -17,7 +17,8 @@ import { packetCharts, buildPacketPdf, type PacketSelection } from '$lib/server/
  * Parse the download box's per-song customization from the query string:
  *   omit=slug1,slug2          songs to leave out
  *   part=slug:sha (repeated)  songs pinned to a single part
- * Returns undefined when neither is present (the default full packet).
+ *   page=slug:N (repeated)    full-score songs pinned to a single page (1-based)
+ * Returns undefined when none are present (the default full packet).
  */
 function parseSelection(url: URL): PacketSelection | undefined {
   const omit = new Set(
@@ -34,8 +35,16 @@ function parseSelection(url: URL): PacketSelection | undefined {
     const sha = raw.slice(i + 1);
     if (slug && sha) partBySlug.set(slug, sha);
   }
-  if (omit.size === 0 && partBySlug.size === 0) return undefined;
-  return { omit, partBySlug };
+  const pageBySlug = new Map<string, number>();
+  for (const raw of url.searchParams.getAll('page')) {
+    const i = raw.indexOf(':');
+    if (i <= 0) continue;
+    const slug = raw.slice(0, i);
+    const n = Number(raw.slice(i + 1));
+    if (slug && Number.isInteger(n) && n >= 1) pageBySlug.set(slug, n);
+  }
+  if (omit.size === 0 && partBySlug.size === 0 && pageBySlug.size === 0) return undefined;
+  return { omit, partBySlug, pageBySlug };
 }
 
 /** Strip characters unsafe in a Content-Disposition filename. */

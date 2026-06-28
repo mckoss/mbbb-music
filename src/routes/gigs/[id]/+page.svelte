@@ -147,10 +147,14 @@
   // once), each carrying every matching part for the box's chosen instrument/
   // format. Songs with no chart in that instrument/format are dropped — they
   // can't be downloaded anyway. Drives the per-song checkbox list below.
+  // A song resolves to EITHER a list of instrument parts OR a single full score
+  // (an undifferentiated combined PDF). Parts get a part picker; a full score
+  // gets a per-page picker so a player can pull just one page out of the score.
   interface PacketSong {
     slug: string;
     title: string;
     parts: { sha: string; label: string }[];
+    score: { sha: string; label: string } | null;
   }
   const packetSongs = $derived.by(() => {
     const seen = new Set<string>();
@@ -159,39 +163,74 @@
       for (const slug of set.songSlugs) {
         if (seen.has(slug)) continue;
         const tune = bySlug.get(slug);
-        const scores = tune ? activePdfs(tune, packetInstrument, packetFormat) : [];
-        if (scores.length === 0) continue;
+        const list = tune ? activePdfs(tune, packetInstrument, packetFormat) : [];
+        if (list.length === 0) continue;
         seen.add(slug);
+        const asScore = list.length === 1 && list[0].isScore;
         out.push({
           slug,
           title: titleOf(slug),
-          parts: scores.map((sc) => ({ sha: sc.sha, label: sc.label })),
+          parts: asScore ? [] : list.map((sc) => ({ sha: sc.sha, label: sc.label })),
+          score: asScore ? { sha: list[0].sha, label: list[0].label } : null,
         });
       }
     }
     return out;
   });
 
+  // Page counts for full scores, fetched lazily (immutable per content hash, so
+  // cached forever server-side). The download box is online-only; a failed fetch
+  // just leaves a score without a per-page choice. `requestedPages` is a plain
+  // Set (not reactive) so the effect never re-fires on its own writes.
+  const requestedPages = new Set<string>();
+  let pageCounts = $state<Record<string, number>>({});
+  $effect(() => {
+    for (const s of packetSongs) {
+      const sha = s.score?.sha;
+      if (!sha || requestedPages.has(sha)) continue;
+      requestedPages.add(sha);
+      fetch(`/render/${sha}/info`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && typeof d.pages === 'number') pageCounts[sha] = d.pages;
+        })
+        .catch(() => {});
+    }
+  });
+
   // Per-song customization — we track only deviations from the default (every
-  // song, all parts): unchecked songs and single-part pins. State is by slug, so
-  // it survives instrument/format changes; pins are re-validated against the
-  // current parts wherever they're used, so a stale sha just falls back to "All".
+  // song, all parts/pages): unchecked songs, single-part pins, single-page pins.
+  // State is by slug, so it survives instrument/format changes; every pin is
+  // re-validated where it's used, so a stale value just falls back to "All".
   let omitSlugs = $state<Record<string, boolean>>({});
   let partPick = $state<Record<string, string>>({});
-  // The effective part choice for a song: a valid pinned sha, else 'all'.
+  let pagePick = $state<Record<string, string>>({});
+  // The effective part choice for a parts song: a valid pinned sha, else 'all'.
   function pickFor(song: PacketSong): string {
     const p = partPick[song.slug];
     return p && song.parts.some((x) => x.sha === p) ? p : 'all';
+  }
+  // The effective page choice for a full-score song: a valid 1-based page, else 'all'.
+  function pageFor(song: PacketSong): string {
+    const n = pageCounts[song.score?.sha ?? ''] ?? 0;
+    const p = pagePick[song.slug];
+    const num = p ? Number(p) : NaN;
+    return Number.isInteger(num) && num >= 1 && num <= n ? p : 'all';
   }
 
   const hasSongs = $derived(gig.sets.some((s) => s.songSlugs.length > 0));
 
   // How many charts the current selection will merge — mirrors the server's
-  // set-order, sha-deduped assembly so the button count matches the PDF.
+  // set-order, sha-deduped assembly so the button count matches the PDF. A full
+  // score counts as one chart whether all pages or a single page are kept.
   const packetCount = $derived.by(() => {
     const seen = new Set<string>();
     for (const s of packetSongs) {
       if (omitSlugs[s.slug]) continue;
+      if (s.score) {
+        seen.add(s.score.sha);
+        continue;
+      }
       const pin = pickFor(s);
       for (const p of s.parts) {
         if (pin !== 'all' && p.sha !== pin) continue;
@@ -202,7 +241,8 @@
   });
 
   // Encode only deviations onto the existing GET link, so the default packet URL
-  // is unchanged and customized ones stay short: omit=slug,slug + part=slug:sha.
+  // is unchanged and customized ones stay short: omit=slug,slug, part=slug:sha,
+  // page=slug:N.
   const packetHref = $derived.by(() => {
     const base = `/gigs/${page.params.id}/packet?instrument=${encodeURIComponent(
       packetInstrument
@@ -212,6 +252,11 @@
     for (const s of packetSongs) {
       if (omitSlugs[s.slug]) {
         omit.push(s.slug);
+        continue;
+      }
+      if (s.score) {
+        const pg = pageFor(s);
+        if (pg !== 'all') pins += `&page=${encodeURIComponent(`${s.slug}:${pg}`)}`;
         continue;
       }
       const pin = pickFor(s);
@@ -693,6 +738,7 @@
           {#each packetSongs as s (s.slug)}
             {@const included = !omitSlugs[s.slug]}
             {@const picked = pickFor(s)}
+            {@const pages = s.score ? pageCounts[s.score.sha] ?? 0 : 0}
             <li class="dl-row" class:omitted={!included}>
               <label class="dl-check">
                 <input
@@ -701,14 +747,30 @@
                   onchange={(e) => (omitSlugs[s.slug] = !e.currentTarget.checked)}
                 />
                 <a
-                  href={openUrl(picked === 'all' ? s.parts[0].sha : picked)}
+                  href={openUrl(s.score ? s.score.sha : picked === 'all' ? s.parts[0].sha : picked)}
                   target="_blank"
                   rel="noopener"
                 >
                   {s.title}
                 </a>
               </label>
-              {#if s.parts.length > 1}
+              {#if s.score}
+                {#if pages > 1}
+                  <select
+                    class="dl-part"
+                    value={pageFor(s)}
+                    disabled={!included}
+                    onchange={(e) => (pagePick[s.slug] = e.currentTarget.value)}
+                  >
+                    <option value="all">All pages ({pages})</option>
+                    {#each Array(pages) as _, i (i)}
+                      <option value={String(i + 1)}>Page {i + 1}</option>
+                    {/each}
+                  </select>
+                {:else}
+                  <span class="dl-label">{s.score.label}</span>
+                {/if}
+              {:else if s.parts.length > 1}
                 <select
                   class="dl-part"
                   value={picked}
@@ -1227,9 +1289,15 @@
   }
 
   .dl-part {
+    /* Uniform width for every row's picker — long part/page labels just
+       truncate rather than stretching the control to fit. */
     flex: none;
-    max-width: 55%;
+    width: 12rem;
+    max-width: 45vw;
     min-height: 38px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .delete-gig {

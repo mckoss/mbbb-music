@@ -194,6 +194,31 @@ test('buildPacketPdf: a Letter packet (no lyreMode) never re-homes an oversized 
   assert.ok(Math.abs(p0.getWidth() - 14 * IN) < 1e-6, 'copied verbatim at its native 14" width');
 });
 
+test('buildPacketPdf: onlyPage keeps just that 1-based page of a multi-page chart', async () => {
+  // Three pages at distinguishable sizes so we can tell which one survived.
+  const src = await PDFDocument.create();
+  src.addPage([100, 100]);
+  src.addPage([200, 200]);
+  src.addPage([300, 300]);
+  const bytes = await src.save();
+
+  const out = await buildPacketPdf([{ slug: 'a', sha: 's', label: 'A', onlyPage: 2 }], async () => bytes);
+  const doc = await PDFDocument.load(out);
+  assert.equal(doc.getPageCount(), 1, 'only one page kept');
+  const [p] = doc.getPages();
+  assert.ok(Math.abs(p.getWidth() - 200) < 1e-6, 'kept the second page');
+});
+
+test('buildPacketPdf: an out-of-range onlyPage falls back to all pages (never empty)', async () => {
+  const src = await PDFDocument.create();
+  src.addPage([100, 100]);
+  src.addPage([200, 200]);
+  const bytes = await src.save();
+
+  const out = await buildPacketPdf([{ slug: 'a', sha: 's', label: 'A', onlyPage: 9 }], async () => bytes);
+  assert.equal((await PDFDocument.load(out)).getPageCount(), 2, 'all pages kept');
+});
+
 test('buildPacketPdf: returns null when no chart blob can be loaded', async () => {
   const out = await buildPacketPdf(
     [{ slug: 'a', sha: 'missing', label: 'A', lyreFit: true }],
@@ -489,6 +514,51 @@ test('packetCharts: a pin to a sha that does not match leaves the song empty', (
     partBySlug: new Map([['beta', 'nope']]),
   });
   assert.equal(charts.length, 0);
+});
+
+test('packetCharts: a page pin on a full score sets onlyPage; parts ignore it', () => {
+  const catalog = {
+    tunes: [
+      {
+        slug: 'score-only',
+        title: 'Score Only',
+        parts: [], // no parts for the instrument → resolves to the full score
+        scores: [{ sha256: 'full', originalName: 'full-score.pdf', source: null }],
+        audio: [],
+      },
+      {
+        slug: 'beta',
+        title: 'Beta',
+        parts: [
+          {
+            sha256: 'beta-1',
+            instrumentSlug: 'trumpet',
+            instrument: 'Trumpet',
+            key: 'bflat',
+            partNumber: null,
+            format: 'letter',
+            originalName: 'beta.pdf',
+            source: null,
+          },
+        ],
+        scores: [],
+        audio: [],
+      },
+    ],
+  };
+  const gig = { sets: [{ songSlugs: ['score-only', 'beta'] }] };
+  const charts = packetCharts(gig, catalog, 'trumpet', 'letter', {
+    // A stray page pin on a parts song must be ignored.
+    pageBySlug: new Map([
+      ['score-only', 3],
+      ['beta', 2],
+    ]),
+  });
+  const score = charts.find((c) => c.slug === 'score-only');
+  const beta = charts.find((c) => c.slug === 'beta');
+  assert.equal(score.sha, 'full');
+  assert.equal(score.onlyPage, 3, 'page pin attached to the full score');
+  assert.equal(beta.onlyPage, undefined, 'page pin ignored for an instrument part');
 });
 
 test('packetCharts: generated-source Lyre carrier pages are not downscaled by page geometry', () => {
