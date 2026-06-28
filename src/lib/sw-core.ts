@@ -40,12 +40,17 @@ export interface SwEnv {
   precache: Set<string>;
   version: string;
   /**
-   * Best-effort connectivity check (navigator.onLine). Trusted only in the
-   * negative: `false` means definitely offline, so we skip the network entirely
-   * and fall back instantly. `true` can lie (captive portal) — there the timeout
-   * still guards us.
+   * Whether to attempt the network at all. Backed by a circuit breaker (see the
+   * worker shell): the first request that times out trips "offline" for a few
+   * seconds so the stacked follow-up requests of a single tap (preload, data
+   * load, navigation fallback) return instantly instead of each waiting the
+   * timeout. navigator.onLine and the page's offline event feed it too.
    */
   online: () => boolean;
+  /** Called when a network attempt fails/times out — trips the breaker. */
+  markOffline: () => void;
+  /** Called when a network attempt reaches the server — clears the breaker. */
+  markReachable: () => void;
   /** Network timeout (ms) for standard pages/data before we fall back. */
   timeoutMs: number;
   /** Longer timeout (ms) for large media blobs, which can legitimately be slow. */
@@ -183,9 +188,11 @@ export async function cacheFirst(
   if (!env.online()) return new Response(null, { status: 504 });
   try {
     const res = await fetchWithTimeout(env.fetch, request, opts.timeoutMs ?? env.timeoutMs);
+    env.markReachable();
     if (opts.store && res.ok) env.waitUntil(cache.put(request, res.clone()));
     return res;
   } catch {
+    env.markOffline();
     return new Response(null, { status: 504 });
   }
 }
@@ -224,12 +231,14 @@ export async function staleWhileRevalidate(
   const revalidate = (async (): Promise<Response | undefined> => {
     try {
       const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+      env.markReachable();
       if (res.ok) {
         if (hitForCompare && (await bodyChanged(hitForCompare, res))) env.notifyUpdate(request.url);
         await cache.put(request, res.clone());
       }
       return res;
     } catch {
+      env.markOffline();
       return undefined;
     }
   })();
@@ -250,8 +259,11 @@ async function cacheAnyFirst(env: SwEnv, request: Request): Promise<Response> {
   if (hit) return hit;
   if (!env.online()) return new Response(null, { status: 504 });
   try {
-    return await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+    const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+    env.markReachable();
+    return res;
   } catch {
+    env.markOffline();
     return new Response(null, { status: 504 });
   }
 }

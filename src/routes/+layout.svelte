@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { page } from '$app/state';
+  import { page, navigating } from '$app/state';
   import { browser, version } from '$app/environment';
   import { goto, invalidateAll } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
@@ -133,6 +133,21 @@
     updateReady = false;
     await invalidateAll();
   }
+
+  // Themed loading indicator for navigations that actually have to wait (a genuine
+  // network round-trip). Most navigations are instant (data is already loaded), so
+  // only show after a short delay — no flash on quick ones, clear feedback that a
+  // tap registered when it isn't, instead of an apparently-dead click.
+  let navPending = $state(false);
+  $effect(() => {
+    if (!browser) return;
+    if (!navigating.to) {
+      navPending = false;
+      return;
+    }
+    const t = setTimeout(() => (navPending = true), 200);
+    return () => clearTimeout(t);
+  });
 </script>
 
 {#if authed && !overlayOpen}
@@ -195,6 +210,13 @@
   {@render children()}
 </main>
 
+{#if navPending}
+  <!-- Spinning eighth note: feedback for a navigation that has to wait. -->
+  <div class="nav-spinner" role="status" aria-label="Loading">
+    <span class="note">♫</span>
+  </div>
+{/if}
+
 {#if updateReady}
   <!-- Eventually-fresh nudge: sits below the perform/score overlays (z-index
        1000) so it never interrupts a performance; surfaces once they exit. -->
@@ -208,6 +230,37 @@
 <ScoreOverlay />
 
 <style>
+  .nav-spinner {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 50;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  }
+
+  .nav-spinner .note {
+    font-size: 1.5rem;
+    color: #f2d36b;
+    line-height: 1;
+    animation: note-spin 0.9s linear infinite;
+  }
+
+  @keyframes note-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .update-nudge {
     position: fixed;
     left: 50%;

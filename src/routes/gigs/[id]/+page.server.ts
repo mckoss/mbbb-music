@@ -4,10 +4,7 @@
 // for a current set (Always/Active/Learning).
 import { error, fail, redirect } from '@sveltejs/kit';
 
-import { getCatalog } from '$lib/server/library';
-import { logEvent } from '$lib/server/activity';
 import {
-  getGig,
   updateGig,
   deleteGig,
   duplicateGig,
@@ -37,23 +34,10 @@ function parseTimes(form: FormData): GigTime[] {
   return out;
 }
 
-export function load({ params, locals, url }) {
-  const gig = getGig(params.id);
-  if (!gig) throw error(404, 'Gig not found');
-  // Record a gig view (not when entering perform mode — that's a performance,
-  // beaconed from the client).
-  if (locals.user?.role && !url.searchParams.has('perform')) {
-    try {
-      logEvent({ email: locals.user.email, type: 'gig-view', label: gig.name, detail: gig.id });
-    } catch {
-      /* analytics must not break the page */
-    }
-  }
-  // The catalog gives titles for each song slug and the pool of songs an admin
-  // can add (filtered to Always/Active/Learning on the client).
-  const catalog = getCatalog();
-  return { gig, catalog };
-}
+// The page data (gig + catalog) comes from already-loaded layout data via the
+// universal load in +page.ts, so opening a gig is instant and works offline.
+// A gig-view is logged from the client (see +page.svelte) instead of here, so
+// the view still records (and replays when offline) without a server round-trip.
 
 export const actions = {
   // Update the gig's top-level info fields (name/date/times/location/notes).

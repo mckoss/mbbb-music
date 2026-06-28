@@ -37,24 +37,36 @@ const PAGES = pagesCache(version);
 const ACTIVITY_QUEUE = 'mbbb-activity-queue';
 const ACTIVITY_QUEUE_LIMIT = 100;
 
-// Network timeout before we fall back to cache / fail fast. We only ever wait
-// this long when navigator.onLine claims we're connected but the server is
-// unreachable (e.g. a captive portal); a truly offline device skips the wait
-// entirely. Standard pages get a short timeout; large media gets a longer one.
-const NETWORK_TIMEOUT_MS = 4000;
+// Network timeout before we fall back. Only reached when we still believe we're
+// online but the server doesn't answer; a known-offline device skips it. Standard
+// pages get a short timeout; large media gets a longer one.
+const NETWORK_TIMEOUT_MS = 3000;
 const MEDIA_TIMEOUT_MS = 30000;
+
+// How long one failed request keeps us in "offline" mode. Long enough that the
+// stacked follow-ups of a single tap (preload, data load, navigation fallback)
+// all skip the network; short enough to re-probe quickly when wifi returns.
+const OFFLINE_BREAKER_MS = 8000;
 
 // Everything we can serve straight from the install-time precache.
 const PRECACHE = [...build, ...files];
 const PRECACHE_SET = new Set(PRECACHE);
 let flushingActivity = false;
 
-// Last connectivity state reported by a page. The worker's own navigator.onLine
-// is unreliable (notably stuck `true` on iOS), but the window's online/offline
-// events are dependable — so pages post their state here. We treat ourselves as
-// offline if EITHER signal says so, so the offline fallback is instant.
-let clientOnline: boolean | null = null;
-const isOnline = (): boolean => clientOnline !== false && navigator.onLine !== false;
+// Connectivity circuit breaker. navigator.onLine is unreliable here (stuck `true`
+// on iOS) and the page's offline event can fail to fire in a standalone PWA, so
+// the source of truth is actual fetch outcomes: a timeout trips us offline for a
+// window; any reachable server clears it. It self-heals — after the window we
+// re-probe — so it can never get stuck offline. Page online/offline events and
+// the worker's own navigator.onLine feed in as extra hints.
+let offlineUntil = 0;
+const isOnline = (): boolean => navigator.onLine !== false && Date.now() >= offlineUntil;
+const markOffline = (): void => {
+  offlineUntil = Date.now() + OFFLINE_BREAKER_MS;
+};
+const markReachable = (): void => {
+  offlineUntil = 0;
+};
 
 // The page shown when an uncached route is opened offline. Crucially it is NOT a
 // dead end: a standalone Home-Screen app has no browser chrome, so the page must
@@ -198,6 +210,8 @@ sw.addEventListener('fetch', (event) => {
     precache: PRECACHE_SET,
     version,
     online: isOnline,
+    markOffline,
+    markReachable,
     timeoutMs: NETWORK_TIMEOUT_MS,
     mediaTimeoutMs: MEDIA_TIMEOUT_MS,
     offlinePage,
@@ -210,6 +224,9 @@ sw.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') sw.skipWaiting();
   if (event.data?.type === 'flush-activity') event.waitUntil(flushQueuedActivity());
   // Pages report connectivity (their online/offline events are reliable, unlike
-  // ours) so we can fall back instantly instead of waiting out a timeout.
-  if (event.data?.type === 'connectivity') clientOnline = Boolean(event.data.online);
+  // ours) so we trip/clear the breaker instantly instead of waiting a timeout.
+  if (event.data?.type === 'connectivity') {
+    if (event.data.online) markReachable();
+    else markOffline();
+  }
 });
