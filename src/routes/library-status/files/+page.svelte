@@ -62,7 +62,8 @@
 
 {#snippet treeNode(node: InvNode)}
   {#each node.folders as fol (fol.name)}
-    <details open={countFiles(fol) <= 40}>
+    <!-- All folders start collapsed; the viewer expands what they need. -->
+    <details>
       <summary>
         <span class="fname">📁 {fol.name}</span>
         <span class="meta">{countFiles(fol)} file{countFiles(fol) === 1 ? '' : 's'}</span>
