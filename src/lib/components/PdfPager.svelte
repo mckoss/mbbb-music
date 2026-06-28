@@ -21,6 +21,11 @@
   let numPages = $state(0);
   let loading = $state(true);
   let err = $state<string | null>(null);
+  // Distinguishes "this chart isn't saved for offline use" (the common case
+  // when paging to a score that was never downloaded while online) from a real
+  // render failure, so we can show a plain, actionable message instead of a
+  // cryptic "image failed to load".
+  let offline = $state(false);
 
   // Guards against a stale info response landing after the sha changed again.
   let gen = 0;
@@ -35,18 +40,28 @@
     const myGen = ++gen;
     loading = true;
     err = null;
+    offline = false;
     numPages = 0;
     pageNum = 1;
     (async () => {
       try {
         const res = await fetch(`/render/${s}/info`);
+        // The service worker short-circuits an un-cached resource while offline
+        // with a 504 (see sw-core cacheFirst) — surface that as the friendly
+        // offline state rather than a render error.
+        if (res.status === 504) throw new Error('offline');
         if (!res.ok) throw new Error(`info ${res.status}`);
         const { pages } = (await res.json()) as { pages: number };
         if (myGen !== gen) return;
         numPages = pages;
       } catch (e) {
         if (myGen === gen) {
-          err = e instanceof Error ? e.message : String(e);
+          offline = e instanceof Error && e.message === 'offline';
+          // A bare network failure offline (no SW short-circuit) lands here too.
+          if (!offline && typeof navigator !== 'undefined' && navigator.onLine === false) {
+            offline = true;
+          }
+          err = offline ? null : e instanceof Error ? e.message : String(e);
           loading = false;
         }
       }
@@ -63,10 +78,19 @@
   function onLoad() {
     loading = false;
     err = null;
+    offline = false;
   }
   function onError() {
     loading = false;
-    err = 'image failed to load';
+    // A page image that won't load while offline means this chart wasn't saved
+    // for offline use — show the friendly message, not a render error.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      offline = true;
+      err = null;
+    } else {
+      offline = false;
+      err = 'image failed to load';
+    }
   }
 
   export function prev() {
@@ -104,7 +128,15 @@
     {/if}
 
     {#if loading}
-      <p class="status">Loading score…</p>
+      <div class="status loading" role="status" aria-label="Loading score">
+        <span class="note">♫</span>
+        <span>Loading score…</span>
+      </div>
+    {:else if offline}
+      <p class="status offline">
+        This score isn't saved for offline use. Reconnect, or download it from the
+        gig page while you're online.
+      </p>
     {:else if err}
       <p class="status error">
         Couldn't render the score{#if err}: <span class="errdetail">{err}</span>{/if}.
@@ -176,6 +208,30 @@
     font-size: 0.9rem;
     max-width: 80%;
     text-align: center;
+  }
+
+  /* Spinning eighth note matches the app-wide nav indicator (see +layout). */
+  .status.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status.loading .note {
+    font-size: 1.8rem;
+    color: #f2d36b;
+    line-height: 1;
+    animation: note-spin 0.9s linear infinite;
+  }
+
+  @keyframes note-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .status.error a {
