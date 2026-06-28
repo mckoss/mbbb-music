@@ -11,7 +11,32 @@ import { getCatalog, casPath } from '$lib/server/library';
 import { instrumentDisplay } from '$lib/format';
 import type { Catalog } from '$lib/types';
 import type { PrintFormat } from '$lib/stores';
-import { packetCharts, buildPacketPdf } from '$lib/server/packet';
+import { packetCharts, buildPacketPdf, type PacketSelection } from '$lib/server/packet';
+
+/**
+ * Parse the download box's per-song customization from the query string:
+ *   omit=slug1,slug2          songs to leave out
+ *   part=slug:sha (repeated)  songs pinned to a single part
+ * Returns undefined when neither is present (the default full packet).
+ */
+function parseSelection(url: URL): PacketSelection | undefined {
+  const omit = new Set(
+    (url.searchParams.get('omit') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  const partBySlug = new Map<string, string>();
+  for (const raw of url.searchParams.getAll('part')) {
+    const i = raw.indexOf(':');
+    if (i <= 0) continue;
+    const slug = raw.slice(0, i);
+    const sha = raw.slice(i + 1);
+    if (slug && sha) partBySlug.set(slug, sha);
+  }
+  if (omit.size === 0 && partBySlug.size === 0) return undefined;
+  return { omit, partBySlug };
+}
 
 /** Strip characters unsafe in a Content-Disposition filename. */
 function safeName(s: string): string {
@@ -29,7 +54,7 @@ export async function GET({ params, url }) {
   const instrument = url.searchParams.get('instrument') ?? '';
   const format: PrintFormat = url.searchParams.get('format') === 'lyre' ? 'lyre' : 'letter';
 
-  const charts = packetCharts(gig, catalog, instrument, format);
+  const charts = packetCharts(gig, catalog, instrument, format, parseSelection(url));
   if (charts.length === 0) throw error(404, 'No charts for this instrument and format');
 
   const inst = catalog.instruments.find((i) => i.slug === instrument);

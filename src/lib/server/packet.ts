@@ -56,25 +56,45 @@ export function lyreFitPlacement(w: number, h: number): { dw: number; dh: number
 }
 
 /**
+ * Per-song customization of a packet, expressed as deviations from the default
+ * (every song, every matching part). The download box sends these so a player
+ * can leave songs out or pin a single part; omitting it builds the full packet.
+ */
+export interface PacketSelection {
+  /** Song slugs to leave out of the packet entirely. */
+  omit?: Set<string>;
+  /** Pin a song to a single part by sha; its other parts are dropped. */
+  partBySlug?: Map<string, string>;
+}
+
+/**
  * The charts that belong in a packet for the chosen instrument/format: every
  * set's songs in order, each resolved to all matching printable PDFs and
  * de-duplicated by content sha (a chart used in two sets appears once). Mirrors
  * the page's packet download derivation so the two views stay in lockstep.
+ *
+ * An optional {@link PacketSelection} narrows the result: omitted songs are
+ * skipped, and a song pinned to one part keeps only that sha. Absent selection
+ * (or empty sets/maps) yields the full default packet.
  */
 export function packetCharts(
   gig: Gig,
   catalog: Catalog,
   instrument: string,
-  format: PrintFormat
+  format: PrintFormat,
+  selection?: PacketSelection
 ): PacketChart[] {
   const bySlug = new Map(catalog.tunes.map((t) => [t.slug, t]));
   const seen = new Set<string>();
   const out: PacketChart[] = [];
   for (const set of gig.sets) {
     for (const slug of set.songSlugs) {
+      if (selection?.omit?.has(slug)) continue;
       const tune = bySlug.get(slug);
       if (!tune) continue;
+      const pinnedSha = selection?.partBySlug?.get(slug);
       for (const sc of activePdfs(tune, instrument, format)) {
+        if (pinnedSha && sc.sha !== pinnedSha) continue;
         if (seen.has(sc.sha)) continue;
         seen.add(sc.sha);
         // In a Lyre packet, shrink Letter/score fallbacks to a 7" page width.

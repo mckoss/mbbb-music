@@ -404,6 +404,93 @@ test('packetCharts: generated Lyre-format parts pass through without downscaling
   assert.equal(chart.lyreFit, false);
 });
 
+// --- packetCharts: per-song selection (omit songs / pin a single part) -------
+
+function multiSongCatalog() {
+  const part = (sha, slug, instrument, partNumber, format) => ({
+    sha256: sha,
+    instrumentSlug: instrument,
+    instrument: 'Trumpet',
+    key: 'bflat',
+    partNumber,
+    format,
+    originalName: `${slug}-${sha}.pdf`,
+    source: null,
+  });
+  return {
+    tunes: [
+      {
+        slug: 'alpha',
+        title: 'Alpha',
+        parts: [
+          part('alpha-1', 'alpha', 'trumpet', 1, 'letter'),
+          part('alpha-2', 'alpha', 'trumpet', 2, 'letter'),
+        ],
+        scores: [],
+        audio: [],
+      },
+      {
+        slug: 'beta',
+        title: 'Beta',
+        parts: [part('beta-1', 'beta', 'trumpet', null, 'letter')],
+        scores: [],
+        audio: [],
+      },
+    ],
+  };
+}
+
+test('packetCharts: no selection yields the full default packet', () => {
+  const gig = { sets: [{ songSlugs: ['alpha', 'beta'] }] };
+  const charts = packetCharts(gig, multiSongCatalog(), 'trumpet', 'letter');
+  assert.deepEqual(
+    charts.map((c) => c.sha),
+    ['alpha-1', 'alpha-2', 'beta-1']
+  );
+});
+
+test('packetCharts: an omitted song is dropped entirely', () => {
+  const gig = { sets: [{ songSlugs: ['alpha', 'beta'] }] };
+  const charts = packetCharts(gig, multiSongCatalog(), 'trumpet', 'letter', {
+    omit: new Set(['alpha']),
+  });
+  assert.deepEqual(
+    charts.map((c) => c.sha),
+    ['beta-1']
+  );
+});
+
+test('packetCharts: a pinned part keeps only that sha for the song', () => {
+  const gig = { sets: [{ songSlugs: ['alpha', 'beta'] }] };
+  const charts = packetCharts(gig, multiSongCatalog(), 'trumpet', 'letter', {
+    partBySlug: new Map([['alpha', 'alpha-2']]),
+  });
+  assert.deepEqual(
+    charts.map((c) => c.sha),
+    ['alpha-2', 'beta-1']
+  );
+});
+
+test('packetCharts: omit and pin combine; a song shared across sets is handled once', () => {
+  const gig = { sets: [{ songSlugs: ['alpha', 'beta'] }, { songSlugs: ['alpha'] }] };
+  const charts = packetCharts(gig, multiSongCatalog(), 'trumpet', 'letter', {
+    omit: new Set(['beta']),
+    partBySlug: new Map([['alpha', 'alpha-1']]),
+  });
+  assert.deepEqual(
+    charts.map((c) => c.sha),
+    ['alpha-1']
+  );
+});
+
+test('packetCharts: a pin to a sha that does not match leaves the song empty', () => {
+  const gig = { sets: [{ songSlugs: ['beta'] }] };
+  const charts = packetCharts(gig, multiSongCatalog(), 'trumpet', 'letter', {
+    partBySlug: new Map([['beta', 'nope']]),
+  });
+  assert.equal(charts.length, 0);
+});
+
 test('packetCharts: generated-source Lyre carrier pages are not downscaled by page geometry', () => {
   const gig = { sets: [{ songSlugs: ['generated-carrier'] }] };
   const catalog = {
