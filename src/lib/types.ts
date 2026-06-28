@@ -42,6 +42,7 @@ export interface CatalogAsset {
   instrumentSlug?: string; // set on audio: the isolated-part instrument, if any
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
   museScore?: boolean; // set on audio: the app-generated full-band "MuseScore Audio" mix
+  modifiedTime?: string | null; // Drive last-modified ISO time (populated on extras)
 }
 
 // A manually-created score/part hidden by an app-generated replacement. Kept off

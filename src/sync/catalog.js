@@ -704,7 +704,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const bySong = new Map();
   const extras = [];
-  const extraOf = (e) => ({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType });
+  const extraOf = (e) => ({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType, modifiedTime: e.modifiedTime || null });
 
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
