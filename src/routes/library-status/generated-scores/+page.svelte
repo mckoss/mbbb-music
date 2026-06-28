@@ -4,6 +4,7 @@
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { stripCopyOf } from '$lib/format';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
+  import { viewHref } from '$lib/view';
 
   // Build-pipeline view: which MuseScore (.mscz) masters in the library have been
   // turned into app-generated parts/scores/audio (by `bin/build-scores.js`) and
@@ -60,7 +61,17 @@
         master: m
           ? {
               name: m.originalName ? stripCopyOf(m.originalName) : 'MuseScore file',
-              href: m.sha256 ? openUrl(m.sha256) : '#',
+              // .mscz can't be previewed → the viewer shows a download card (with a
+              // back button) rather than dead-ending in a new tab.
+              href: m.sha256
+                ? viewHref({
+                    sha: m.sha256,
+                    kind: 'download',
+                    title: `${t.title} — MuseScore`,
+                    from: page.url.pathname,
+                    url: openUrl(m.sha256),
+                  })
+                : '#',
             }
           : null,
         partFmts: t.parts.filter((p) => p.generated).map((p) => p.format),
@@ -139,7 +150,7 @@
           <li>
             <span class="song">{r.title}</span>
             {#if r.master}
-              <a class="mscz" href={r.master.href} target="_blank" rel="noopener" title={r.master.name}>
+              <a class="mscz" href={r.master.href} title={r.master.name}>
                 {r.master.name}
               </a>
             {/if}
@@ -174,7 +185,7 @@
                 <th scope="row" class="song-col">{r.title}</th>
                 <td>
                   {#if r.master}
-                    <a class="mscz" href={r.master.href} target="_blank" rel="noopener" title={r.master.name}>
+                    <a class="mscz" href={r.master.href} title={r.master.name}>
                       {r.master.name}
                     </a>
                   {:else}

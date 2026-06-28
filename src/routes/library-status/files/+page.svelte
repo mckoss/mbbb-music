@@ -4,6 +4,7 @@
   import type { Catalog } from '$lib/types';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
+  import { viewHref, viewKindFromName } from '$lib/view';
 
   const inv = $derived(page.data.inventory as Inventory);
 
@@ -13,6 +14,15 @@
   const assetIndex = $derived(assetIndexFor(page.data.catalog as Catalog));
   const fileHref = (sha: string | null) =>
     sha ? (urlForSha(assetIndex, sha) ?? `/blob/${sha}`) : '#';
+
+  // Open a file through the in-app viewer (back affordance), choosing the right
+  // presentation from the friendly URL's extension. The friendly path's extension
+  // is more reliable than the raw Drive name (notes become .pdf there).
+  const viewLink = (sha: string | null, name: string | null): string => {
+    if (!sha) return '#';
+    const url = fileHref(sha);
+    return viewHref({ sha, kind: viewKindFromName(url), title: name ?? '', from: page.url.pathname, url });
+  };
 
   const primaryLoc = (p: { source: string | null; path: string[]; name: string | null }) =>
     [p.source, ...(p.path ?? []), p.name].filter(Boolean).join(' / ');
@@ -88,7 +98,7 @@
       {#each node.files as f, i (f.driveFileId + ':' + i)}
         <li class:dup={!f.isPrimary}>
           {#if f.viaShortcut}<span class="sc" title="Reached via a Drive shortcut">↗</span>{/if}
-          <a class="file" href={fileHref(f.sha256)} target="_blank" rel="noopener">{f.name}</a>
+          <a class="file" href={viewLink(f.sha256, f.name)}>{f.name}</a>
           {#if f.isPrimary}
             <span class="badge primary">Primary</span>
           {:else if f.primary}

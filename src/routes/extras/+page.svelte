@@ -5,6 +5,7 @@
   import { audio, playSha, toggle } from '$lib/audio';
   import { RENDER_REV } from '$lib/render-rev';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
+  import { viewHref, viewKind } from '$lib/view';
 
   const catalog = $derived(page.data.catalog as Catalog);
   const extras = $derived(catalog.extras ?? []);
@@ -13,6 +14,15 @@
   const assetIndex = $derived(assetIndexFor(catalog));
   const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
   const dlUrl = (sha: string) => `${openUrl(sha)}?dl`;
+  // Open through the in-app viewer (back affordance) instead of a dead-end new tab.
+  const viewLink = (e: { sha256: string; assetType?: string; name: string }) =>
+    viewHref({
+      sha: e.sha256,
+      kind: viewKind(e.assetType),
+      title: e.name,
+      from: page.url.pathname,
+      url: openUrl(e.sha256),
+    });
 
   let q = $state('');
   const cleaned = $derived(
@@ -45,23 +55,11 @@
     {#each filtered as e (e.sha256)}
       <li class="row" class:has-thumb={e.assetType === 'image' || e.assetType === 'pdf' || e.assetType === 'notes'}>
         {#if e.assetType === 'image'}
-          <a
-            class="thumb"
-            href={openUrl(e.sha256)}
-            target="_blank"
-            rel="noopener"
-            title="View full screen"
-          >
+          <a class="thumb" href={viewLink(e)} title="View full screen">
             <img src={`/blob/${e.sha256}`} alt={e.name} loading="lazy" />
           </a>
         {:else if e.assetType === 'pdf' || e.assetType === 'notes'}
-          <a
-            class="thumb pdf"
-            href={openUrl(e.sha256)}
-            target="_blank"
-            rel="noopener"
-            title="View full screen"
-          >
+          <a class="thumb pdf" href={viewLink(e)} title="View full screen">
             <img src={`/render/${e.sha256}/1.webp?r=${RENDER_REV}`} alt={e.name} loading="lazy" />
           </a>
         {/if}
@@ -73,7 +71,7 @@
                 {$audio.sha === e.sha256 && $audio.playing ? 'Pause' : 'Play'}
               </button>
             {:else if e.assetType === 'pdf' || e.assetType === 'notes' || e.assetType === 'image'}
-              <a class="act" href={openUrl(e.sha256)} target="_blank" rel="noopener">View</a>
+              <a class="act" href={viewLink(e)}>View</a>
             {/if}
             <a class="dl" href={dlUrl(e.sha256)} download title="Download">⤓</a>
           </span>
