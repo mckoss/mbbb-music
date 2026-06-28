@@ -20,10 +20,35 @@
     slug: string;
     title: string;
     master: { name: string; href: string } | null; // the .mscz master, if on file
-    parts: number; // app-generated core-roster instrument parts
-    extraParts: number; // app-generated parts for instruments outside the core roster
+    partFmts: string[]; // print format of each generated core-roster part
+    extraFmts: string[]; // print format of each generated off-roster ("extra") part
     audio: number; // app-generated audio (band mix + any stems)
   }
+
+  // Generated charts come in Letter + Lyre, so a raw file count doubles the number
+  // of distinct charts. Summarize as "charts × formats" when every format has the
+  // same number of files (a clean grid); otherwise fall back to the raw total.
+  interface Counts {
+    charts: number;
+    formats: number;
+    total: number;
+    even: boolean;
+  }
+  function tally(fmts: string[]): Counts {
+    const by = new Map<string, number>();
+    for (const f of fmts) by.set(f, (by.get(f) ?? 0) + 1);
+    const counts = [...by.values()];
+    const total = fmts.length;
+    const formats = by.size;
+    const even = formats > 1 && counts.every((c) => c === counts[0]);
+    return { charts: even ? counts[0] : total, formats, total, even };
+  }
+  const show = (c: Counts) => (c.even ? `${c.charts} × ${c.formats}` : `${c.total}`);
+
+  // The instrument-less `scores` bucket carries no `format` field, so read the
+  // Letter/Lyre token straight off the generated filename instead.
+  const deriveFormat = (name: string | null): string =>
+    name && /(^|[^a-z])lyre([^a-z]|$)/i.test(name) ? 'lyre' : 'letter';
 
   const genRows = $derived.by<GenRow[]>(() =>
     tunes.map((t: Tune) => {
@@ -37,17 +62,17 @@
               href: m.sha256 ? openUrl(m.sha256) : '#',
             }
           : null,
-        parts: t.parts.filter((p) => p.generated).length,
+        partFmts: t.parts.filter((p) => p.generated).map((p) => p.format),
         // The catalog's instrument-less `scores` bucket; for generated output these
         // are parts for instruments off the core roster (e.g. accordion), not
         // whole-band conductor scores.
-        extraParts: t.scores.filter((s) => s.generated).length,
+        extraFmts: t.scores.filter((s) => s.generated).map((s) => deriveFormat(s.originalName)),
         audio: t.audio.filter((a) => a.generated || a.museScore).length,
       };
     })
   );
 
-  const hasGen = (r: GenRow) => r.parts > 0 || r.extraParts > 0 || r.audio > 0;
+  const hasGen = (r: GenRow) => r.partFmts.length > 0 || r.extraFmts.length > 0 || r.audio > 0;
   const byTitle = (a: GenRow, b: GenRow) => a.title.localeCompare(b.title);
 
   // 1. Masters that still need building: a .mscz is on file but no output yet.
@@ -58,16 +83,10 @@
   //    outside the synced folders) — worth flagging since it can't be rebuilt here.
   const orphanGenerated = $derived(processed.filter((r) => !r.master));
 
-  const totals = $derived.by(() => {
-    let parts = 0,
-      extraParts = 0,
-      audio = 0;
-    for (const r of processed) {
-      parts += r.parts;
-      extraParts += r.extraParts;
-      audio += r.audio;
-    }
-    return { parts, extraParts, audio };
+  const totals = $derived({
+    parts: tally(processed.flatMap((r) => r.partFmts)),
+    extra: tally(processed.flatMap((r) => r.extraFmts)),
+    audio: processed.reduce((n, r) => n + r.audio, 0),
   });
 
   // Master count drives the "x of y processed" headline.
@@ -88,13 +107,14 @@
       Tracks which MuseScore (<code>.mscz</code>) masters in the library have been
       built into app-generated parts and audio by <code>build-scores</code>.
       <strong>Extra parts</strong> are charts for instruments off the core roster
-      (e.g. accordion). The top list is your to-do: masters with nothing generated
-      yet. This reflects the synced Drive catalog, so masters that only live on a
-      local disk (never synced) won't show here.
+      (e.g. accordion). Part counts read <em>charts × formats</em> (each chart is
+      rendered in Letter and Lyre). The top list is your to-do: masters with nothing
+      generated yet. This reflects the synced Drive catalog, so masters that only
+      live on a local disk (never synced) won't show here.
     </p>
     <p class="count">
       {processedMasters.length} of {masters.length} masters processed ·
-      {totals.parts} parts · {totals.extraParts} extra parts · {totals.audio} audio generated
+      {show(totals.parts)} parts · {show(totals.extra)} extra parts · {totals.audio} audio generated
     </p>
   </header>
 
@@ -138,6 +158,8 @@
           </thead>
           <tbody>
             {#each processed as r (r.slug)}
+              {@const p = tally(r.partFmts)}
+              {@const x = tally(r.extraFmts)}
               <tr>
                 <th scope="row" class="song-col">{r.title}</th>
                 <td>
@@ -149,8 +171,8 @@
                     <span class="missing" title="No .mscz master in the synced library">— no master —</span>
                   {/if}
                 </td>
-                <td class="num" class:zero={r.parts === 0}>{r.parts || '·'}</td>
-                <td class="num" class:zero={r.extraParts === 0}>{r.extraParts || '·'}</td>
+                <td class="num" class:zero={p.total === 0} title={`${p.total} files`}>{p.total ? show(p) : '·'}</td>
+                <td class="num" class:zero={x.total === 0} title={`${x.total} files`}>{x.total ? show(x) : '·'}</td>
                 <td class="num" class:zero={r.audio === 0}>{r.audio || '·'}</td>
               </tr>
             {/each}
@@ -159,8 +181,8 @@
             <tr>
               <th scope="row" class="song-col">Total</th>
               <td></td>
-              <td class="num">{totals.parts}</td>
-              <td class="num">{totals.extraParts}</td>
+              <td class="num">{show(totals.parts)}</td>
+              <td class="num">{show(totals.extra)}</td>
               <td class="num">{totals.audio}</td>
             </tr>
           </tfoot>
@@ -181,7 +203,7 @@
         {#each orphanGenerated as r (r.slug)}
           <li>
             <span class="song">{r.title}</span>
-            <span class="counts">{r.parts} parts · {r.extraParts} extra parts · {r.audio} audio</span>
+            <span class="counts">{show(tally(r.partFmts))} parts · {show(tally(r.extraFmts))} extra parts · {r.audio} audio</span>
           </li>
         {/each}
       </ul>
