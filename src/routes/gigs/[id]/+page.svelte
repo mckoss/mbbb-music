@@ -143,30 +143,82 @@
     )
   );
 
-  // The charts for the box's chosen instrument/format — every matching part,
-  // keyed off the local pickers. Drives both the per-chart list and the
-  // combined-PDF link.
-  const packetDownloads = $derived.by(() => {
+  // The packet, one row per song (in set order, a song shared across sets shown
+  // once), each carrying every matching part for the box's chosen instrument/
+  // format. Songs with no chart in that instrument/format are dropped — they
+  // can't be downloaded anyway. Drives the per-song checkbox list below.
+  interface PacketSong {
+    slug: string;
+    title: string;
+    parts: { sha: string; label: string }[];
+  }
+  const packetSongs = $derived.by(() => {
     const seen = new Set<string>();
-    const out: { slug: string; title: string; sha: string; label: string }[] = [];
+    const out: PacketSong[] = [];
     for (const set of gig.sets) {
       for (const slug of set.songSlugs) {
+        if (seen.has(slug)) continue;
         const tune = bySlug.get(slug);
         const scores = tune ? activePdfs(tune, packetInstrument, packetFormat) : [];
-        for (const sc of scores) {
-          if (seen.has(sc.sha)) continue;
-          seen.add(sc.sha);
-          out.push({ slug, title: titleOf(slug), sha: sc.sha, label: sc.label });
-        }
+        if (scores.length === 0) continue;
+        seen.add(slug);
+        out.push({
+          slug,
+          title: titleOf(slug),
+          parts: scores.map((sc) => ({ sha: sc.sha, label: sc.label })),
+        });
       }
     }
     return out;
   });
 
+  // Per-song customization — we track only deviations from the default (every
+  // song, all parts): unchecked songs and single-part pins. State is by slug, so
+  // it survives instrument/format changes; pins are re-validated against the
+  // current parts wherever they're used, so a stale sha just falls back to "All".
+  let omitSlugs = $state<Record<string, boolean>>({});
+  let partPick = $state<Record<string, string>>({});
+  // The effective part choice for a song: a valid pinned sha, else 'all'.
+  function pickFor(song: PacketSong): string {
+    const p = partPick[song.slug];
+    return p && song.parts.some((x) => x.sha === p) ? p : 'all';
+  }
+
   const hasSongs = $derived(gig.sets.some((s) => s.songSlugs.length > 0));
-  const packetHref = $derived(
-    `/gigs/${page.params.id}/packet?instrument=${encodeURIComponent(packetInstrument)}&format=${packetFormat}`
-  );
+
+  // How many charts the current selection will merge — mirrors the server's
+  // set-order, sha-deduped assembly so the button count matches the PDF.
+  const packetCount = $derived.by(() => {
+    const seen = new Set<string>();
+    for (const s of packetSongs) {
+      if (omitSlugs[s.slug]) continue;
+      const pin = pickFor(s);
+      for (const p of s.parts) {
+        if (pin !== 'all' && p.sha !== pin) continue;
+        seen.add(p.sha);
+      }
+    }
+    return seen.size;
+  });
+
+  // Encode only deviations onto the existing GET link, so the default packet URL
+  // is unchanged and customized ones stay short: omit=slug,slug + part=slug:sha.
+  const packetHref = $derived.by(() => {
+    const base = `/gigs/${page.params.id}/packet?instrument=${encodeURIComponent(
+      packetInstrument
+    )}&format=${packetFormat}`;
+    const omit: string[] = [];
+    let pins = '';
+    for (const s of packetSongs) {
+      if (omitSlugs[s.slug]) {
+        omit.push(s.slug);
+        continue;
+      }
+      const pin = pickFor(s);
+      if (pin !== 'all') pins += `&part=${encodeURIComponent(`${s.slug}:${pin}`)}`;
+    }
+    return base + (omit.length ? `&omit=${omit.map(encodeURIComponent).join(',')}` : '') + pins;
+  });
 
   // --- Perform-set mode -----------------------------------------------------
   // Driven by the URL (?perform=<setId>&i=<index>) so it's refresh-safe and the
@@ -604,7 +656,8 @@
       <h3>Download charts</h3>
       <p class="hint">
         Pick the instrument and format for this packet — defaults to your current
-        choice and doesn't change it.
+        choice and doesn't change it. Uncheck songs, or pin one to a single part,
+        to leave charts out of the PDF.
       </p>
 
       <div class="dl-pickers">
@@ -628,18 +681,48 @@
         </label>
       </div>
 
-      {#if packetDownloads.length > 0}
-        <a class="packet-btn" href={packetHref}>
-          ⬇ Download all as one PDF ({packetDownloads.length} chart{packetDownloads.length === 1
-            ? ''
-            : 's'})
-        </a>
+      {#if packetSongs.length > 0}
+        {#if packetCount > 0}
+          <a class="packet-btn" href={packetHref}>
+            ⬇ Download as one PDF ({packetCount} chart{packetCount === 1 ? '' : 's'})
+          </a>
+        {:else}
+          <span class="packet-btn disabled" aria-disabled="true">⬇ No songs selected</span>
+        {/if}
         <ul class="dl-list">
-          {#each packetDownloads as d (d.sha)}
-            <li>
-              <a href={openUrl(d.sha)} target="_blank" rel="noopener">
-                {d.title} <span class="dl-label">— {d.label}</span>
-              </a>
+          {#each packetSongs as s (s.slug)}
+            {@const included = !omitSlugs[s.slug]}
+            {@const picked = pickFor(s)}
+            <li class="dl-row" class:omitted={!included}>
+              <label class="dl-check">
+                <input
+                  type="checkbox"
+                  checked={included}
+                  onchange={(e) => (omitSlugs[s.slug] = !e.currentTarget.checked)}
+                />
+                <a
+                  href={openUrl(picked === 'all' ? s.parts[0].sha : picked)}
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {s.title}
+                </a>
+              </label>
+              {#if s.parts.length > 1}
+                <select
+                  class="dl-part"
+                  value={picked}
+                  disabled={!included}
+                  onchange={(e) => (partPick[s.slug] = e.currentTarget.value)}
+                >
+                  <option value="all">All parts ({s.parts.length})</option>
+                  {#each s.parts as p (p.sha)}
+                    <option value={p.sha}>{p.label}</option>
+                  {/each}
+                </select>
+              {:else}
+                <span class="dl-label">{s.parts[0].label}</span>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -1102,6 +1185,51 @@
   .dl-label {
     color: var(--muted);
     font-weight: 400;
+  }
+
+  .packet-btn.disabled {
+    background: var(--panel);
+    color: var(--muted);
+    border-color: var(--line);
+    cursor: default;
+  }
+
+  .dl-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 38px;
+  }
+
+  .dl-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .dl-check input {
+    width: 20px;
+    height: 20px;
+    flex: none;
+  }
+
+  .dl-check a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dl-row.omitted .dl-check a,
+  .dl-row.omitted .dl-label {
+    opacity: 0.45;
+  }
+
+  .dl-part {
+    flex: none;
+    max-width: 55%;
+    min-height: 38px;
   }
 
   .delete-gig {
