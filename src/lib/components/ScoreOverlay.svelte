@@ -179,11 +179,6 @@
     goto(`?${p}`, { replaceState: true, keepFocus: true, noScroll: true });
   }
 
-  // Flip Practice <-> Perform from inside an immersive view, without exiting.
-  function toggleImmersiveMode() {
-    setMode(isPractice ? 'performance' : 'practice');
-  }
-
   function onKey(e: KeyboardEvent) {
     if (e.key !== 'Escape' || !open) return;
     if (filesOpen) filesOpen = false;
@@ -225,23 +220,20 @@
 {#if open && tune}
   <div class="overlay" class:immersive>
     {#if isPractice}
-      <!-- Practice: one top bar in normal flow — back arrow, mode switch,
-           recording picker, and the one-line player. Reserves its own height so
-           the score sits below it with no overlap. -->
+      <!-- Practice: one top bar in normal flow — back arrow, recording picker,
+           and the one-line player. Reserves its own height so the score sits
+           below it with no overlap. The arrow steps back to the Score view. -->
       <div class="immersive-bar">
-        <button class="back" onclick={close} aria-label="Back to Collection" title="Back to Collection">←</button>
-        <button class="ghost switch" onclick={toggleImmersiveMode} title="Switch to Perform">▶ Perform</button>
+        <button class="back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
         {@render recordingSelect()}
         <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
       </div>
     {:else if !isScore}
-      <!-- Perform: minimal chrome — a floating back arrow (top-left) and a single
-           mode switch (top-right). Both float above the page-tap zones so they
-           always win a tap. -->
-      <button class="back floating-back" onclick={close} aria-label="Back to Collection" title="Back to Collection">←</button>
-      <div class="floating-switch">
-        <button class="ghost switch" onclick={toggleImmersiveMode} title="Switch to Practice">✎ Practice</button>
-      </div>
+      <!-- Perform: minimal chrome — just a floating back arrow (top-left) that
+           steps back to the Score view. It floats above the page-tap zones so it
+           always wins a tap, on a solid pill so it stays visible over a white
+           score page. -->
+      <button class="back floating-back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
     {:else}
       <header class="bar">
         <button class="back" onclick={close} aria-label="Back to Collection" title="Back to Collection">←</button>
@@ -607,7 +599,7 @@
   }
 
   /* Practice bar: in normal flow along the top, reserving its height so the score
-     sits below with no overlap. Back · switch · recording · one-line player. */
+     sits below with no overlap. Back · recording · one-line player. */
   .immersive-bar {
     margin: 12px 12px 0;
     display: flex;
@@ -619,29 +611,14 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
-  .switch {
-    white-space: nowrap;
-    flex: none;
-  }
-
-  /* Perform: floating back (top-left) and floating switch (top-right), above the
-     pager's tap zones (no z-index) so the controls win a tap. */
-  .floating-back,
-  .floating-switch {
+  /* Perform: a single floating back arrow (top-left), above the pager's tap
+     zones (no z-index) so it wins a tap. A solid dark pill keeps it visible even
+     where the white score page reaches the corner. */
+  .floating-back {
     position: absolute;
     top: 12px;
-    z-index: 10;
-  }
-
-  .floating-back {
     left: 12px;
-  }
-
-  .floating-switch {
-    right: 12px;
-    display: flex;
-    padding: 6px;
-    border-radius: 10px;
+    z-index: 10;
     background: rgba(32, 33, 36, 0.92);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
@@ -662,8 +639,7 @@
     .pickers,
     .player-row,
     .immersive-bar,
-    .floating-back,
-    .floating-switch {
+    .floating-back {
       display: none;
     }
 

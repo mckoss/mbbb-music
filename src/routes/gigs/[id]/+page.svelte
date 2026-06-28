@@ -288,18 +288,6 @@
     replaceState(searchUrl(p), stateWith(null));
   }
 
-  // Flip practice <-> performance without leaving the set or losing your place.
-  function switchMode() {
-    if (!performSetId) return;
-    const nextMode: PerformMode = isPractice ? 'performance' : 'practice';
-    const p = currentSearch();
-    p.set('perform', performSetId);
-    p.set('i', String(clampedIndex));
-    if (nextMode === 'practice') p.set('mode', 'practice');
-    else p.delete('mode');
-    replaceState(searchUrl(p), stateWith({ setId: performSetId, index: clampedIndex, mode: nextMode }));
-  }
-
   function onKey(e: KeyboardEvent) {
     if (!performing) return;
     if (e.key === 'Escape') donePerform();
@@ -319,7 +307,6 @@
            sits flush right with Next song pinned at the very end. -->
       <div class="practice-bar">
         <button class="exit" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
-        <button class="ghost switch" onclick={switchMode} title="Switch to Perform">▶ Perform</button>
         <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
         {#if performAudios.length > 1}
           <select
@@ -354,12 +341,18 @@
         <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
       </div>
     {:else}
-      <!-- Perform: the back arrow (top-left) is the single exit, matching the
-           single-song Perform view. A floating cluster (top-right) holds the
-           mode switch, Part/Format, and song nav. -->
-      <button class="exit floating-back" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
+      <!-- Perform: the back arrow + current title sit in a solid pill (top-left)
+           so they stay visible over a white score page; it's the single exit to
+           the packet. A floating cluster (top-right) holds Part/Format and song
+           nav. -->
+      <div class="perform-corner">
+        <button class="exit" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
+        <span class="now-playing">
+          <span class="run-mode">{performSet.name || 'Set'}</span>
+          {performSlug ? titleOf(performSlug) : ''}
+        </span>
+      </div>
       <div class="floating">
-        <button class="ghost switch" onclick={switchMode} title="Switch to Practice">✎ Practice</button>
         <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
         {#if performParts.length > 1}
           <label class="sel">
@@ -380,10 +373,6 @@
         </label>
         <button class="ghost nav" onclick={prevSong} disabled={clampedIndex <= 0} aria-label="Previous song" title="Previous song">‹</button>
         <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
-      </div>
-      <div class="now-playing">
-        <span class="run-mode">{performSet.name || 'Set'}</span>
-        {performSlug ? titleOf(performSlug) : ''}
       </div>
     {/if}
     <div class="stage">
@@ -1205,11 +1194,21 @@
     background: rgba(255, 253, 247, 0.22);
   }
 
-  .floating-back {
+  /* Perform: back arrow + current title in a solid dark pill (top-left), so they
+     stay visible even where the white score page reaches the corner. */
+  .perform-corner {
     position: absolute;
     top: 12px;
     left: 12px;
     z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 70vw;
+    padding: 6px 12px 6px 6px;
+    border-radius: 10px;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
   /* Part / Format pickers, styled for the dark cluster. */
@@ -1255,16 +1254,14 @@
     margin-top: 8px;
   }
 
-  /* Sits just below the floating back arrow (top-left), so the two never overlap. */
+  /* Current title, inline in the perform-corner pill beside the back arrow. */
   .now-playing {
-    position: absolute;
-    top: 64px;
-    left: 12px;
-    z-index: 5;
     font-size: 0.9rem;
     color: #f2d36b;
     font-weight: 700;
-    max-width: 60vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .run-mode {
