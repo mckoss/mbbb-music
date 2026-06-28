@@ -423,6 +423,8 @@
   // the Drive "request access" page for an unreachable one); several open a popup
   // of links. Escape (or the ×) closes the popup.
   let popup = $state<{ title: string; items: CellItem[] } | null>(null);
+  // The "?" help popup explaining how to read the coverage matrix.
+  let help = $state(false);
 
   function openCell(cell: Cell | null, colLabel: string, songTitle: string) {
     if (!cell) return;
@@ -436,7 +438,8 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key !== 'Escape') return;
-    if (popup) popup = null;
+    if (help) help = false;
+    else if (popup) popup = null;
     else if (editing) editing = null;
   }
 </script>
@@ -451,22 +454,10 @@
       <a href="/library-status/files">Files</a>
       <a href="/library-status/generated-scores">Generated</a>
     </nav>
-    <h2>Coverage by song &amp; instrument</h2>
-    <p class="body">
-      Each square marks where a score (or recording) exists and the color shows
-      its primary source. The number counts every copy in the library — all parts
-      and both Letter/Lyre formats. A square <strong>split</strong> on the diagonal
-      means copies live in two source folders — the upper-left is the higher-priority
-      one. <strong>Red</strong> flags a part that's only a
-      shortcut the sync can't read (a permissions gap to fix in Drive). The
-      <strong>Misc Files</strong> column gathers everything else in a song's folder —
-      notes (Google Docs), images, and other documents. Click a
-      square to open it (a single file opens full screen; several open a list).
-      Blank means nothing is on file. When a song has app-generated scores, the
-      manually-created originals they replace are hidden from the score pages but
-      still listed on a <strong>“masked originals” sub-row</strong> here (squares
-      keep their source color), so you can open and compare them.
-    </p>
+    <h2>
+      Coverage by song &amp; instrument
+      <button class="help-btn" onclick={() => (help = true)} aria-label="How to read this view" title="How to read this view">?</button>
+    </h2>
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
 
     <p class="back"><a href="/corrections">View recent metadata edits →</a></p>
@@ -629,6 +620,45 @@
     </table>
   </div>
 </section>
+
+{#if help}
+  <div class="modal-backdrop">
+    <div class="modal help" role="dialog" aria-modal="true" aria-label="How to read the coverage view">
+      <header class="modal-head">
+        <h3>How to read this view</h3>
+        <button class="x" onclick={() => (help = false)} aria-label="Close">×</button>
+      </header>
+      <div class="help-body">
+        <p>
+          Each square marks where a score (or recording) exists and the color shows
+          its primary source. The number counts every copy in the library — all parts
+          and both Letter/Lyre formats.
+        </p>
+        <p>
+          A square <strong>split</strong> on the diagonal means copies live in two
+          source folders — the upper-left is the higher-priority one.
+          <strong>Red</strong> flags a part that's only a shortcut the sync can't read
+          (a permissions gap to fix in Drive).
+        </p>
+        <p>
+          The <strong>Misc Files</strong> column gathers everything else in a song's
+          folder — notes (Google Docs), images, and other documents.
+        </p>
+        <p>
+          Click a square to open it (a single file opens full screen; several open a
+          list). Blank means nothing is on file.
+        </p>
+        <p>
+          When a song has app-generated scores, the manually-created originals they
+          replace are hidden from the score pages but still listed on a
+          <strong>“masked originals” sub-row</strong> here (squares keep their source
+          color), so you can open and compare them.
+        </p>
+      </div>
+      <p class="modal-hint">Press Esc to close</p>
+    </div>
+  </div>
+{/if}
 
 {#if popup}
   <div class="modal-backdrop">
@@ -821,6 +851,38 @@
   .count {
     color: var(--muted);
     font-size: 0.82rem;
+  }
+
+  /* "?" help trigger sitting next to the heading. */
+  .help-btn {
+    vertical-align: middle;
+    margin-left: 10px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--accent-strong);
+    background: var(--paper);
+    color: var(--accent-strong);
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .help-btn:hover {
+    background: var(--accent);
+    color: #fffdf7;
+  }
+
+  .help-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--ink);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+  .help-body strong {
+    font-weight: 700;
   }
 
   .tabs {
