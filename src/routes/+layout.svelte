@@ -155,11 +155,19 @@
   }
   afterNavigate(() => void checkVersion());
 
-  // Hand off to the new build: pull the waiting service worker, tell it to take
-  // over, and reload onto the fresh app shell once it controls the page. The SW
-  // skip-waits on install, so a controllerchange follows shortly; a timeout
-  // fallback covers the rare case where it doesn't fire.
+  // Hand off to the new build. The reload MUST run under the new worker, not the
+  // old one: navigations are served stale-while-revalidate from a version-scoped
+  // `pages-<version>` cache, so reloading while the old worker still controls the
+  // page hands back a previously-cached (older) document — the "jumped backwards
+  // a version" bug. The new worker's pages cache is empty when it activates, so a
+  // reload then fetches the fresh document. It calls clients.claim() on activate,
+  // which fires `controllerchange` — that's our signal to reload.
+  //
+  // Installing the new worker precaches the whole app shell and can take several
+  // seconds on a phone; the old code's blind 3s timeout fired mid-install, under
+  // the old worker. So we wait for the worker to actually take over instead.
   let reloading = false;
+  let updating = $state(false);
   function reloadOnce() {
     if (reloading) return;
     reloading = true;
@@ -167,13 +175,32 @@
   }
   async function applyVersionUpdate() {
     if (!browser || !('serviceWorker' in navigator)) return reloadOnce();
+    updating = true;
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) return reloadOnce();
+      // Reload the instant the new worker takes control (see above).
       navigator.serviceWorker.addEventListener('controllerchange', reloadOnce, { once: true });
-      await reg.update();
-      (reg.waiting ?? reg.installing)?.postMessage('skip-waiting');
-      setTimeout(reloadOnce, 3000);
+
+      await reg.update(); // fetch the new worker; it skip-waits on install itself
+      const next = reg.waiting ?? reg.installing;
+      if (next) {
+        // Nudge it to activate as soon as it finishes installing (belt-and-
+        // suspenders alongside the worker's own skipWaiting()).
+        const activate = () => {
+          if (next.state === 'installed') next.postMessage('skip-waiting');
+        };
+        activate();
+        next.addEventListener('statechange', activate);
+        // Safety net only — if controllerchange somehow never arrives, reload
+        // after a generous wait so the button is never a dead end. Long enough
+        // that a real install finishes (and fires controllerchange) first.
+        setTimeout(reloadOnce, 15000);
+      } else {
+        // No pending worker: the active worker is already current, so the page is
+        // just stale in memory — reload straight onto it (its cache is fresh).
+        reloadOnce();
+      }
     } catch {
       reloadOnce();
     }
@@ -213,9 +240,10 @@
             <button
               class="update-link"
               onclick={applyVersionUpdate}
+              disabled={updating}
               title="A new version is available — tap to reload and update"
             >
-              Update to {newVersion}
+              {updating ? 'Updating…' : `Update to ${newVersion}`}
             </button>
           {/if}
         </p>
@@ -426,6 +454,11 @@
 
   .update-link:hover {
     background: rgba(242, 211, 107, 0.28);
+  }
+
+  .update-link:disabled {
+    cursor: progress;
+    opacity: 0.7;
   }
 
   .right {
