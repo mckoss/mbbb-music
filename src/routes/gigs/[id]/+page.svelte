@@ -60,6 +60,10 @@
   // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).
   const assetIndex = $derived(assetIndexFor(catalog));
   const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
+  // Open a chart in the in-app viewer (a back arrow returns here) rather than a
+  // raw PDF in a new tab — which is a dead-end in the installed standalone PWA.
+  const viewHref = (sha: string, title: string) =>
+    `/view/${sha}?title=${encodeURIComponent(title)}&from=${encodeURIComponent(page.url.pathname)}`;
 
   // Global instrument/format (cookie/URL backed) drive every chart we resolve.
   const instrument = $derived($instrumentSlug);
@@ -739,6 +743,10 @@
             {@const included = !omitSlugs[s.slug]}
             {@const picked = pickFor(s)}
             {@const pages = s.score ? pageCounts[s.score.sha] ?? 0 : 0}
+            {@const openSha = s.score ? s.score.sha : picked === 'all' ? s.parts[0].sha : picked}
+            {@const openLabel = s.score
+              ? s.score.label
+              : s.parts.find((p) => p.sha === openSha)?.label ?? s.parts[0].label}
             <li class="dl-row" class:omitted={!included}>
               <label class="dl-check">
                 <input
@@ -746,11 +754,7 @@
                   checked={included}
                   onchange={(e) => (omitSlugs[s.slug] = !e.currentTarget.checked)}
                 />
-                <a
-                  href={openUrl(s.score ? s.score.sha : picked === 'all' ? s.parts[0].sha : picked)}
-                  target="_blank"
-                  rel="noopener"
-                >
+                <a href={viewHref(openSha, `${s.title} — ${openLabel}`)}>
                   {s.title}
                 </a>
               </label>
