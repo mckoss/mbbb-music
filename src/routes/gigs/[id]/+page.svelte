@@ -147,13 +147,51 @@
     )
   );
 
-  // Save-name for the combined PDF. The download anchor's `download` attribute is
-  // what makes it save as a file rather than render inline — iOS Safari ignores
-  // the server's Content-Disposition: attachment for PDFs and previews them in
-  // the window (a dead-end in the standalone PWA) without it.
+  // Save-name for the combined PDF.
   const packetFileName = $derived(
     `MBBB - ${gig.name} - ${packetInstLabel} (${packetFormat === 'lyre' ? 'Lyre' : 'Letter'}).pdf`
   );
+
+  // iOS (incl. iPadOS, which reports as MacIntel with touch) ignores both the
+  // server's Content-Disposition: attachment and the anchor's `download` for
+  // PDFs — it previews them inline in the PWA window, a dead-end. Detect Apple
+  // touch devices so we can route their download through the share sheet instead.
+  function isAppleTouch(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  let downloading = $state(false);
+
+  // On Apple touch devices, fetch the packet and hand it to the share sheet
+  // (Save to Files / Mail / AirDrop) instead of letting Safari open it inline.
+  // Everywhere else we let the native <a download> do its job (no preventDefault).
+  async function downloadPacket(e: MouseEvent) {
+    if (!isAppleTouch()) return;
+    e.preventDefault();
+    if (downloading) return;
+    downloading = true;
+    try {
+      const res = await fetch(packetHref);
+      if (!res.ok) throw new Error(`packet ${res.status}`);
+      const file = new File([await res.blob()], packetFileName, { type: 'application/pdf' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: packetFileName });
+      } else {
+        // Older iOS without file sharing — at least give them the PDF.
+        window.location.href = packetHref;
+      }
+    } catch (err) {
+      // A user-cancelled share sheet is not an error; anything else falls back
+      // to opening the packet so the player still gets it.
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        window.location.href = packetHref;
+      }
+    } finally {
+      downloading = false;
+    }
+  }
 
   // The packet, one row per song (in set order, a song shared across sets shown
   // once), each carrying every matching part for the box's chosen instrument/
@@ -740,8 +778,19 @@
 
       {#if packetSongs.length > 0}
         {#if packetCount > 0}
-          <a class="packet-btn" href={packetHref} download={packetFileName}>
-            ⬇ Download as one PDF ({packetCount} chart{packetCount === 1 ? '' : 's'})
+          <a
+            class="packet-btn"
+            class:busy={downloading}
+            href={packetHref}
+            download={packetFileName}
+            onclick={downloadPacket}
+            aria-busy={downloading}
+          >
+            {#if downloading}
+              ⏳ Preparing…
+            {:else}
+              ⬇ Download as one PDF ({packetCount} chart{packetCount === 1 ? '' : 's'})
+            {/if}
           </a>
         {:else}
           <span class="packet-btn disabled" aria-disabled="true">⬇ No songs selected</span>
@@ -1266,6 +1315,11 @@
     color: var(--muted);
     border-color: var(--line);
     cursor: default;
+  }
+
+  .packet-btn.busy {
+    opacity: 0.7;
+    cursor: progress;
   }
 
   .dl-row {
