@@ -113,6 +113,12 @@ test('fetchWithTimeout rejects instead of hanging when the network never answers
   await assert.rejects(fetchWithTimeout(hangingFetch(), req('/x'), 15));
 });
 
+test('fetchWithTimeout enforces the bound even if the fetch ignores abort', async () => {
+  // A platform fetch that never settles and does not honor the abort signal.
+  const neverSettles = () => new Promise(() => {});
+  await assert.rejects(fetchWithTimeout(neverSettles, req('/x'), 15));
+});
+
 test('fetchWithTimeout resolves with a prompt response', async () => {
   const res = await fetchWithTimeout(okFetch('hi'), req('/x'), 1000);
   assert.equal(await res.text(), 'hi');

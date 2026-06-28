@@ -80,10 +80,11 @@ export function isAvatarRequest(url: URL): boolean {
 // --- Primitives -------------------------------------------------------------
 
 /**
- * `fetch` that rejects (and aborts the request) after `ms`. This is the linchpin
- * fix: a bare `await fetch()` to an unreachable origin doesn't reject promptly on
- * iOS/WebKit — it waits out the OS connection timeout. Bounding it ourselves lets
- * us fall back to cache in seconds, not a minute.
+ * `fetch` that rejects after `ms`. This is the linchpin fix: a bare `await
+ * fetch()` to an unreachable origin doesn't reject promptly on iOS/WebKit — it
+ * waits out the OS connection timeout. The timeout is enforced by racing a timer
+ * that rejects on its own, so the bound holds even if the platform ignores the
+ * abort signal (the abort is still sent, best-effort, to cancel the request).
  */
 export function fetchWithTimeout(
   fetchFn: SwEnv['fetch'],
@@ -91,8 +92,16 @@ export function fetchWithTimeout(
   ms: number,
 ): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  return fetchFn(request, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<Response>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort();
+      reject(new Error('timeout'));
+    }, ms);
+  });
+  const fetched = fetchFn(request, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  fetched.catch(() => {}); // swallow a late rejection if the timeout already won
+  return Promise.race([fetched, timeout]);
 }
 
 /** True when two responses carry different bodies (drives the refresh nudge). */
