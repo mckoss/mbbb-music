@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
   import { enhance } from '$app/forms';
   import { onDestroy } from 'svelte';
   import type { Catalog, Tune, CatalogPart, CatalogAsset, UnreachableItem } from '$lib/types';
@@ -11,6 +11,7 @@
   import { INSTRUMENT_CHOICES } from '../../sync/instruments.js';
   import { slugify } from '../../sync/slugify.js';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
+  import { viewHref, viewKind, type ViewKind } from '$lib/view';
 
   // Written-key choices a part can be corrected to ('' = the instrument default).
   const KEY_CHOICES = [
@@ -45,7 +46,8 @@
     Partial<UnreachableItem>;
 
   interface CellItem {
-    href: string;
+    href: string; // in-app viewer link (reachable) or external Drive URL (unreachable)
+    external: boolean; // open in a new tab (unreachable Drive link) vs in-app nav
     label: string; // the original source filename
     color: string; // popup link accent (red for unreachable)
     chip: string; // source color swatch
@@ -74,7 +76,9 @@
   function buildCell(
     reachable: Sourced[],
     unreachable: UnreachableItem[],
-    makeLabel: (a: Sourced) => string
+    makeLabel: (a: Sourced) => string,
+    kindFor: (a: Sourced) => ViewKind,
+    songTitle: string
   ): Cell | null {
     const all = [
       ...reachable.map((it) => ({ it, unreachable: false })),
@@ -121,8 +125,20 @@
         const st = un ? UNREACHABLE_STYLE : sourceStyle(it.source);
         // Show the file's real name from its source folder, not the derived label.
         const name = it.originalName ? stripCopyOf(it.originalName) : makeLabel(it);
+        // Reachable copies open in the in-app viewer (with a back button);
+        // unreachable ones are external Drive "request access" pages.
+        const reachHref = it.sha256
+          ? viewHref({
+              sha: it.sha256,
+              kind: kindFor(it),
+              title: `${songTitle} — ${name}`,
+              from: page.url.pathname,
+              url: openUrl(it.sha256),
+            })
+          : '#';
         return {
-          href: un ? (it.driveUrl ?? '#') : it.sha256 ? openUrl(it.sha256) : '#',
+          href: un ? (it.driveUrl ?? '#') : reachHref,
+          external: un || !it.sha256,
           label: un ? `${name} — unreachable` : name,
           color: un ? UNREACHABLE_STYLE.color : 'var(--accent-strong)',
           chip: st.color,
@@ -171,11 +187,13 @@
       title: t.title,
       status: t.status,
       cells: [
-        buildCell(t.musescore, unMusescore(t), museItemLabel),
-        buildCell(t.audio, unAudio(t), audioItemLabel),
-        buildCell(t.scores, unScore(t), scoreItemLabel),
-        buildCell(miscFor(t), unMisc(t), miscItemLabel),
-        ...instruments.map((inst) => buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel)),
+        buildCell(t.musescore, unMusescore(t), museItemLabel, () => 'download', t.title),
+        buildCell(t.audio, unAudio(t), audioItemLabel, () => 'audio', t.title),
+        buildCell(t.scores, unScore(t), scoreItemLabel, () => 'pdf', t.title),
+        buildCell(miscFor(t), unMisc(t), miscItemLabel, (it) => viewKind(it.assetType), t.title),
+        ...instruments.map((inst) =>
+          buildCell(partsFor(t, inst.slug), unFor(t, inst.slug), partItemLabel, () => 'pdf', t.title)
+        ),
       ] as (Cell | null)[],
       // Manual originals masked by a generated version, aligned to the same
       // columns: only the Whole-Band (score) and per-instrument (part) columns can
@@ -185,13 +203,15 @@
       maskedCells: [
         null,
         null,
-        buildCell((t.masked ?? []).filter((m) => m.bucket === 'scores'), [], scoreItemLabel),
+        buildCell((t.masked ?? []).filter((m) => m.bucket === 'scores'), [], scoreItemLabel, () => 'pdf', t.title),
         null,
         ...instruments.map((inst) =>
           buildCell(
             (t.masked ?? []).filter((m) => m.bucket === 'parts' && m.instrumentSlug === inst.slug),
             [],
-            partItemLabel
+            partItemLabel,
+            () => 'pdf',
+            t.title
           )
         ),
       ] as (Cell | null)[],
@@ -428,8 +448,12 @@
   function openCell(cell: Cell | null, colLabel: string, songTitle: string) {
     if (!cell) return;
     if (cell.count === 1) {
-      const href = cell.items[0].href;
-      if (href && href !== '#') window.open(href, '_blank', 'noopener');
+      const it = cell.items[0];
+      if (!it.href || it.href === '#') return;
+      // Reachable files open the in-app viewer (back button); unreachable ones go
+      // to their external Drive "request access" page in a new tab.
+      if (it.external) window.open(it.href, '_blank', 'noopener');
+      else goto(it.href);
       return;
     }
     popup = { title: `${songTitle} — ${colLabel}`, items: cell.items };
@@ -657,8 +681,8 @@
           <li>
             <a
               href={it.href}
-              target="_blank"
-              rel="noopener"
+              target={it.external ? '_blank' : undefined}
+              rel={it.external ? 'noopener' : undefined}
               class:unreachable={it.unreachable}
               style:color={it.color}
               onclick={() => (popup = null)}

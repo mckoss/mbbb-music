@@ -674,7 +674,7 @@
                 </a>
                 <span class="song-tools">
                   {#if sc}
-                    <a class="dl" href={openUrl(sc.sha)} target="_blank" rel="noopener" title={sc.label}>
+                    <a class="dl" href={viewHref(sc.sha, sc.label)} title={sc.label}>
                       Chart ↓
                     </a>
                   {:else}
