@@ -49,6 +49,13 @@ const PRECACHE = [...build, ...files];
 const PRECACHE_SET = new Set(PRECACHE);
 let flushingActivity = false;
 
+// Last connectivity state reported by a page. The worker's own navigator.onLine
+// is unreliable (notably stuck `true` on iOS), but the window's online/offline
+// events are dependable — so pages post their state here. We treat ourselves as
+// offline if EITHER signal says so, so the offline fallback is instant.
+let clientOnline: boolean | null = null;
+const isOnline = (): boolean => clientOnline !== false && navigator.onLine !== false;
+
 // The page shown when an uncached route is opened offline. Crucially it is NOT a
 // dead end: a standalone Home-Screen app has no browser chrome, so the page must
 // carry its own way out — a "Try again" link to the exact route the user wanted,
@@ -60,9 +67,10 @@ function offlinePage(requestedPath: string): string {
     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Offline</title><body style="font:16px/1.5 system-ui;margin:0;padding:2rem;color:#202124;background:#faf8f2">' +
     "<h1>You're offline</h1>" +
-    "<p>This page hasn't been saved for offline use. Try again once you're back online, " +
-    'or open a page you’ve already saved.</p>' +
-    `<p><a href="${href}" style="${link};background:#164e55;color:#fff">Try again</a>` +
+    "<p>This page hasn't been saved for offline use. Go back, try again once you're " +
+    "back online, or open a page you've already saved.</p>" +
+    `<p><button onclick="history.back()" style="${link};border:0;background:#164e55;color:#fff;font:inherit;font-weight:700;cursor:pointer">← Back</button>` +
+    `<a href="${href}" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Try again</a>` +
     `<a href="/" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Home</a>` +
     `<a href="/offline" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Saved scores</a>` +
     `<a href="/gigs" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Gig packets</a></p>` +
@@ -189,7 +197,7 @@ sw.addEventListener('fetch', (event) => {
     notifyUpdate,
     precache: PRECACHE_SET,
     version,
-    online: () => navigator.onLine,
+    online: isOnline,
     timeoutMs: NETWORK_TIMEOUT_MS,
     mediaTimeoutMs: MEDIA_TIMEOUT_MS,
     offlinePage,
@@ -201,4 +209,7 @@ sw.addEventListener('fetch', (event) => {
 sw.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') sw.skipWaiting();
   if (event.data?.type === 'flush-activity') event.waitUntil(flushQueuedActivity());
+  // Pages report connectivity (their online/offline events are reliable, unlike
+  // ours) so we can fall back instantly instead of waiting out a timeout.
+  if (event.data?.type === 'connectivity') clientOnline = Boolean(event.data.online);
 });

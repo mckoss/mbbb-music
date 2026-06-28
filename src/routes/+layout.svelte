@@ -100,6 +100,26 @@
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   });
 
+  // Keep the service worker's connectivity view current. Its own navigator.onLine
+  // is unreliable (stuck true on iOS), but the window's online/offline events are
+  // dependable — so the SW can serve the offline page instantly instead of
+  // waiting out a network timeout.
+  $effect(() => {
+    if (!browser || !('serviceWorker' in navigator)) return;
+    const report = () =>
+      navigator.serviceWorker.controller?.postMessage({ type: 'connectivity', online: navigator.onLine });
+    report();
+    void navigator.serviceWorker.ready.then(report);
+    addEventListener('online', report);
+    addEventListener('offline', report);
+    navigator.serviceWorker.addEventListener('controllerchange', report);
+    return () => {
+      removeEventListener('online', report);
+      removeEventListener('offline', report);
+      navigator.serviceWorker.removeEventListener('controllerchange', report);
+    };
+  });
+
   // A navigation supersedes any pending nudge for the page we just left.
   let nudgePath = $state('');
   $effect(() => {
