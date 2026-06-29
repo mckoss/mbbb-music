@@ -53,6 +53,7 @@ export const actions = {
         address: String(form.get('locationAddress') ?? ''),
       },
       notes: String(form.get('notes') ?? ''),
+      canceled: form.get('canceled') === 'on',
     });
     if (!gig) return fail(404, { message: 'Gig not found' });
     return { ok: true };
