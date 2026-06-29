@@ -22,6 +22,17 @@
   const upcoming = $derived(gigs.filter((g) => !isValidDate(g.date) || g.date >= today));
   const past = $derived(gigs.filter((g) => isValidDate(g.date) && g.date < today).reverse());
 
+  // Past gigs can grow without bound, so page them (newest first). Upcoming gigs
+  // are always shown in full — they're the actionable ones.
+  const PAST_PAGE_SIZE = 10;
+  let pastPage = $state(0);
+  const pastPages = $derived(Math.max(1, Math.ceil(past.length / PAST_PAGE_SIZE)));
+  // Clamp for display so a shrinking list (e.g. a background refresh) can't strand
+  // us past the end; the button handlers write back through this clamped value.
+  const curPage = $derived(Math.min(pastPage, pastPages - 1));
+  const pastStart = $derived(curPage * PAST_PAGE_SIZE);
+  const pastSlice = $derived(past.slice(pastStart, pastStart + PAST_PAGE_SIZE));
+
   // Index dated gigs by day so the calendars can color and link them. A day can
   // hold more than one gig.
   const gigsByDate = $derived.by(() => {
@@ -123,10 +134,29 @@
     {#if past.length > 0}
       <h3 class="divider">Past Gigs</h3>
       <ul class="list">
-        {#each past as gig (gig.id)}
+        {#each pastSlice as gig (gig.id)}
           {@render gigCard(gig)}
         {/each}
       </ul>
+      {#if pastPages > 1}
+        <nav class="pager" aria-label="Past gigs pages">
+          <button
+            type="button"
+            class="page-btn"
+            onclick={() => (pastPage = curPage - 1)}
+            disabled={curPage === 0}
+          >← Newer</button>
+          <span class="page-info">
+            {pastStart + 1}–{pastStart + pastSlice.length} of {past.length}
+          </span>
+          <button
+            type="button"
+            class="page-btn"
+            onclick={() => (pastPage = curPage + 1)}
+            disabled={curPage >= pastPages - 1}
+          >Older →</button>
+        </nav>
+      {/if}
     {/if}
   {/if}
 </section>
@@ -240,6 +270,42 @@
     flex: 1;
     height: 1px;
     background: var(--line);
+  }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 4px;
+  }
+
+  .page-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .page-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+
+  .page-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .page-info {
+    color: var(--muted);
+    font-size: 0.82rem;
+    white-space: nowrap;
   }
 
   .card {
