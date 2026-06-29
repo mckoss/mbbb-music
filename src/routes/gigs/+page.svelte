@@ -5,9 +5,13 @@
   import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation, isValidDate } from '$lib/gig';
   import { listDownloaded } from '$lib/offline';
   import MonthCalendar from '$lib/MonthCalendar.svelte';
+  import type { RsvpStatus } from '$lib/rsvp';
 
   const gigs = $derived(page.data.gigs as Gig[]);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+
+  // The signed-in member's own replies, by gig id (from the layout load).
+  const myRsvps = $derived((page.data.myRsvps ?? {}) as Record<string, RsvpStatus>);
 
   // Today as a local YYYY-MM-DD string, to split past from upcoming gigs.
   function todayStr(): string {
@@ -45,6 +49,27 @@
     }
     return m;
   });
+
+  // The signed-in member's reply per day, for the calendar ✓/?/✗ marks. When a
+  // day holds more than one gig, the strongest reply wins (Yes > Maybe > No).
+  const RANK: Record<RsvpStatus, number> = { yes: 3, maybe: 2, no: 1 };
+  const rsvpByDate = $derived.by(() => {
+    const m = new Map<string, RsvpStatus>();
+    for (const g of gigs) {
+      if (!isValidDate(g.date)) continue;
+      const s = myRsvps[g.id];
+      if (!s) continue;
+      const cur = m.get(g.date);
+      if (!cur || RANK[s] > RANK[cur]) m.set(g.date, s);
+    }
+    return m;
+  });
+
+  // Future, non-canceled, dated gigs the member still hasn't replied to — the
+  // bold reminder at the top of the list links straight to each.
+  const unconfirmed = $derived(
+    upcoming.filter((g) => isValidDate(g.date) && !g.canceled && !myRsvps[g.id])
+  );
 
   // The current month and the next two, for the three-up calendar strip.
   const months = $derived.by(() => {
@@ -87,10 +112,23 @@
     {/if}
   </header>
 
+  {#if unconfirmed.length > 0}
+    <div class="rsvp-reminder" role="status">
+      <strong>
+        You haven't RSVP'd for {unconfirmed.length} upcoming gig{unconfirmed.length === 1 ? '' : 's'}:
+      </strong>
+      <ul>
+        {#each unconfirmed as g (g.id)}
+          <li><a href={`/gigs/${g.id}`}>{g.name} · {formatGigDate(g.date)}</a></li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
   {#if gigs.length > 0}
     <div class="calendars">
       {#each months as m (`${m.year}-${m.month}`)}
-        <MonthCalendar year={m.year} month={m.month} {gigsByDate} {today} />
+        <MonthCalendar year={m.year} month={m.month} {gigsByDate} {rsvpByDate} {today} />
       {/each}
     </div>
     <p class="legend">
@@ -199,6 +237,37 @@
     font-size: 0.82rem;
     cursor: pointer;
     white-space: nowrap;
+  }
+
+  .rsvp-reminder {
+    background: #fff7e6;
+    border: 1px solid #f0c674;
+    border-left: 4px solid #b26a00;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #4a3a16;
+  }
+
+  .rsvp-reminder strong {
+    font-size: 0.95rem;
+  }
+
+  .rsvp-reminder ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .rsvp-reminder a {
+    color: #8a5200;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .rsvp-reminder a:hover {
+    text-decoration: underline;
   }
 
   .calendars {

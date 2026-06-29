@@ -21,6 +21,13 @@
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { scoreSearch } from '$lib/nav';
+  import { rsvpLabel, type RsvpStatus } from '$lib/rsvp';
+  import {
+    instrumentLabel,
+    instrumentGlyph,
+    instrumentHasImage,
+    instrumentImageSrc,
+  } from '$lib/members';
   import PdfPager from '$lib/components/PdfPager.svelte';
   import AudioPlayer from '$lib/components/AudioPlayer.svelte';
   import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
@@ -28,6 +35,33 @@
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+
+  // --- Attendance / RSVP ----------------------------------------------------
+  // The roster + my own reply come from the server load (+page.server.ts), which
+  // reads the RSVP store and joins each reply to the member's display info.
+  interface Attendee {
+    email: string;
+    name: string;
+    instrumentSlug: string | null;
+    avatarRev: string;
+    isFormer: boolean;
+    status: RsvpStatus | null;
+  }
+  interface RsvpData {
+    yes: Attendee[];
+    maybe: Attendee[];
+    no: Attendee[];
+    notReplied: { email: string; name: string }[];
+    myStatus: RsvpStatus | null;
+  }
+  const rsvp = $derived(page.data.rsvp as RsvpData);
+  const myStatus = $derived(rsvp?.myStatus ?? null);
+  const RSVP_CHOICES: RsvpStatus[] = ['yes', 'maybe', 'no'];
+  const hasReplies = $derived(
+    Boolean(rsvp && (rsvp.yes.length || rsvp.maybe.length || rsvp.no.length))
+  );
+  const avatarUrl = (a: Attendee) =>
+    `/members/${encodeURIComponent(a.email)}/avatar?v=${encodeURIComponent(a.avatarRev)}`;
 
   // Record a gig view from the client (the page no longer has a server load).
   // Skipped in perform mode — that's a performance, logged below. Offline views
@@ -657,6 +691,107 @@
     </div>
   {/if}
 
+  <!-- Attendance / RSVP -->
+  {#snippet attendee(a: Attendee)}
+    <li class="attendee">
+      <span class="att-inst" title={a.instrumentSlug ? instrumentLabel(a.instrumentSlug) ?? '' : ''}>
+        {#if instrumentHasImage(a.instrumentSlug)}
+          <img src={instrumentImageSrc(a.instrumentSlug)} alt="" />
+        {:else}
+          <span class="att-glyph" aria-hidden="true">{instrumentGlyph(a.instrumentSlug)}</span>
+        {/if}
+      </span>
+      <img class="att-avatar" src={avatarUrl(a)} alt="" loading="lazy" />
+      <span class="att-name">{a.name}</span>
+      {#if canEdit}
+        <form class="att-edit" method="POST" action="?/rsvp" use:enhance={selfEdit}>
+          <input type="hidden" name="email" value={a.email} />
+          <select
+            name="status"
+            aria-label={`Change ${a.name}'s reply`}
+            onchange={(e) => e.currentTarget.form?.requestSubmit()}
+          >
+            <option value="yes" selected={a.status === 'yes'}>Yes</option>
+            <option value="maybe" selected={a.status === 'maybe'}>Maybe</option>
+            <option value="no" selected={a.status === 'no'}>No</option>
+            <option value="">Clear</option>
+          </select>
+        </form>
+      {/if}
+    </li>
+  {/snippet}
+
+  {#if rsvp}
+    <div class="attendance">
+      <h3>Attendance</h3>
+
+      {#if !gig.canceled}
+        <div class="my-rsvp">
+          <span class="my-rsvp-label">Your RSVP:</span>
+          <div class="rsvp-buttons">
+            {#each RSVP_CHOICES as s (s)}
+              <form method="POST" action="?/rsvp" use:enhance={selfEdit}>
+                <input type="hidden" name="status" value={s} />
+                <button
+                  type="submit"
+                  class="rsvp-btn {s}"
+                  class:active={myStatus === s}
+                  aria-pressed={myStatus === s}
+                >{rsvpLabel(s)}</button>
+              </form>
+            {/each}
+            {#if myStatus}
+              <form method="POST" action="?/rsvp" use:enhance={selfEdit}>
+                <input type="hidden" name="status" value="" />
+                <button type="submit" class="rsvp-clear">Clear</button>
+              </form>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if hasReplies}
+        {#if rsvp.yes.length}
+          <div class="att-group">
+            <h4>Confirmed Attendees <span class="att-count">{rsvp.yes.length}</span></h4>
+            <ul class="att-list">{#each rsvp.yes as a (a.email)}{@render attendee(a)}{/each}</ul>
+          </div>
+        {/if}
+        {#if rsvp.maybe.length}
+          <div class="att-group">
+            <h4>Maybe <span class="att-count">{rsvp.maybe.length}</span></h4>
+            <ul class="att-list">{#each rsvp.maybe as a (a.email)}{@render attendee(a)}{/each}</ul>
+          </div>
+        {/if}
+        {#if rsvp.no.length}
+          <div class="att-group">
+            <h4>Can't make it <span class="att-count">{rsvp.no.length}</span></h4>
+            <ul class="att-list">{#each rsvp.no as a (a.email)}{@render attendee(a)}{/each}</ul>
+          </div>
+        {/if}
+      {:else}
+        <p class="att-empty">No replies yet.</p>
+      {/if}
+
+      {#if canEdit && rsvp.notReplied.length > 0}
+        <form class="add-attendee" method="POST" action="?/rsvp" use:enhance={selfEdit}>
+          <select name="email" aria-label="Add a member" required>
+            <option value="">Add a member…</option>
+            {#each rsvp.notReplied as m (m.email)}
+              <option value={m.email}>{m.name}</option>
+            {/each}
+          </select>
+          <select name="status" aria-label="Their reply">
+            <option value="yes">Yes</option>
+            <option value="maybe">Maybe</option>
+            <option value="no">No</option>
+          </select>
+          <button type="submit" class="add-btn">Add</button>
+        </form>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Setlists -->
   <div class="sets">
     {#each gig.sets as set, si (set.id)}
@@ -1135,6 +1270,188 @@
     background: var(--paper);
     color: var(--ink);
     cursor: pointer;
+  }
+
+  /* Attendance / RSVP */
+  .attendance {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .attendance h3 {
+    margin: 0;
+  }
+
+  .my-rsvp {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .my-rsvp-label {
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .rsvp-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .rsvp-buttons form {
+    display: inline;
+  }
+
+  .rsvp-btn {
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .rsvp-btn:hover {
+    border-color: var(--accent);
+  }
+
+  /* The active reply is filled in its status color. */
+  .rsvp-btn.active.yes {
+    background: #2e7d32;
+    border-color: #2e7d32;
+    color: #fffdf7;
+  }
+
+  .rsvp-btn.active.maybe {
+    background: #b26a00;
+    border-color: #b26a00;
+    color: #fffdf7;
+  }
+
+  .rsvp-btn.active.no {
+    background: #b3261e;
+    border-color: #b3261e;
+    color: #fffdf7;
+  }
+
+  .rsvp-clear {
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .rsvp-clear:hover {
+    text-decoration: underline;
+  }
+
+  .att-group h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    font-size: 0.92rem;
+  }
+
+  .att-count {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .att-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .attendee {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .att-inst {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .att-inst img {
+    max-width: 28px;
+    max-height: 28px;
+    object-fit: contain;
+  }
+
+  .att-glyph {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .att-avatar {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--line);
+    background: #efece3;
+  }
+
+  .att-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  /* Editor's per-row reply changer, pushed to the right. */
+  .att-edit {
+    margin-left: auto;
+  }
+
+  .att-edit select {
+    min-height: 34px;
+    font-size: 0.8rem;
+    padding: 0 8px;
+  }
+
+  .att-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .add-attendee {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+
+  .add-attendee select {
+    flex: 1;
+    min-width: 140px;
   }
 
   /* Sets */

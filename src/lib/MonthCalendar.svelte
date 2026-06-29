@@ -3,6 +3,7 @@
   // (green = active, red = canceled) and link to that gig. Used three-up at the
   // top of the gig list to show the current month and the next two.
   import type { Gig } from '$lib/gig';
+  import { rsvpMark, rsvpLabel, type RsvpStatus } from '$lib/rsvp';
 
   interface DayCell {
     day: number;
@@ -15,11 +16,14 @@
     month, // 0-based, like Date#getMonth
     gigsByDate,
     today,
+    rsvpByDate = new Map(),
   }: {
     year: number;
     month: number;
     gigsByDate: Map<string, Gig[]>;
     today: string;
+    // The signed-in member's reply for a gig on a given day (drives the ✓/?/✗ mark).
+    rsvpByDate?: Map<string, RsvpStatus>;
   } = $props();
 
   const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -68,12 +72,13 @@
       {#if !cell}
         <span class="pad"></span>
       {:else if cell.gigs.length > 0}
+        {@const mine = rsvpByDate.get(cell.iso) ?? null}
         <a
           class="day {status(cell.gigs)}"
           class:today={cell.iso === today}
           href={href(cell.gigs)}
-          title={label(cell.gigs)}
-        >{cell.day}</a>
+          title={mine ? `${label(cell.gigs)} — you: ${rsvpLabel(mine)}` : label(cell.gigs)}
+        >{cell.day}{#if mine}<span class="rsvp {mine}" aria-hidden="true">{rsvpMark(mine)}</span>{/if}</a>
       {:else}
         <span class="day" class:today={cell.iso === today}>{cell.day}</span>
       {/if}
@@ -118,6 +123,7 @@
   }
 
   .day {
+    position: relative;
     aspect-ratio: 1;
     display: flex;
     align-items: center;
@@ -126,6 +132,37 @@
     border-radius: 5px;
     color: var(--ink);
     text-decoration: none;
+  }
+
+  /* The signed-in member's reply, a tiny badge in the day's top-right corner. */
+  .rsvp {
+    position: absolute;
+    top: -3px;
+    right: -2px;
+    min-width: 11px;
+    height: 11px;
+    padding: 0 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 0.56rem;
+    font-weight: 800;
+    line-height: 1;
+    color: #fffdf7;
+    border: 1px solid #fffdf7;
+  }
+
+  .rsvp.yes {
+    background: #1b5e20;
+  }
+
+  .rsvp.maybe {
+    background: #b26a00;
+  }
+
+  .rsvp.no {
+    background: #8f1e18;
   }
 
   /* Gig days are filled, bold, and clickable. */

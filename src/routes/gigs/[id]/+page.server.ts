@@ -14,10 +14,64 @@ import {
   removeSong,
   moveSong,
 } from '$lib/server/gigs';
+import { getRsvps, setRsvp } from '$lib/server/rsvps';
+import { listUsers } from '$lib/server/users';
+import { getProfile } from '$lib/server/members';
 import { canEditGigs, type GigTime } from '$lib/gig';
+import { parseRsvpStatus, type RsvpStatus } from '$lib/rsvp';
 
 function requireGigEditor(locals: App.Locals) {
   if (!canEditGigs(locals.user?.role)) throw error(403, 'Admins and organizers only');
+}
+
+// One attendance row in a gig's roster: enough to render [icon] (photo) Name.
+interface RosterMember {
+  email: string;
+  name: string;
+  instrumentSlug: string | null;
+  avatarRev: string;
+  isFormer: boolean;
+  status: RsvpStatus | null;
+}
+
+// Build this gig's attendance roster from the RSVP store, joined to each
+// member's display info (name / instrument / avatar). Returned by the server
+// load so the page can group it into Yes / Maybe / Declined lists and offer
+// organizers the not-yet-replied members in the add-member dropdown.
+export function load({ params, locals }) {
+  const me = locals.user?.email ?? null;
+  const statusByEmail = new Map(getRsvps(params.id).map((r) => [r.email, r.status]));
+
+  const members: RosterMember[] = listUsers().map((u) => {
+    const p = getProfile(u.email);
+    const instSlug = p.primaryInstrument ?? p.instruments[0] ?? null;
+    return {
+      email: u.email,
+      name: p.fullName || u.name || u.email,
+      instrumentSlug: instSlug,
+      avatarRev: p.updatedAt ?? '', // cache-buster, matches the roster page
+      isFormer: Boolean(p.endDate),
+      status: statusByEmail.get(u.email) ?? null,
+    };
+  });
+
+  const byName = (a: RosterMember, b: RosterMember) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  const withStatus = (s: RsvpStatus) => members.filter((m) => m.status === s).sort(byName);
+
+  return {
+    rsvp: {
+      yes: withStatus('yes'),
+      maybe: withStatus('maybe'),
+      no: withStatus('no'),
+      // Active members who haven't replied — the organizer's add-member pool.
+      notReplied: members
+        .filter((m) => !m.isFormer && m.status === null)
+        .sort(byName)
+        .map((m) => ({ email: m.email, name: m.name })),
+      myStatus: me ? statusByEmail.get(me) ?? null : null,
+    },
+  };
 }
 
 // Parse repeated start[]/end[] form fields into a GigTime[] (blank rows drop).
@@ -40,6 +94,23 @@ function parseTimes(form: FormData): GigTime[] {
 // the view still records (and replays when offline) without a server round-trip.
 
 export const actions = {
+  // Set an attendance reply. A member always sets their own; admins/organizers
+  // may also set another member's (the `email` field) — e.g. a phoned-in reply
+  // or adding someone from the roster's add-member dropdown. A blank status
+  // clears the reply (back to unconfirmed).
+  rsvp: async ({ request, params, locals }) => {
+    const user = locals.user;
+    if (!user?.role) throw error(403, 'Sign in required');
+    const form = await request.formData();
+    const status = parseRsvpStatus(form.get('status'));
+    const target = String(form.get('email') ?? '').trim().toLowerCase() || user.email;
+    if (target !== user.email && !canEditGigs(user.role)) {
+      throw error(403, 'Admins and organizers only');
+    }
+    setRsvp(params.id, target, status, user.email);
+    return { ok: true };
+  },
+
   // Update the gig's top-level info fields (name/date/times/location/notes).
   updateInfo: async ({ request, params, locals }) => {
     requireGigEditor(locals);
