@@ -12,6 +12,7 @@ import {
   isBlobRequest,
   isDataRequest,
   isAvatarRequest,
+  isAlwaysFreshRoute,
   appShellCache,
   pagesCache,
   SCORES_CACHE,
@@ -108,6 +109,9 @@ test('request classification matches each resource kind', () => {
   assert.ok(isDataRequest(new URL('https://x/api/catalog')));
   assert.ok(isAvatarRequest(new URL('https://x/members/123/avatar')));
   assert.ok(!isRenderRequest(new URL('https://x/blob/abc')));
+  assert.ok(isAlwaysFreshRoute(new URL('https://x/profile')));
+  assert.ok(isAlwaysFreshRoute(new URL('https://x/profile/__data.json?email=a')));
+  assert.ok(!isAlwaysFreshRoute(new URL('https://x/gigs')));
 });
 
 // --- fetchWithTimeout (the linchpin) ----------------------------------------
@@ -320,6 +324,38 @@ test('SWR keys ignore SvelteKit transient params so a reload hits the cache', as
   const res = await routeGet(env, req('/gigs/__data.json?x-sveltekit-invalidated=01'));
   assert.equal(await res.text(), 'CACHED');
   await settle(waited);
+});
+
+test('routeGet serves the profile editor fresh from the network, never cached, no nudge', async () => {
+  // The editor must mirror the server. A cached copy (here pretending to be a
+  // different member's, or your own) must never be served, and no refresh nudge
+  // should fire — you can't edit offline.
+  const { env, waited, notified } = makeEnv({ fetch: okFetch('FRESH') });
+  const cache = await env.caches.open(pagesCache('test'));
+  const url = 'https://app.test/profile/__data.json?email=b@x';
+  await cache.put(url, new Response('STALE'));
+
+  const res = await routeGet(env, req('/profile/__data.json?email=b@x'));
+  assert.equal(await res.text(), 'FRESH');
+  await settle(waited);
+  assert.deepEqual(notified, []); // no nudge
+  assert.equal(await (await cache.match(url)).text(), 'STALE'); // network copy not cached
+});
+
+test('routeGet profile editor offline returns the empty data shell, not stale cache', async () => {
+  const { env } = makeEnv({ online: () => false });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put('https://app.test/profile/__data.json', new Response('STALE'));
+
+  const res = await routeGet(env, req('/profile/__data.json'));
+  assert.equal(res.status, 503);
+  assert.match(await res.text(), /"nodes":\[\]/);
+});
+
+test('routeGet profile editor navigation offline shows the offline page', async () => {
+  const { env } = makeEnv({ online: () => false });
+  const res = await routeGet(env, req('/profile?email=b@x', { mode: 'navigate' }));
+  assert.match(await res.text(), /<offline-page>\/profile/);
 });
 
 // --- routeGet dispatch ------------------------------------------------------

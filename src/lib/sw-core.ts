@@ -81,6 +81,12 @@ export function isDataRequest(url: URL): boolean {
 export function isAvatarRequest(url: URL): boolean {
   return url.pathname.startsWith('/members/') && url.pathname.endsWith('/avatar');
 }
+export function isAlwaysFreshRoute(url: URL): boolean {
+  // The profile editor must mirror the server exactly: you can't edit offline,
+  // and a cached copy can show another member's data (or your own) by mistake.
+  // Covers both the page navigation and its __data.json load.
+  return url.pathname === '/profile' || url.pathname === '/profile/__data.json';
+}
 
 // --- Primitives -------------------------------------------------------------
 
@@ -273,6 +279,28 @@ export async function staleWhileRevalidate(
   return fallback();
 }
 
+/**
+ * Always-fresh: go to the network every time and never cache or nudge. For pages
+ * where a stale copy is wrong (the profile editor). When the network is
+ * unavailable we return the fallback (offline page / empty data shell) rather
+ * than risk serving someone else's cached profile.
+ */
+export async function networkOnly(
+  env: SwEnv,
+  request: Request,
+  fallback: () => Response,
+): Promise<Response> {
+  if (!env.online()) return fallback();
+  try {
+    const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+    env.markReachable();
+    return res;
+  } catch {
+    env.markOffline();
+    return fallback();
+  }
+}
+
 /** Last-resort: serve from any cache, else a timeout-bounded network fetch. */
 async function cacheAnyFirst(env: SwEnv, request: Request): Promise<Response> {
   const hit = await env.caches.match(request);
@@ -322,14 +350,22 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
   }
   if (request.mode === 'navigate' || isDataRequest(url)) {
     const navigation = request.mode === 'navigate';
+    // Offline fallback: the offline page for a navigation, an empty data shell
+    // for a load. Shared by the always-fresh and stale-while-revalidate paths.
+    const offline = navigation
+      ? () =>
+          new Response(env.offlinePage(url.pathname + url.search), {
+            headers: { 'content-type': 'text/html; charset=utf-8' },
+          })
+      : emptyDataResponse;
+
+    // The profile editor is always fresh — never a cached/stale copy, never a
+    // nudge. Editing needs the live server state (and isn't possible offline).
+    if (isAlwaysFreshRoute(url)) return networkOnly(env, request, offline);
+
     return staleWhileRevalidate(env, pagesCache(env.version), request, {
       notify: isDataRequest(url),
-      fallback: navigation
-        ? () =>
-            new Response(env.offlinePage(url.pathname + url.search), {
-              headers: { 'content-type': 'text/html; charset=utf-8' },
-            })
-        : emptyDataResponse,
+      fallback: offline,
     });
   }
 
