@@ -4,6 +4,7 @@
   import type { Gig } from '$lib/gig';
   import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation, isValidDate } from '$lib/gig';
   import { listDownloaded } from '$lib/offline';
+  import MonthCalendar from '$lib/MonthCalendar.svelte';
 
   const gigs = $derived(page.data.gigs as Gig[]);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
@@ -20,6 +21,28 @@
   const today = todayStr();
   const upcoming = $derived(gigs.filter((g) => !isValidDate(g.date) || g.date >= today));
   const past = $derived(gigs.filter((g) => isValidDate(g.date) && g.date < today).reverse());
+
+  // Index dated gigs by day so the calendars can color and link them. A day can
+  // hold more than one gig.
+  const gigsByDate = $derived.by(() => {
+    const m = new Map<string, Gig[]>();
+    for (const g of gigs) {
+      if (!isValidDate(g.date)) continue;
+      const arr = m.get(g.date);
+      if (arr) arr.push(g);
+      else m.set(g.date, [g]);
+    }
+    return m;
+  });
+
+  // The current month and the next two, for the three-up calendar strip.
+  const months = $derived.by(() => {
+    const now = new Date();
+    return [0, 1, 2].map((i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  });
 
   // Which gigs are saved for offline, so the list can flag them.
   let offlineIds = $state(new Set<string>());
@@ -52,6 +75,18 @@
       </form>
     {/if}
   </header>
+
+  {#if gigs.length > 0}
+    <div class="calendars">
+      {#each months as m (`${m.year}-${m.month}`)}
+        <MonthCalendar year={m.year} month={m.month} {gigsByDate} {today} />
+      {/each}
+    </div>
+    <p class="legend">
+      <span class="swatch active"></span> Gig
+      <span class="swatch canceled"></span> Canceled
+    </p>
+  {/if}
 
   {#snippet gigCard(gig: Gig)}
     <li>
@@ -134,6 +169,42 @@
     font-size: 0.82rem;
     cursor: pointer;
     white-space: nowrap;
+  }
+
+  .calendars {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin: -6px 0 0;
+  }
+
+  .legend .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+
+  .legend .swatch:not(:first-child) {
+    margin-left: 8px;
+  }
+
+  .legend .swatch.active {
+    background: #2e7d32;
+  }
+
+  .legend .swatch.canceled {
+    background: #b3261e;
   }
 
   .empty {
