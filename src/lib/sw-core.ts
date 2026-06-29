@@ -109,6 +109,22 @@ export function fetchWithTimeout(
   return Promise.race([fetched, timeout]);
 }
 
+/**
+ * The cache key for a mutable request: its URL with SvelteKit's transient data
+ * params stripped (e.g. `x-sveltekit-invalidated`, which the client appends to
+ * `__data.json` loads to bust the HTTP cache). Stripping them lets a reload of
+ * the same route + meaningful query hit the cache despite invalidation churn —
+ * while keeping loads with *different* meaningful queries (e.g. `?email=A` vs
+ * `?email=B`) distinct, so one member's edit page never serves another's.
+ */
+export function cacheKey(request: { url: string }): string {
+  const url = new URL(request.url);
+  for (const k of [...url.searchParams.keys()]) {
+    if (k.startsWith('x-sveltekit')) url.searchParams.delete(k);
+  }
+  return url.toString();
+}
+
 /** True when two responses carry different bodies (drives the refresh nudge). */
 export async function bodyChanged(a: Response, b: Response): Promise<boolean> {
   try {
@@ -200,8 +216,6 @@ export async function cacheFirst(
 interface SwrOpts {
   /** Ping the page when a background refresh returns changed content. */
   notify?: boolean;
-  /** Also match cached entries ignoring the query string (page/data variants). */
-  ignoreSearch?: boolean;
   /** Response when nothing is cached and the network is unavailable. */
   fallback?: () => Response;
 }
@@ -218,9 +232,11 @@ export async function staleWhileRevalidate(
   opts: SwrOpts = {},
 ): Promise<Response> {
   const cache = await env.caches.open(cacheName);
-  const hit =
-    (await cache.match(request)) ??
-    (opts.ignoreSearch ? await cache.match(request, { ignoreSearch: true }) : undefined);
+  // Match (and later store) under a key with SvelteKit's transient params
+  // stripped, so the same route + meaningful query hits across invalidations
+  // without conflating distinct queries like ?email=A vs ?email=B.
+  const key = cacheKey(request);
+  const hit = await cache.match(key);
   const fallback = () => (opts.fallback ? opts.fallback() : new Response(null, { status: 504 }));
 
   // Known-offline: don't wait on a fetch that can't succeed — serve cache or fall
@@ -237,8 +253,8 @@ export async function staleWhileRevalidate(
         // nudge by reloading its data reads the updated cache (not the stale one
         // it's replacing). bodyChanged reads a clone, leaving res for the put.
         const changed = hitForCompare ? await bodyChanged(hitForCompare, res.clone()) : false;
-        await cache.put(request, res.clone());
-        if (changed) env.notifyUpdate(request.url);
+        await cache.put(key, res.clone());
+        if (changed) env.notifyUpdate(key);
       }
       return res;
     } catch {
@@ -307,7 +323,6 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
   if (request.mode === 'navigate' || isDataRequest(url)) {
     const navigation = request.mode === 'navigate';
     return staleWhileRevalidate(env, pagesCache(env.version), request, {
-      ignoreSearch: true,
       notify: isDataRequest(url),
       fallback: navigation
         ? () =>

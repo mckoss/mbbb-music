@@ -292,6 +292,36 @@ test('SWR revalidate does not nudge when the data is unchanged', async () => {
   assert.deepEqual(notified, []);
 });
 
+test('SWR keeps data loads for distinct query strings separate (?email=A vs ?email=B)', async () => {
+  // The reported bug: opening member B's editor first showed member A's data,
+  // because the match ignored the query string and borrowed A's cached entry.
+  // Each ?email= target must be its own cache key.
+  const byEmail = () => async (request) =>
+    new Response(new URL(request.url).searchParams.get('email'));
+  const { env, waited } = makeEnv({ fetch: byEmail() });
+
+  const a = await routeGet(env, req('/profile/__data.json?email=A'));
+  assert.equal(await a.text(), 'A'); // miss → network → A, cached under ?email=A
+
+  // B has nothing cached and must NOT serve A's entry.
+  const b = await routeGet(env, req('/profile/__data.json?email=B'));
+  assert.equal(await b.text(), 'B');
+  await settle(waited);
+});
+
+test('SWR keys ignore SvelteKit transient params so a reload hits the cache', async () => {
+  // The client appends ?x-sveltekit-invalidated=… to bust the HTTP cache; it
+  // must not fragment ours. A reload carrying it should hit the stored entry
+  // (proven by the hanging fetch never being awaited on a hit).
+  const { env, waited } = makeEnv({ fetch: hangingFetch() });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put('https://app.test/gigs/__data.json', new Response('CACHED'));
+
+  const res = await routeGet(env, req('/gigs/__data.json?x-sveltekit-invalidated=01'));
+  assert.equal(await res.text(), 'CACHED');
+  await settle(waited);
+});
+
 // --- routeGet dispatch ------------------------------------------------------
 
 test('routeGet serves precached app-shell assets cache-first', async () => {
