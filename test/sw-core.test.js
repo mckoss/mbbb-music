@@ -15,6 +15,7 @@ import {
   isAlwaysFreshRoute,
   appShellCache,
   pagesCache,
+  offlinePage,
   SCORES_CACHE,
 } from '../src/lib/sw-core.js';
 
@@ -434,4 +435,92 @@ test('buildRangeResponse returns 416 for an unsatisfiable range', async () => {
 test('bodyChanged compares response bodies', async () => {
   assert.equal(await bodyChanged(new Response('a'), new Response('b')), true);
   assert.equal(await bodyChanged(new Response('a'), new Response('a')), false);
+});
+
+// --- offline page: bounded auto-reload (loop guard) -------------------------
+
+// Run the offline page's inline <script> the way a browser would on one load,
+// against injected globals so we can drive successive "reloads" deterministically.
+function runOfflineScript(shared, now) {
+  const body = /<script>([\s\S]*)<\/script>/.exec(offlinePage('/x'))[1];
+  const listeners = {};
+  const scheduled = [];
+  const fn = new Function(
+    'sessionStorage', 'Date', 'addEventListener', 'navigator', 'location', 'setTimeout', 'document', 'JSON',
+    body,
+  );
+  fn(
+    shared.storage,
+    { now: () => now },
+    (type, h) => (listeners[type] = h),
+    shared.navigator,
+    { reload: () => shared.reloads++ },
+    (cb, ms) => scheduled.push({ cb, ms }),
+    { getElementById: () => shared.statusEl },
+    JSON,
+  );
+  return { listeners, scheduled };
+}
+
+function makeSharedEnv() {
+  const m = new Map();
+  return {
+    storage: {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+      removeItem: (k) => m.delete(k),
+    },
+    navigator: { onLine: true },
+    statusEl: { textContent: '' },
+    reloads: 0,
+  };
+}
+
+test('offline page auto-reloads at most a few times, backing off, then stops', async () => {
+  const env = makeSharedEnv();
+  const T = 1_000_000;
+  // Three successive reloads that each land back on the offline page (a tight
+  // loop): they schedule a backed-off reload, then the cap stops them.
+  const a = runOfflineScript(env, T);
+  const b = runOfflineScript(env, T + 2000);
+  const c = runOfflineScript(env, T + 6000);
+  const d = runOfflineScript(env, T + 12000);
+  assert.deepEqual([a, b, c].map((r) => r.scheduled[0].ms), [2000, 4000, 6000]); // backoff
+  assert.equal(d.scheduled.length, 0); // 4th render does NOT auto-reload
+  assert.match(env.statusEl.textContent, /Try again/); // it tells the user what to do
+});
+
+test('offline page reload budget resets after a quiet gap', async () => {
+  const env = makeSharedEnv();
+  const T = 1_000_000;
+  runOfflineScript(env, T);
+  runOfflineScript(env, T + 2000);
+  runOfflineScript(env, T + 6000);
+  assert.equal(runOfflineScript(env, T + 12000).scheduled.length, 0); // capped
+  // …but a visit well after the loop quiets down gets a fresh budget.
+  const later = runOfflineScript(env, T + 12000 + 60_000);
+  assert.equal(later.scheduled[0].ms, 2000); // counting starts over
+});
+
+test('offline page reloads immediately when connectivity actually returns', async () => {
+  const env = makeSharedEnv();
+  // Exhaust the auto-reload budget first.
+  const T = 1_000_000;
+  runOfflineScript(env, T);
+  runOfflineScript(env, T + 2000);
+  runOfflineScript(env, T + 6000);
+  const capped = runOfflineScript(env, T + 12000);
+  assert.equal(capped.scheduled.length, 0);
+  // An `online` event is a genuine transition: reload at once, regardless of cap.
+  capped.listeners.online();
+  assert.equal(env.reloads, 1);
+  // …and it cleared the counter, so the next offline render retries from scratch.
+  assert.equal(runOfflineScript(env, T + 13000).scheduled[0].ms, 2000);
+});
+
+test('offline page does not auto-reload while navigator reports offline', async () => {
+  const env = makeSharedEnv();
+  env.navigator.onLine = false;
+  const r = runOfflineScript(env, 1_000_000);
+  assert.equal(r.scheduled.length, 0); // no point reloading a known-offline device
 });

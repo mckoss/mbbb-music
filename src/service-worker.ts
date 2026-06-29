@@ -28,7 +28,7 @@
 
 import { build, files, version } from '$service-worker';
 
-import { routeGet, appShellCache, pagesCache, type SwEnv } from '$lib/sw-core';
+import { routeGet, appShellCache, pagesCache, offlinePage, type SwEnv } from '$lib/sw-core';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
@@ -67,30 +67,6 @@ const markOffline = (): void => {
 const markReachable = (): void => {
   offlineUntil = 0;
 };
-
-// The page shown when an uncached route is opened offline. Crucially it is NOT a
-// dead end: a standalone Home-Screen app has no browser chrome, so the page must
-// carry its own way out — a "Try again" link to the exact route the user wanted,
-// links into the cached app, and an auto-reload the moment connectivity returns.
-function offlinePage(requestedPath: string): string {
-  const href = requestedPath.replace(/&/g, '&amp;').replace(/"/g, '%22').replace(/</g, '%3C');
-  const link = 'display:inline-block;margin:6px 8px 6px 0;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700';
-  return (
-    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>Offline</title><body style="font:16px/1.5 system-ui;margin:0;padding:2rem;color:#202124;background:#faf8f2">' +
-    "<h1>You're offline</h1>" +
-    "<p>This page hasn't been saved for offline use. Go back, try again once you're " +
-    "back online, or open a page you've already saved.</p>" +
-    `<p><button onclick="history.back()" style="${link};border:0;background:#164e55;color:#fff;font:inherit;font-weight:700;cursor:pointer">← Back</button>` +
-    `<a href="${href}" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Try again</a>` +
-    `<a href="/" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Home</a>` +
-    `<a href="/offline" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Saved scores</a>` +
-    `<a href="/gigs" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Gig packets</a></p>` +
-    "<p id=s style=color:#5f6368;font-size:.85rem>You'll be reconnected automatically when wifi returns.</p>" +
-    '<script>addEventListener("online",function(){location.reload()});' +
-    'if(navigator.onLine){location.reload()}</script>'
-  );
-}
 
 sw.addEventListener('install', (event) => {
   // Precache the new app shell, but DON'T skipWaiting: the worker installs into

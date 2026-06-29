@@ -378,3 +378,52 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
 
   return cacheAnyFirst(env, request);
 }
+
+/**
+ * The page shown when an uncached route is opened while we believe we're
+ * offline. It is NOT a dead end: a standalone Home-Screen app has no browser
+ * chrome, so the page carries its own way out — a "Try again" link to the exact
+ * route wanted, links into the cached app, and a *bounded* auto-reload.
+ *
+ * The auto-reload is the dangerous part. It must recover the moment the server
+ * is reachable again, but it must never become an infinite reload storm if the
+ * worker keeps handing back this page (the failure mode that once turned a
+ * single bad response into hundreds of reloads/sec). So:
+ *  - an `online` event (a genuine connectivity transition) reloads immediately;
+ *  - otherwise we auto-reload at most `cap` times, backing off each time, and
+ *    only while `navigator.onLine` agrees we're online;
+ *  - the attempt counter lives in sessionStorage and resets after a quiet gap,
+ *    so a fresh visit to this page much later still gets its full retry budget,
+ *    while a tight loop self-caps within seconds and then waits for the user.
+ */
+export function offlinePage(requestedPath: string): string {
+  const href = requestedPath.replace(/&/g, '&amp;').replace(/"/g, '%22').replace(/</g, '%3C');
+  const link =
+    'display:inline-block;margin:6px 8px 6px 0;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700';
+  return (
+    '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Offline</title><body style="font:16px/1.5 system-ui;margin:0;padding:2rem;color:#202124;background:#faf8f2">' +
+    "<h1>You're offline</h1>" +
+    "<p>This page hasn't been saved for offline use. Go back, try again once you're " +
+    "back online, or open a page you've already saved.</p>" +
+    `<p><button onclick="history.back()" style="${link};border:0;background:#164e55;color:#fff;font:inherit;font-weight:700;cursor:pointer">← Back</button>` +
+    `<a href="${href}" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Try again</a>` +
+    `<a href="/" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Home</a>` +
+    `<a href="/offline" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Saved scores</a>` +
+    `<a href="/gigs" style="${link};background:#fff;color:#164e55;border:1px solid #164e55">Gig packets</a></p>` +
+    "<p id=s style=color:#5f6368;font-size:.85rem>You'll be reconnected automatically when wifi returns.</p>" +
+    '<script>(function(){' +
+    'var K="mbbbOfflineRetry",cap=3,gap=30000,now=Date.now();' +
+    'function get(){try{return JSON.parse(sessionStorage.getItem(K))||{}}catch(e){return{}}}' +
+    'addEventListener("online",function(){try{sessionStorage.removeItem(K)}catch(e){}location.reload()});' +
+    'var st=get(),n=(now-(st.t||0)<gap)?(st.n||0):0;' +
+    'if(navigator.onLine&&n<cap){' +
+    'try{sessionStorage.setItem(K,JSON.stringify({n:n+1,t:now}))}catch(e){}' +
+    'setTimeout(function(){location.reload()},2000*(n+1));' +
+    '}else if(n>=cap){' +
+    'var el=document.getElementById("s");' +
+    'if(el)el.textContent="Still cannot reach the server. Tap the Try again button once you are back online.";' +
+    '}' +
+    '})();</script>'
+  );
+}
