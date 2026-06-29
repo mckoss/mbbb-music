@@ -10,6 +10,7 @@
 // on the download/score cache).
 import { getCatalog } from '$lib/server/library';
 import { listGigs } from '$lib/server/gigs';
+import { getMemberRsvps } from '$lib/server/rsvps';
 import { compareByDate } from '$lib/gig';
 
 const EMPTY_CATALOG = {
@@ -27,5 +28,8 @@ export function load({ locals }) {
   const approved = Boolean(user?.role);
   const catalog = approved ? getCatalog() : EMPTY_CATALOG;
   const gigs = approved ? [...listGigs()].sort(compareByDate) : [];
-  return { user, catalog, gigs };
+  // The signed-in member's own replies, by gig id, so every page can mark its
+  // calendars and nudge about gigs still awaiting a reply without a per-gig fetch.
+  const myRsvps = approved && user ? getMemberRsvps(user.email) : {};
+  return { user, catalog, gigs, myRsvps };
 }

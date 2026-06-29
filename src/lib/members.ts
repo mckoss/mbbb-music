@@ -9,6 +9,50 @@ import { INSTRUMENT_CHOICES } from '../sync/instruments.js';
 // from one profile-domain module.
 export { INSTRUMENT_CHOICES, instrumentLabel } from '../sync/instruments.js';
 
+// A representative emoji per instrument — a zero-asset, cross-platform fallback
+// when no sprite is available. Brass share the trumpet glyph; reeds/woodwinds and
+// percussion get their own.
+const INSTRUMENT_EMOJI: Record<string, string> = {
+  'alto-sax': '🎷',
+  'soprano-sax': '🎷',
+  'tenor-sax': '🎷',
+  'bari-sax': '🎷',
+  clarinet: '🪈',
+  flute: '🪈',
+  trumpet: '🎺',
+  mellophone: '🎺',
+  'french-horn': '🎺',
+  'alto-horn': '🎺',
+  trombone: '🎺',
+  euphonium: '🎺',
+  tuba: '🎺',
+  melodica: '🎹',
+  drums: '🥁',
+};
+
+/** A single-glyph emoji for an instrument slug (🎵 for none/unknown). */
+export function instrumentGlyph(slug: string | null): string {
+  return (slug && INSTRUMENT_EMOJI[slug]) || '🎵';
+}
+
+// Instruments with an isolated sprite in /static/instruments/<slug>.png. The
+// rest (and a null instrument) fall back to the emoji glyph above.
+const INSTRUMENT_IMG = new Set([
+  'alto-horn', 'alto-sax', 'bari-sax', 'clarinet', 'drums', 'euphonium', 'flute',
+  'french-horn', 'mellophone', 'melodica', 'soprano-sax', 'tenor-sax', 'trombone',
+  'trumpet', 'tuba',
+]);
+
+/** True when /instruments/<slug>.png exists, so callers can prefer the sprite. */
+export function instrumentHasImage(slug: string | null): slug is string {
+  return Boolean(slug && INSTRUMENT_IMG.has(slug));
+}
+
+/** The sprite URL for an instrument (only meaningful when instrumentHasImage). */
+export function instrumentImageSrc(slug: string): string {
+  return `/instruments/${slug}.png`;
+}
+
 /** Band-shirt sizes offered in the profile picker. */
 export type ShirtSize = 'S' | 'S/M' | 'M' | 'L' | 'XL' | 'XXL';
 export const SHIRT_SIZES: ShirtSize[] = ['S', 'S/M', 'M', 'L', 'XL', 'XXL'];
