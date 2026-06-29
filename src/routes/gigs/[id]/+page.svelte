@@ -548,7 +548,10 @@
   <header class="head">
     <div>
       <p class="kicker">Gig Packet</p>
-      <h2>{gig.name}</h2>
+      <h2 class:canceled={gig.canceled}>
+        {gig.name}
+        {#if gig.canceled}<span class="cancel-badge">Canceled</span>{/if}
+      </h2>
     </div>
     {#if canEdit}
       <div class="editor-actions">
@@ -605,6 +608,11 @@
       <label class="field">
         <span>Notes</span>
         <textarea name="notes" rows="4">{gig.notes ?? ''}</textarea>
+      </label>
+
+      <label class="check">
+        <input type="checkbox" name="canceled" checked={gig.canceled ?? false} />
+        <span>Canceled — keep in the list but mark this gig as not happening</span>
       </label>
 
       <div class="form-actions">
@@ -916,6 +924,28 @@
     margin: 4px 0;
   }
 
+  h2.canceled {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    color: var(--muted);
+  }
+
+  .cancel-badge {
+    text-decoration: none;
+    vertical-align: middle;
+    margin-left: 8px;
+    font-size: 0.62em;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #b3261e;
+    background: #fbe9e7;
+    border: 1px solid #f3c6c0;
+    border-radius: 999px;
+    padding: 2px 9px;
+    white-space: nowrap;
+  }
+
   h3 {
     font-size: 1.05rem;
   }
@@ -1007,6 +1037,24 @@
     font-size: 0.78rem;
     font-weight: 700;
     color: var(--muted);
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .check input {
+    width: 20px;
+    height: 20px;
+    min-height: auto;
+    flex: none;
+  }
+
+  .check span {
+    font-size: 0.85rem;
+    color: var(--ink);
   }
 
   input,

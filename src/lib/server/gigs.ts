@@ -122,6 +122,10 @@ export function updateGig(id: string, patch: Partial<GigInput>, dataDir?: string
     const sets = normalizeSets(patch.sets);
     gig.sets = sets.length > 0 ? sets : [emptySet()];
   }
+  if (patch.canceled !== undefined) {
+    if (patch.canceled) gig.canceled = true;
+    else delete gig.canceled;
+  }
 
   writeFileAtomic(data, dataDir);
   return gig;

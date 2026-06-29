@@ -57,8 +57,9 @@
     <li>
       <a class="card" href={`/gigs/${gig.id}`}>
         <div class="card-main">
-          <h3>
-            {gig.name}
+          <h3 class:canceled={gig.canceled}>
+            <span class="title">{gig.name}</span>
+            {#if gig.canceled}<span class="cancel-badge">Canceled</span>{/if}
             {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
           </h3>
           <p class="when">{formatGigDate(gig.date)}</p>
@@ -191,6 +192,27 @@
   .card-main h3 {
     font-size: 1.1rem;
     margin: 0 0 4px;
+  }
+
+  .card-main h3.canceled .title {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    color: var(--muted);
+  }
+
+  .cancel-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #b3261e;
+    background: #fbe9e7;
+    border: 1px solid #f3c6c0;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    margin-left: 6px;
+    white-space: nowrap;
   }
 
   .offline-badge {

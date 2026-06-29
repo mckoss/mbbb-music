@@ -30,6 +30,8 @@ export interface Gig {
   location?: GigLocation;
   notes?: string;
   sets: GigSet[];
+  /** A canceled gig stays in the list (struck through) but isn't happening. */
+  canceled?: boolean;
 }
 
 /** Input shape for creating a gig (id and sets are assigned/defaulted). */
@@ -40,6 +42,7 @@ export interface GigInput {
   location?: GigLocation;
   notes?: string;
   sets?: GigSet[];
+  canceled?: boolean;
 }
 
 /** Gig Packets can be managed by admins and organizers. */
@@ -126,6 +129,7 @@ export function makeGig(input: GigInput): Gig {
     ...(location ? { location } : {}),
     ...(input.notes ? { notes: String(input.notes) } : {}),
     sets: sets.length > 0 ? sets : [emptySet()],
+    ...(input.canceled ? { canceled: true } : {}),
   };
 }
 

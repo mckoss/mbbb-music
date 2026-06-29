@@ -146,6 +146,10 @@ test('store: create/list/get/update/delete round-trips', async () => {
     const cleared = updateGig(gig.id, { notes: '' }, dir);
     assert.equal(cleared.notes, undefined);
 
+    // Canceling sets the flag; un-canceling removes the key (not false).
+    assert.equal(updateGig(gig.id, { canceled: true }, dir).canceled, true);
+    assert.equal('canceled' in updateGig(gig.id, { canceled: false }, dir), false);
+
     assert.equal(deleteGig(gig.id, dir), true);
     assert.equal(deleteGig(gig.id, dir), false);
     assert.deepEqual(listGigs(dir), []);
