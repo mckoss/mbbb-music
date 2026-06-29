@@ -12,6 +12,7 @@
   import { slugify } from '../../sync/slugify.js';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref, viewKind, type ViewKind } from '$lib/view';
+  import { youtubeId, youtubeThumb } from '$lib/youtube';
 
   // Written-key choices a part can be corrected to ('' = the instrument default).
   const KEY_CHOICES = [
@@ -699,6 +700,7 @@
 {/if}
 
 {#if editing}
+  {@const videoId = editing.videoUrl ? youtubeId(editing.videoUrl) : null}
   <div class="modal-backdrop">
     <div class="modal editor" role="dialog" aria-modal="true" aria-label={`Edit ${editing.title}`}>
       <header class="modal-head">
@@ -731,6 +733,19 @@
             <button type="submit">Save</button>
           </form>
           <p class="muted">The song's stable id is <code>{editing.slug}</code> — used by gigs &amp; status, never changed.</p>
+        {/if}
+        <form class="field-row" method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+          <input type="hidden" name="scope" value="song" />
+          <input type="hidden" name="targetId" value={editing.slug} />
+          <input type="hidden" name="field" value="videoUrl" />
+          <label>Reference video (YouTube URL)<input name="value" value={editing.videoUrl ?? ''} placeholder="https://youtu.be/… (blank to clear)" /></label>
+          <button type="submit">Save</button>
+        </form>
+        {#if videoId}
+          <a class="video-preview" href={editing.videoUrl} target="_blank" rel="noopener" title="Open reference video">
+            <img src={youtubeThumb(videoId)} alt="" width="120" height="68" loading="lazy" />
+            <span class="video-play" aria-hidden="true">▶</span>
+          </a>
         {/if}
       </section>
 
@@ -1381,6 +1396,31 @@
     color: var(--ink);
     font-size: 0.85rem;
   }
+  /* Thumbnail preview of the saved reference video — confirms the link parsed. */
+  .video-preview {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    border-radius: 5px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .video-preview img {
+    display: block;
+    object-fit: cover;
+  }
+  .video-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.4rem;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.18);
+  }
+
   .field-row button,
   .editor-block button[type='submit'] {
     min-height: 34px;

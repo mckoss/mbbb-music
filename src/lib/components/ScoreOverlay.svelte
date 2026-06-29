@@ -7,6 +7,7 @@
   import { viewableDocs, partsForFormat } from '$lib/resolve';
   import { instrumentDisplay, audioLabel, stripCopyOf, partShortLabel } from '$lib/format';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
+  import { youtubeId, youtubeThumb } from '$lib/youtube';
   import { track } from '$lib/track';
   import AudioPlayer from './AudioPlayer.svelte';
   import PdfPager from './PdfPager.svelte';
@@ -100,6 +101,12 @@
     chosenAudioSha = audios[0]?.sha256 ?? null;
   });
   const practiceAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
+
+  // A song's optional reference video (a YouTube link, set on Library Status).
+  // Not a synced asset — it opens externally; shown as a small thumbnail beside
+  // the player so it reads as an alternative to the recordings.
+  const videoUrl = $derived(tune?.videoUrl ?? null);
+  const videoId = $derived(videoUrl ? youtubeId(videoUrl) : null);
 
   // Downloads for this song, surfaced via the Files menu. The currently-shown
   // part comes first, then full scores, MuseScore, recordings, notes, and other
@@ -307,10 +314,20 @@
         </div>
       </div>
 
-      <!-- Audio gets its own full-width row. -->
+      <!-- Audio gets its own full-width row. A reference video (if any) sits at
+           the right of it as a small thumbnail that opens YouTube in a new tab. -->
       <div class="player-row">
         {@render recordingSelect()}
         <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        {#if videoUrl}
+          <a class="video-link" href={videoUrl} target="_blank" rel="noopener" title="Open reference video on YouTube">
+            {#if videoId}
+              <img src={youtubeThumb(videoId)} alt="" width="100" height="56" loading="lazy" />
+            {/if}
+            <span class="video-play" aria-hidden="true">▶</span>
+            <span class="video-cap">Reference video</span>
+          </a>
+        {/if}
       </div>
     {/if}
 
@@ -579,6 +596,52 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+
+  /* Reference-video thumbnail in the player row — fixed size so it never grows
+     the band; a ▶ overlay marks it as a video and it opens YouTube externally. */
+  .video-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    padding: 3px 10px 3px 3px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 253, 247, 0.25);
+    background: #2c2d31;
+    color: #fffdf7;
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .video-link:hover {
+    background: rgba(255, 253, 247, 0.16);
+  }
+
+  .video-link img {
+    display: block;
+    border-radius: 5px;
+    object-fit: cover;
+  }
+
+  .video-link .video-play {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 100px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.3rem;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  }
+
+  .video-cap {
+    white-space: nowrap;
   }
 
   .stage {

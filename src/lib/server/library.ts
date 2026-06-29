@@ -97,6 +97,7 @@ function load(): Loaded {
       ...t,
       title: sp?.displayName || t.title,
       displaySlug: sp?.displaySlug || t.slug,
+      videoUrl: sp?.videoUrl || undefined,
       status: statuses[t.slug] ?? DEFAULT_STATUS,
     };
   });

@@ -78,6 +78,7 @@ export interface Tune {
   slug: string; // stable identity (derived from the sync); gig setlists + status key on it
   displaySlug?: string; // slug-like, for download filenames / user-facing slug uses
   title: string;
+  videoUrl?: string; // human-entered reference-video link (YouTube), not a synced asset
   status: SongStatus; // admin-assigned, or 'Unfiled' when unannotated
   lastModified: string | null;
   parts: CatalogPart[];

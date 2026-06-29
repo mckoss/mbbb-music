@@ -133,6 +133,7 @@
             <span class="part-line">{partLine(t)}</span>
             <span class="badges">
               {#if t.audio.length}<span class="badge" title="Recordings">▶ {t.audio.length}</span>{/if}
+              {#if t.videoUrl}<span class="badge" title="Reference video — open it from the score view">🎬 Video</span>{/if}
               {#if t.musescore.length}<span class="badge" title="MuseScore source">𝄞 MuseScore</span>{/if}
               {#if t.notes.length}<span class="badge" title="Notes (Google Docs)">📝 {t.notes.length}</span>{/if}
               {#if t.images.length}<span class="badge" title="Images">🖼 {t.images.length}</span>{/if}
