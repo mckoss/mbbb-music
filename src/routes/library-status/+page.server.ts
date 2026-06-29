@@ -8,6 +8,7 @@ import { setSongStatus } from '$lib/server/song-status';
 import { editField, CORRECTABLE_FIELDS, type Scope } from '$lib/server/corrections';
 import { INSTRUMENT_CHOICES } from '../../sync/instruments.js';
 import { slugify } from '../../sync/slugify.js';
+import { youtubeId, youtubeWatchUrl } from '$lib/youtube';
 
 function requireAdmin(locals: App.Locals) {
   if (locals.user?.role !== 'admin') throw error(403, 'Admins only');
@@ -50,6 +51,12 @@ function normalize(scope: Scope, field: string, raw: string): { value: string } 
     if (field === 'displayName') {
       if (!v) return { err: 'display name required' };
       return { value: v };
+    }
+    if (field === 'videoUrl') {
+      if (v === '') return { value: '' }; // empty clears the reference video
+      const id = youtubeId(v);
+      if (!id) return { err: 'enter a YouTube link (e.g. https://youtu.be/…)' };
+      return { value: youtubeWatchUrl(id) }; // store canonical form
     }
   }
   return { err: 'unsupported field' };
