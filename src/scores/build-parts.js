@@ -24,7 +24,7 @@ import { FORMATS, FORMAT_KEYS, styleFileFor, fitRungOverride } from './formats.j
 import { stampCorners, pageCount } from './stamp.js';
 import { stripTitleFrame } from './strip-title.js';
 import { slugify, slugifyStem } from '../sync/slugify.js';
-import { detectInstrument, detectKey, detectPartNumbers } from '../sync/instruments.js';
+import { detectInstrument, detectKey, detectPartNumbers, translatePartName } from '../sync/instruments.js';
 
 /** Local render timestamp as `YYYY-MM-DD HH:MM` (24-hour), unique per minute. */
 function renderStamp(d = new Date()) {
@@ -68,7 +68,13 @@ function partSlug(partName, index) {
 async function extractParts(bin, input, workDir) {
   let data;
   try {
-    data = JSON.parse(await runMscore(bin, [input, '--score-parts']));
+    // `-f` (force): ignore measure corruptions and version warnings while
+    // enumerating parts — the CLI equivalent of clicking "Ignore" on the GUI's
+    // corruption dialog. Without it MuseScore aborts on a corrupt score and we
+    // lose the entire part list, falling back to a single combined chart. The
+    // per-format render jobs below already pass `-f`; this makes part discovery
+    // just as forgiving.
+    data = JSON.parse(await runMscore(bin, [input, '--score-parts', '-f']));
   } catch {
     data = null;
   }
@@ -76,9 +82,12 @@ async function extractParts(bin, input, workDir) {
   const bins = Array.isArray(data?.partsBin) ? data.partsBin : [];
 
   if (!names.length || names.length !== bins.length) {
-    // No well-defined parts (or unexpected shape): render the whole score as one
-    // "part". The score's own instrument name isn't known here, so use the file.
-    return [{ name: slugifyStem(basename(input)), path: input }];
+    // No well-defined parts (or MuseScore couldn't enumerate them): render the
+    // whole score as a single combined chart covering every instrument. Marked
+    // `whole` so it's slugged "all" (e.g. brooklyn-all-letter.pdf) rather than
+    // repeating the song name, and headed "All Parts" instead of a single (likely
+    // misdetected) instrument.
+    return [{ name: 'All Parts', path: input, whole: true }];
   }
 
   const parts = [];
@@ -211,11 +220,21 @@ export async function buildParts(bin, input, opts = {}) {
     // the MuseScore part name for the lyre header fallback.
     const seen = new Map();
     const named = parts.map((p, i) => {
-      let slug = partSlug(p.name, i);
+      // Translate known foreign-language part names (e.g. French percussion) to
+      // English first, so both the slug and the header read in English. A
+      // translated name is slugged directly — its English form (e.g. "Snare
+      // Drum") is the intended label, not something to re-fold into the generic
+      // drum family — while untranslated names go through the usual instrument
+      // detection (instrument[-key][-partN]).
+      const name = translatePartName(p.name);
+      let slug;
+      if (p.whole) slug = 'all';
+      else if (name !== p.name) slug = slugify(name) || `part${i + 1}`;
+      else slug = partSlug(p.name, i);
       const n = (seen.get(slug) ?? 0) + 1;
       seen.set(slug, n);
       if (n > 1) slug = `${slug}-${n}`;
-      return { path: p.path, slug, name: p.name };
+      return { path: p.path, slug, name, whole: Boolean(p.whole) };
     });
     log(`${basename(input)}: ${named.length} part(s) × ${formatKeys.length} format(s)`);
 
@@ -237,7 +256,9 @@ export async function buildParts(bin, input, opts = {}) {
         // `|| displayTitle` (not `??`): an extracted-but-empty title falls back to
         // the song title, never the part name (which would duplicate the instrument).
         p.title = stripped?.title || displayTitle;
-        p.instrument = stripped?.instrument ?? p.name;
+        // A whole-score render covers every instrument, so keep its "All Parts"
+        // header rather than a single (likely misdetected) instrument name.
+        p.instrument = p.whole ? p.name : stripped?.instrument ?? p.name;
         // Lyre one-liner derived from the resolved zones, so it gets the same
         // title fix + song-title fallback as the letter header.
         p.header = [p.title, p.instrument].filter(Boolean).join(' - ') || p.name;

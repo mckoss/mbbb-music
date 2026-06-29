@@ -92,6 +92,44 @@ export function detectInstrument(text) {
   return null;
 }
 
+/**
+ * Known French MuseScore part names → English. Some arrangements the band uses
+ * come from French sources and name their percussion in French ("Caisse claire",
+ * "Grosses caisses", "Tambours ténor"); these aren't covered by the instrument
+ * matchers above (or collapse ambiguously into the generic drum family), so a
+ * build would slug them with the raw French. Translating first yields clean,
+ * distinct English part names/filenames. Folded (accent/case/separator-insensitive)
+ * needles, most specific first; the English value replaces the whole part name.
+ */
+const PART_NAME_TRANSLATIONS = [
+  ['caisse claire', 'Snare Drum'],
+  ['grosses caisses', 'Bass Drum'],
+  ['grosse caisse', 'Bass Drum'],
+  ['tambours tenor', 'Tenor Drums'],
+  ['tambour tenor', 'Tenor Drums'],
+  ['cymbales', 'Cymbals'],
+  ['cymbale', 'Cymbals'],
+];
+
+/**
+ * Translate a known foreign-language part name to its English equivalent, or
+ * return the name unchanged when nothing matches. A trailing instance number is
+ * preserved ("Cymbales 2" → "Cymbals 2"). Matching is accent/case-insensitive.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function translatePartName(name) {
+  const folded = foldForMatch(name);
+  for (const [needle, english] of PART_NAME_TRANSLATIONS) {
+    if (folded.includes(needle)) {
+      const trailing = String(name ?? '').match(/\s*(\d{1,2})\s*$/);
+      return trailing ? `${english} ${trailing[1]}` : english;
+    }
+  }
+  return name;
+}
+
 const KEY_PATTERNS = [
   { slug: 'bflat', re: /\b(b[-\s]?flat|b♭|in\s*b\b)/i },
   { slug: 'eflat', re: /\b(e[-\s]?flat|e♭)/i },

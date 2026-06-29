@@ -1,9 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { detectInstrument } from '../src/sync/instruments.js';
+import { detectInstrument, translatePartName } from '../src/sync/instruments.js';
 
 const slugOf = (name) => detectInstrument(name)?.slug ?? null;
+
+test('known French percussion part names translate to English', () => {
+  assert.equal(translatePartName('Caisse claire'), 'Snare Drum');
+  assert.equal(translatePartName('Grosses caisses'), 'Bass Drum');
+  assert.equal(translatePartName('Grosse caisse'), 'Bass Drum');
+  assert.equal(translatePartName('Cymbales'), 'Cymbals');
+  assert.equal(translatePartName('Tambours ténor'), 'Tenor Drums'); // accent-insensitive
+  // A trailing instance number is preserved.
+  assert.equal(translatePartName('Cymbales 2'), 'Cymbals 2');
+});
+
+test('part-name translation leaves unknown / English names unchanged', () => {
+  assert.equal(translatePartName('B♭ Trumpet 1'), 'B♭ Trumpet 1');
+  assert.equal(translatePartName('Tuba'), 'Tuba');
+  assert.equal(translatePartName('Snare Drum'), 'Snare Drum');
+});
 
 test('baritone saxophone is detected, not mis-filed as euphonium', () => {
   // The bug: "Baritone Sax" / "Baritone_Sax" fell through bari-sax (which only
