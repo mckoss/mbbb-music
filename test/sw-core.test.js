@@ -206,6 +206,39 @@ test('SWR navigation with nothing cached and offline returns the offline page wi
   assert.equal(await res.text(), '<offline-page>/gigs/summer?perform=1');
 });
 
+test('SWR navigation follows a redirect instead of serving the offline page', async () => {
+  // A navigation request is redirect:"manual", so fetching a route that
+  // 3xx-redirects (`/` → `/login` when signed out, `/auth/callback`) yields an
+  // opaque-redirect (status 0, !ok) — NOT a throw. The browser must get it to
+  // follow the redirect; substituting the offline page locks signed-out users
+  // out and the offline page's auto-reload then loops forever.
+  // A real Response can't carry status 0, so model the opaque-redirect the way
+  // the strategy reads it: status 0, !ok, type 'opaqueredirect'.
+  const opaqueRedirect = () => async () => ({
+    status: 0,
+    ok: false,
+    type: 'opaqueredirect',
+    text: async () => '',
+  });
+  const { env, marks } = makeEnv({ fetch: opaqueRedirect() });
+  const res = await routeGet(env, req('/', { mode: 'navigate' }));
+  assert.equal(res.status, 0); // the redirect is passed through, not swallowed
+  assert.ok(!(await res.text()).startsWith('<offline-page>'));
+  assert.deepEqual(marks, ['reachable']); // server was reached, breaker not tripped
+});
+
+test('SWR navigation passes a 3xx redirect through to the browser', async () => {
+  // Same bug class when the platform surfaces the redirect as a real 3xx
+  // (rather than an opaque-redirect): it must reach the browser, not become
+  // the offline page.
+  const redirect303 = () => async () =>
+    new Response(null, { status: 303, headers: { location: '/login' } });
+  const { env } = makeEnv({ fetch: redirect303() });
+  const res = await routeGet(env, req('/', { mode: 'navigate' }));
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/login');
+});
+
 // --- navigator.onLine short-circuit (no waiting when known-offline) ---------
 
 test('known-offline cacheFirst miss returns 504 without touching the network', async () => {

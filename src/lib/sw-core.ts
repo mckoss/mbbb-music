@@ -275,7 +275,14 @@ export async function staleWhileRevalidate(
   }
 
   const res = await revalidate;
-  if (res && res.ok) return res;
+  // Pass a redirect straight through so the browser follows it. A navigation
+  // request is `redirect: "manual"`, so fetching a route that 3xx-redirects
+  // (e.g. `/` → `/login` when signed out, or `/auth/callback`) yields an
+  // opaque-redirect response (status 0, !ok). Treating that as a failure would
+  // serve the offline page over a perfectly reachable server — and the offline
+  // page's auto-reload then loops forever. Only a real throw → fallback.
+  if (res && (res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)))
+    return res;
   return fallback();
 }
 
