@@ -3,6 +3,8 @@
   import { page } from '$app/state';
   import { goto, pushState, replaceState } from '$app/navigation';
   import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '@sveltejs/kit';
+  import { markSelfMutation } from '$lib/self-update';
   import { track } from '$lib/track';
   import type { Gig, GigSet } from '$lib/gig';
   import {
@@ -81,6 +83,14 @@
       .filter((t) => ADDABLE.has(t.status))
       .sort((a, b) => a.title.localeCompare(b.title))
   );
+
+  // Default enhance (re-run loads + reset the form) plus a self-edit mark on
+  // success, so the layout silently refreshes this detail page with the new data
+  // rather than nudging — it's your own edit landing.
+  const selfEdit: SubmitFunction = () => async ({ update, result }) => {
+    await update();
+    if (result.type === 'success') markSelfMutation();
+  };
 
   // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
@@ -571,8 +581,9 @@
       class="info-form"
       method="POST"
       action="?/updateInfo"
-      use:enhance={() => async ({ update }) => {
+      use:enhance={() => async ({ update, result }) => {
         await update({ reset: false });
+        if (result.type === 'success') markSelfMutation();
         editing = false;
       }}
     >
@@ -661,7 +672,7 @@
               <form
                 method="POST"
                 action="?/removeSet"
-                use:enhance
+                use:enhance={selfEdit}
               >
                 <input type="hidden" name="setId" value={set.id} />
                 <button class="danger-link" type="submit">Remove set</button>
@@ -689,13 +700,13 @@
                     <span class="no-chart">no chart for this instrument</span>
                   {/if}
                   {#if canEdit}
-                    <form method="POST" action="?/moveSong" use:enhance>
+                    <form method="POST" action="?/moveSong" use:enhance={selfEdit}>
                       <input type="hidden" name="setId" value={set.id} />
                       <input type="hidden" name="slug" value={slug} />
                       <input type="hidden" name="dir" value="up" />
                       <button type="submit" class="icon" disabled={i === 0} aria-label="Move up">↑</button>
                     </form>
-                    <form method="POST" action="?/moveSong" use:enhance>
+                    <form method="POST" action="?/moveSong" use:enhance={selfEdit}>
                       <input type="hidden" name="setId" value={set.id} />
                       <input type="hidden" name="slug" value={slug} />
                       <input type="hidden" name="dir" value="down" />
@@ -706,7 +717,7 @@
                         aria-label="Move down">↓</button
                       >
                     </form>
-                    <form method="POST" action="?/removeSong" use:enhance>
+                    <form method="POST" action="?/removeSong" use:enhance={selfEdit}>
                       <input type="hidden" name="setId" value={set.id} />
                       <input type="hidden" name="slug" value={slug} />
                       <button type="submit" class="icon danger" aria-label="Remove">×</button>
@@ -719,7 +730,7 @@
         {/if}
 
         {#if canEdit}
-          <form class="add-song" method="POST" action="?/addSong" use:enhance>
+          <form class="add-song" method="POST" action="?/addSong" use:enhance={selfEdit}>
             <input type="hidden" name="setId" value={set.id} />
             <select name="slug" aria-label="Add a song">
               <option value="">Add a song…</option>
@@ -734,7 +745,7 @@
     {/each}
 
     {#if canEdit}
-      <form class="add-set" method="POST" action="?/addSet" use:enhance>
+      <form class="add-set" method="POST" action="?/addSet" use:enhance={selfEdit}>
         <input name="name" placeholder="New set name (optional)" />
         <button type="submit" class="add-btn">+ Add set</button>
       </form>

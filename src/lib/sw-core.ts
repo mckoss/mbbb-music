@@ -233,8 +233,12 @@ export async function staleWhileRevalidate(
       const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
       env.markReachable();
       if (res.ok) {
-        if (hitForCompare && (await bodyChanged(hitForCompare, res))) env.notifyUpdate(request.url);
+        // Store the fresh copy *before* notifying, so a page that reacts to the
+        // nudge by reloading its data reads the updated cache (not the stale one
+        // it's replacing). bodyChanged reads a clone, leaving res for the put.
+        const changed = hitForCompare ? await bodyChanged(hitForCompare, res.clone()) : false;
         await cache.put(request, res.clone());
+        if (changed) env.notifyUpdate(request.url);
       }
       return res;
     } catch {

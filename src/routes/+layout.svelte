@@ -8,6 +8,7 @@
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
   import { warmCorePages } from '$lib/offline';
+  import { consumeSelfMutation } from '$lib/self-update';
   import { startActivitySync } from '$lib/track';
   import type { Catalog, SessionUser } from '$lib/types';
 
@@ -77,6 +78,17 @@
   // user's hands (which matters mid-performance) — tapping it reloads the data.
   let updateReady = $state(false);
 
+  // List views that should silently refresh the moment the service worker's
+  // background revalidate finds newer data (online) — it's natural to see the
+  // list update in place rather than tap a prompt. Detail, score, and perform
+  // views keep the dismissible nudge so content never swaps under the user
+  // mid-task. Offline-first is unaffected: the cached copy still paints first;
+  // this only acts on an update the SW has already fetched in the background.
+  const AUTO_REFRESH_ROUTES = new Set(['/', '/gigs', '/members', '/library-status']);
+  function autoRefreshRoute(pathname: string): boolean {
+    return AUTO_REFRESH_ROUTES.has(pathname);
+  }
+
   // Does an updated data URL pertain to what we're currently looking at?
   function nudgeRelevant(url: string): boolean {
     try {
@@ -95,7 +107,11 @@
   $effect(() => {
     if (!browser || !('serviceWorker' in navigator)) return;
     const onMessage = (e: MessageEvent) => {
-      if (e.data?.type === 'content-updated' && nudgeRelevant(e.data.url)) updateReady = true;
+      if (e.data?.type !== 'content-updated' || !nudgeRelevant(e.data.url)) return;
+      // Apply silently on a list view, or when this is the user's own edit
+      // landing (e.g. a gig detail you just saved). Otherwise raise the nudge.
+      if (autoRefreshRoute(page.url.pathname) || consumeSelfMutation()) void applyUpdate();
+      else updateReady = true;
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
