@@ -262,6 +262,26 @@ test('SWR revalidate nudges the page when the data changed', async () => {
   assert.equal(await (await cache.match(r)).text(), 'NEW'); // cache refreshed
 });
 
+test('SWR revalidate caches the fresh copy before nudging', async () => {
+  // A list view reacts to the nudge by reloading its data, so the fresh copy
+  // must be cached *before* notifyUpdate fires — otherwise the reload re-reads
+  // the stale entry. Record the order of the put and the notify and assert it.
+  const order = [];
+  const { env, waited } = makeEnv({ fetch: okFetch('NEW') });
+  const cache = await env.caches.open(pagesCache('test'));
+  const realPut = cache.put.bind(cache);
+  cache.put = async (...a) => {
+    order.push('put');
+    return realPut(...a);
+  };
+  env.notifyUpdate = () => order.push('notify');
+  const r = req('/gigs/__data.json');
+  await realPut(r.url, new Response('OLD'));
+  await routeGet(env, r);
+  await settle(waited);
+  assert.deepEqual(order, ['put', 'notify']);
+});
+
 test('SWR revalidate does not nudge when the data is unchanged', async () => {
   const { env, waited, notified } = makeEnv({ fetch: okFetch('SAME') });
   const cache = await env.caches.open(pagesCache('test'));
