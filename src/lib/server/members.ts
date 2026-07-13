@@ -226,6 +226,18 @@ export function recentProfileEditsDb(db: DatabaseSync, limit = 200): ProfileEdit
     .all(limit) as unknown as ProfileEditRow[];
 }
 
+/**
+ * editor email → their most recent edit time. An edit is evidence the editor was
+ * on the site, so the activity report folds this into "last seen" — it reaches
+ * back further than the presence table, which only starts when it was added.
+ */
+export function lastEditedByDb(db: DatabaseSync): Map<string, string> {
+  const rows = db
+    .prepare(`SELECT edited_by AS email, MAX(edited_at) AS at FROM member_edits GROUP BY edited_by`)
+    .all() as unknown as Array<{ email: string; at: string }>;
+  return new Map(rows.map((r) => [r.email, r.at]));
+}
+
 /** The current stored (normalized) string for one field of an effective profile. */
 function storedValue(p: MemberProfile, field: ProfileField): string | null {
   if (field === 'instruments') return p.instruments.length ? JSON.stringify(p.instruments) : null;
@@ -275,5 +287,6 @@ export const editProfile = (email: string, patch: ProfilePatch, by: string): Mem
 export const profileHistory = (email: string, limit?: number): ProfileEditRow[] =>
   profileHistoryDb(db(), email, limit);
 export const recentProfileEdits = (limit?: number): ProfileEditRow[] => recentProfileEditsDb(db(), limit);
+export const lastEditedBy = (): Map<string, string> => lastEditedByDb(db());
 export const deleteProfileEdit = (id: number, by: string): boolean => deleteProfileEditDb(db(), id, by);
 export const restoreProfileEdit = (id: number): boolean => restoreProfileEditDb(db(), id);

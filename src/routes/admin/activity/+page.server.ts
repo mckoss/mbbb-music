@@ -5,7 +5,7 @@
 import { error } from '@sveltejs/kit';
 
 import { recentEvents, usageByMember, songUsageByMember, lastSeen, ACTIVITY_TYPES } from '$lib/server/activity';
-import { recentProfileEdits, getProfile } from '$lib/server/members';
+import { recentProfileEdits, lastEditedBy, getProfile } from '$lib/server/members';
 import { listUsers } from '$lib/server/users';
 import { formatPacificDateTime, formatLastSeen } from '$lib/time';
 
@@ -55,7 +55,16 @@ export function load({ locals }) {
 
   // --- Per-member summary --------------------------------------------------
 
+  // "Last seen" is the latest of everything that proves a member was here: the
+  // presence table, the event log, and the profile-edit history. The last two
+  // reach back before presence was recorded, so nobody who has used the site
+  // reads as "never".
   const seenAt = lastSeen();
+  for (const [email, at] of lastEditedBy()) {
+    const known = seenAt.get(email);
+    if (!known || at > known) seenAt.set(email, at);
+  }
+
   const usage = usageByMember(since);
   const songUsage = songUsageByMember(since);
 

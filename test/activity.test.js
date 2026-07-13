@@ -71,6 +71,28 @@ test('last seen keeps the latest time per member, and never goes backwards', () 
   assert.equal(seen.get('nobody@x'), undefined);
 });
 
+test('last seen falls back to the event log for members who predate the seen table', () => {
+  const db = freshDb();
+  // Al has only old events — no presence row was ever written for him.
+  logEventDb(db, ev({ email: 'al@x', at: '2026-05-02T00:00:00.000Z' }));
+  logEventDb(db, ev({ email: 'al@x', type: 'score-view', at: '2026-05-09T00:00:00.000Z' }));
+  // Jo has both; the newer presence row wins.
+  logEventDb(db, ev({ email: 'jo@x', at: '2026-05-01T00:00:00.000Z' }));
+  touchSeenDb(db, 'jo@x', '2026-06-16T00:00:00.000Z');
+
+  const seen = lastSeenDb(db);
+  assert.equal(seen.get('al@x'), '2026-05-09T00:00:00.000Z'); // derived from events
+  assert.equal(seen.get('jo@x'), '2026-06-16T00:00:00.000Z');
+});
+
+test('an offline event replayed later cannot drag last seen backwards', () => {
+  const db = freshDb();
+  touchSeenDb(db, 'jo@x', '2026-06-16T00:00:00.000Z');
+  // Recorded offline days earlier, uploaded now: it keeps its original time.
+  logEventDb(db, ev({ at: '2026-06-02T00:00:00.000Z', offline: true, uploadedAt: '2026-06-16T00:05:00.000Z' }));
+  assert.equal(lastSeenDb(db).get('jo@x'), '2026-06-16T00:00:00.000Z');
+});
+
 // --- Summary aggregates ------------------------------------------------------
 
 const SINCE = '2026-06-01T00:00:00.000Z';

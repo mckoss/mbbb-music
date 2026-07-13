@@ -134,9 +134,23 @@ export function touchSeenDb(db: DatabaseSync, email: string, at: string): void {
   ).run(email.trim().toLowerCase(), at);
 }
 
-/** email → last-seen ISO time, for every member we've ever seen. */
+/**
+ * email → last-seen ISO time, for every member we've ever seen.
+ *
+ * The `seen` table only starts at the release that introduced it, so an event is
+ * evidence of presence too: a member who last downloaded a chart in May was
+ * plainly here in May. Taking the later of the two backfills every member who
+ * predates the table, and costs nothing going forward (presence is recorded more
+ * often than events, so `seen` normally wins).
+ */
 export function lastSeenDb(db: DatabaseSync): Map<string, string> {
-  const rows = db.prepare(`SELECT email, at FROM seen`).all() as unknown as Array<{ email: string; at: string }>;
+  const rows = db
+    .prepare(
+      `SELECT email, MAX(at) AS at
+       FROM (SELECT email, at FROM seen UNION ALL SELECT email, at FROM events)
+       GROUP BY email`,
+    )
+    .all() as unknown as Array<{ email: string; at: string }>;
   return new Map(rows.map((r) => [r.email, r.at]));
 }
 
