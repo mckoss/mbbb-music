@@ -6,9 +6,33 @@
   // black/red, Playfair Display over Source Sans 3 — so arriving from there, or
   // leaving for it, doesn't feel like a different band.
   import { browser } from '$app/environment';
-  import { formatGigDate, formatGigTimeRange, mapsUrl, urlHost, type PublicShow } from '$lib/gig';
+  import {
+    formatGigDate,
+    formatGigTimeRange,
+    mapsUrl,
+    primaryGig,
+    urlHost,
+    type PublicShow,
+  } from '$lib/gig';
+  import MonthCalendar from '$lib/MonthCalendar.svelte';
 
-  let { data }: { data: { upcoming: PublicShow[]; past: PublicShow[]; feedUrl: string } } = $props();
+  interface Month {
+    year: number;
+    month: number;
+  }
+
+  let {
+    data,
+  }: {
+    data: {
+      shows: PublicShow[];
+      upcoming: PublicShow[];
+      past: PublicShow[];
+      months: Month[];
+      today: string;
+      feedUrl: string;
+    };
+  } = $props();
 
   const SITE = 'https://mutinybaybrassband.com';
 
@@ -36,6 +60,25 @@
   /** A show's venue line, or '' when we only know the date. */
   function venue(show: PublicShow): string {
     return [show.location?.name, show.location?.address].filter(Boolean).join(' · ');
+  }
+
+  // Shows indexed by day, so the month grids can color and link them. A day can
+  // hold more than one.
+  const showsByDate = $derived.by(() => {
+    const m = new Map<string, PublicShow[]>();
+    for (const s of data.shows) {
+      const arr = m.get(s.date);
+      if (arr) arr.push(s);
+      else m.set(s.date, [s]);
+    }
+    return m;
+  });
+
+  // A calendar day jumps to that show further down THIS page. The default would
+  // link to /gigs/<id>, which an anonymous visitor can't open — they'd be bounced
+  // to the login screen from a page that is supposed to be public.
+  function showAnchor(shows: { id: string; canceled?: boolean }[]): string {
+    return `#show-${primaryGig(shows).id}`;
   }
 
   // Schema.org MusicEvent data, so a search engine can show these as events
@@ -110,41 +153,37 @@
     <h1 class="page-title">Shows</h1>
     <p class="tagline">Whidbey Island, WA</p>
 
-    <!-- Subscribe: the whole point of the page for anyone who wants to keep up.
-         A subscription auto-updates when a show moves; the per-show buttons on
-         a gig page are one-time copies. -->
-    <section class="subscribe" aria-labelledby="sub-h">
-      <h2 id="sub-h">Never miss a show</h2>
-      <p>
-        Subscribe to our calendar and every show below lands in your own — and stays right when
-        something moves.
-      </p>
-      <div class="sub-actions">
-        <a class="btn btn-primary" href={googleUrl} target="_blank" rel="noopener">
-          Add to Google Calendar
-        </a>
-        <a class="btn btn-outline" href={webcalUrl}>Add to Apple Calendar or Outlook</a>
+    <!-- The season at a glance: this month and the next two. Each colored day
+         jumps to that show in the list below. -->
+    {#if data.shows.length > 0}
+      <div class="calendars">
+        {#each data.months as m (`${m.year}-${m.month}`)}
+          <MonthCalendar
+            year={m.year}
+            month={m.month}
+            gigsByDate={showsByDate}
+            today={data.today}
+            hrefFor={showAnchor}
+          />
+        {/each}
       </div>
-      <p class="feed">
-        <span class="feed-label">Or paste this into any calendar app:</span>
-        <code>{data.feedUrl}</code>
-        <button type="button" class="copy" onclick={copyFeed}>
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+      <p class="legend">
+        <span class="swatch active"></span> Show
+        <span class="swatch canceled"></span> Canceled
       </p>
-    </section>
+    {/if}
 
     <section aria-labelledby="up-h">
       <h2 id="up-h" class="section-title">Upcoming</h2>
       {#if data.upcoming.length === 0}
         <p class="empty">
-          No shows on the books just yet. Subscribe above, or
+          No shows on the books just yet. Subscribe below, or
           <a href="{SITE}/#contact">get in touch about booking us</a>.
         </p>
       {:else}
         <ul class="show-list">
           {#each data.upcoming as show (show.id)}
-            <li class="show" class:canceled={show.canceled}>
+            <li class="show" class:canceled={show.canceled} id="show-{show.id}">
               <div class="date">
                 <span class="date-text">{formatGigDate(show.date)}</span>
                 {#if show.canceled}<span class="cancel-badge">Canceled</span>{/if}
@@ -186,7 +225,7 @@
         <h2 id="past-h" class="section-title">Past shows</h2>
         <ul class="show-list past">
           {#each data.past as show (show.id)}
-            <li class="show" class:canceled={show.canceled}>
+            <li class="show" class:canceled={show.canceled} id="show-{show.id}">
               <div class="date">
                 <span class="date-text">{formatGigDate(show.date)}</span>
                 {#if show.canceled}<span class="cancel-badge">Canceled</span>{/if}
@@ -200,6 +239,30 @@
         </ul>
       </section>
     {/if}
+
+    <!-- Subscribe: the ask, once someone has read the shows and decided they
+         care. A subscription auto-updates when a show moves; the per-show
+         buttons on a gig page are one-time copies. -->
+    <section class="subscribe" aria-labelledby="sub-h">
+      <h2 id="sub-h">Never miss a show</h2>
+      <p>
+        Subscribe to our calendar and every show on this page lands in your own — and stays right
+        when something moves.
+      </p>
+      <div class="sub-actions">
+        <a class="btn btn-primary" href={googleUrl} target="_blank" rel="noopener">
+          Add to Google Calendar
+        </a>
+        <a class="btn btn-outline" href={webcalUrl}>Add to Apple Calendar or Outlook</a>
+      </div>
+      <p class="feed">
+        <span class="feed-label">Or paste this into any calendar app:</span>
+        <code>{data.feedUrl}</code>
+        <button type="button" class="copy" onclick={copyFeed}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </p>
+    </section>
   </main>
 
   <footer class="site-footer">
@@ -235,6 +298,66 @@
     font-size: 17px;
     line-height: 1.7;
     min-height: 100vh;
+
+    /* MonthCalendar is styled against the app's own light theme (--panel, --ink,
+       …, defined on :root in app.css). Custom properties inherit, so redefining
+       them here re-skins that component for this page's dark palette without
+       forking it or touching how it looks in the app. */
+    --panel: #1a1a1a;
+    --line: rgba(242, 237, 232, 0.16);
+    --ink: #f2ede8;
+    --muted: #bbbbbb;
+    --accent-strong: #cc0000; /* the "today" ring */
+  }
+
+  /* --- Calendar strip ------------------------------------------------------ */
+
+  .calendars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 2.5rem;
+    font-size: 0.78rem;
+    color: var(--light-gray);
+  }
+
+  .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+  }
+
+  .swatch + .swatch {
+    margin-left: 12px;
+  }
+
+  .swatch.active {
+    background: #2e7d32;
+  }
+
+  .swatch.canceled {
+    background: #b3261e;
+  }
+
+  /* A calendar day links to its show below; the sticky header would otherwise
+     land on top of it. */
+  .show {
+    scroll-margin-top: 90px;
+  }
+
+  /* Briefly ring the show a visitor jumped to, so the page doesn't just appear
+     to have scrolled somewhere arbitrary. */
+  .show:target {
+    background: rgba(204, 0, 0, 0.08);
+    box-shadow: inset 3px 0 0 var(--red);
   }
 
   .shows-page :global(h1),
@@ -373,6 +496,8 @@
     border-left: 3px solid var(--red);
     border-radius: var(--radius);
     padding: 1.75rem;
+    /* It closes the page now, so it needs room off the last show above it. */
+    margin-top: 3.5rem;
   }
 
   .subscribe h2 {

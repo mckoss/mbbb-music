@@ -18,9 +18,24 @@ export function load({ url }) {
   // band's first-ever gig.
   const past = shows.filter((s) => s.date < today).reverse();
 
+  // This month and the next two, for the calendar strip. Derived from the Pacific
+  // date rather than `new Date()` on both sides: the server runs in UTC, so a
+  // client-computed month could disagree with the rendered one and flicker on
+  // hydration — and around a month boundary they'd differ outright.
+  const [year, month] = today.split('-').map(Number);
+  const months = [0, 1, 2].map((i) => {
+    const d = new Date(year, month - 1 + i, 1);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
   return {
+    // The calendar spans this month and the next two, so it needs the past shows
+    // too — a gig earlier this month is still on the grid.
+    shows,
     upcoming,
     past,
+    months,
+    today,
     // Absolute, so the subscribe links and the copyable feed URL work off-site.
     feedUrl: `${url.origin}/shows/calendar.ics`,
   };
