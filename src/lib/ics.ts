@@ -32,6 +32,29 @@ const DEFAULT_DURATION_MIN = 120;
  *  polls on its own (slow) schedule; Apple honors it. */
 const REFRESH = 'PT12H';
 
+// --- Subscribe links ---------------------------------------------------------
+
+/**
+ * The webcal:// form of the feed URL. The scheme is what makes a calendar client
+ * offer to *subscribe* — a live feed it re-polls — rather than download a
+ * one-time copy that never updates again.
+ */
+export function webcalUrl(feedUrl: string): string {
+  return feedUrl.replace(/^https?:/, 'webcal:');
+}
+
+/**
+ * Google's add-by-URL link.
+ *
+ * `cid` must carry the **webcal://** URL. Passing the https:// one — which is
+ * the obvious thing to do, since that's the URL you can open in a browser —
+ * fails with "Unable to add this calendar; check the URL", an error that gives
+ * no hint that the scheme is the problem. Tested below so it can't regress.
+ */
+export function googleSubscribeUrl(feedUrl: string): string {
+  return `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcalUrl(feedUrl))}`;
+}
+
 // --- Line encoding -----------------------------------------------------------
 
 /** Escape a value for a text property: backslash, semicolon, comma, newline. */
