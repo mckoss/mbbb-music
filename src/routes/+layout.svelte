@@ -19,10 +19,18 @@
     $props();
 
   const user = $derived(data.user ?? null);
-  // Only an approved (role-bearing) user sees the app chrome; everyone else
-  // (login / pending) gets a bare page.
-  const authed = $derived(Boolean(user?.role));
   const isAdmin = $derived(user?.role === 'admin');
+
+  // /shows is the public show listing: a standalone page carrying the band's own
+  // branding and navigating back to mutinybaybrassband.com. It shows no app
+  // chrome even to a signed-in member — a member who follows the link from a gig
+  // is looking at what the public sees, and the app's tab bar has no business on
+  // a page the world can read.
+  const standalone = $derived(page.url.pathname.startsWith('/shows'));
+
+  // Only an approved (role-bearing) user sees the app chrome; everyone else
+  // (login / pending / the public shows page) gets a bare page.
+  const authed = $derived(Boolean(user?.role) && !standalone);
 
   const instruments = $derived(data.catalog.instruments ?? []);
 

@@ -1,0 +1,6 @@
+# The public show listing is meant to be found. Everything else in this app sits
+# behind a login and would only give a crawler a redirect to /login, so keep it
+# out of the crawl entirely. (Allow wins over Disallow on the longer match.)
+User-agent: *
+Allow: /shows
+Disallow: /

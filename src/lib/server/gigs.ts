@@ -18,6 +18,7 @@ import {
   normalizeSets,
   normalizeTimes,
   normalizeLocation,
+  normalizeUrl,
   isValidDate,
   emptySet,
   newId,
@@ -81,6 +82,10 @@ export function duplicateGig(id: string, dataDir?: string): Gig | null {
       ...(source.times ? { times: source.times.map((t) => ({ ...t })) } : {}),
       ...(source.location ? { location: { ...source.location } } : {}),
       ...(source.notes ? { notes: source.notes } : {}),
+      ...(source.publicNotes ? { publicNotes: source.publicNotes } : {}),
+      ...(source.eventUrl ? { eventUrl: source.eventUrl } : {}),
+      // A copy of a private booking stays private until someone says otherwise.
+      ...(source.hidden ? { hidden: true } : {}),
       sets: source.sets.map((set) => ({
         ...set,
         id: newId(),
@@ -92,14 +97,27 @@ export function duplicateGig(id: string, dataDir?: string): Gig | null {
 }
 
 /**
+ * The parts of a gig that a calendar subscriber can see. Comparing this before
+ * and after an edit tells us whether to bump `rev` (the iCal SEQUENCE): a
+ * setlist change is invisible to a subscriber and shouldn't churn their
+ * calendar, but a moved date or a new venue must.
+ */
+function calendarFingerprint(gig: Gig): string {
+  const { name, date, times, location, publicNotes, eventUrl, canceled, hidden } = gig;
+  return JSON.stringify({ name, date, times, location, publicNotes, eventUrl, canceled, hidden });
+}
+
+/**
  * Apply a partial patch to a gig's top-level fields (name/date/times/location/
- * notes/sets), normalizing each. Returns the updated gig, or null when the id
- * is unknown. Only the keys present in `patch` are touched.
+ * notes/publicNotes/hidden/sets), normalizing each. Returns the updated gig, or
+ * null when the id is unknown. Only the keys present in `patch` are touched.
  */
 export function updateGig(id: string, patch: Partial<GigInput>, dataDir?: string): Gig | null {
   const data = readFile(dataDir);
   const gig = data.gigs.find((g) => g.id === id);
   if (!gig) return null;
+
+  const before = calendarFingerprint(gig);
 
   if (patch.name !== undefined) gig.name = String(patch.name).trim() || 'Untitled gig';
   if (patch.date !== undefined) gig.date = isValidDate(patch.date) ? patch.date : '';
@@ -118,6 +136,21 @@ export function updateGig(id: string, patch: Partial<GigInput>, dataDir?: string
     if (notes.trim()) gig.notes = notes;
     else delete gig.notes;
   }
+  if (patch.publicNotes !== undefined) {
+    const publicNotes = String(patch.publicNotes);
+    if (publicNotes.trim()) gig.publicNotes = publicNotes;
+    else delete gig.publicNotes;
+  }
+  if (patch.eventUrl !== undefined) {
+    // A URL we can't vouch for is dropped, not stored — see normalizeUrl.
+    const eventUrl = normalizeUrl(patch.eventUrl);
+    if (eventUrl) gig.eventUrl = eventUrl;
+    else delete gig.eventUrl;
+  }
+  if (patch.hidden !== undefined) {
+    if (patch.hidden) gig.hidden = true;
+    else delete gig.hidden;
+  }
   if (patch.sets !== undefined) {
     const sets = normalizeSets(patch.sets);
     gig.sets = sets.length > 0 ? sets : [emptySet()];
@@ -126,6 +159,10 @@ export function updateGig(id: string, patch: Partial<GigInput>, dataDir?: string
     if (patch.canceled) gig.canceled = true;
     else delete gig.canceled;
   }
+
+  // Anything a subscriber would notice → advance the sequence, so their calendar
+  // accepts the update instead of keeping the copy it already has.
+  if (calendarFingerprint(gig) !== before) gig.rev = (gig.rev ?? 0) + 1;
 
   writeFileAtomic(data, dataDir);
   return gig;
