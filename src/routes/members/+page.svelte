@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { INSTRUMENT_CHOICES, instrumentLabel } from '$lib/members';
 
   let { data } = $props();
@@ -8,9 +7,6 @@
 
   const active = $derived(data.members.filter((m) => !m.isFormer));
   const former = $derived(data.members.filter((m) => m.isFormer));
-
-  // View is URL-driven (shareable, survives reload). Default: by seniority.
-  const view = $derived(page.url.searchParams.get('view') === 'instrument' ? 'instrument' : 'seniority');
 
   // A representative glyph per instrument (zero-asset, cross-platform). Brass
   // share the trumpet glyph; reeds/woodwinds and percussion get their own.
@@ -104,38 +100,25 @@
       <p class="count">
         {active.length} active{#if former.length} · {former.length} former{/if}
       </p>
-      <div class="toggle" role="tablist" aria-label="Roster view">
-        <a class:on={view === 'seniority'} href="/members">By seniority</a>
-        <a class:on={view === 'instrument'} href="/members?view=instrument">By instrument</a>
-      </div>
     </div>
   </header>
 
-  {#if view === 'instrument'}
-    {#each sections as sec (sec.slug ?? 'none')}
-      <div class="section">
-        <h3 class="section-head">
-          {#if sec.slug && HAS_IMG.has(sec.slug)}
-            <img class="glyph-img" src={`/instruments/${sec.slug}.png`} alt="" aria-hidden="true" />
-          {:else}
-            <span class="glyph" aria-hidden="true">{sec.glyph}</span>
-          {/if}
-          {sec.label} <span class="n">{sec.members.length}</span>
-        </h3>
-        <ul class="grid">
-          {#each sec.members as m (m.email)}{@render card(m, false)}{/each}
-        </ul>
-      </div>
-    {/each}
-    {@render formerGrid()}
-  {:else}
-    {#if active.length}
+  {#each sections as sec (sec.slug ?? 'none')}
+    <div class="section">
+      <h3 class="section-head">
+        {#if sec.slug && HAS_IMG.has(sec.slug)}
+          <img class="glyph-img" src={`/instruments/${sec.slug}.png`} alt="" aria-hidden="true" />
+        {:else}
+          <span class="glyph" aria-hidden="true">{sec.glyph}</span>
+        {/if}
+        {sec.label} <span class="n">{sec.members.length}</span>
+      </h3>
       <ul class="grid">
-        {#each active as m (m.email)}{@render card(m, true)}{/each}
+        {#each sec.members as m (m.email)}{@render card(m, false)}{/each}
       </ul>
-    {/if}
-    {@render formerGrid()}
-  {/if}
+    </div>
+  {/each}
+  {@render formerGrid()}
 
   {#if !active.length && !former.length}
     <p class="empty">No members yet.</p>
@@ -174,27 +157,6 @@
   .count {
     color: var(--muted);
     font-size: 0.82rem;
-  }
-
-  .toggle {
-    display: inline-flex;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .toggle a {
-    padding: 8px 14px;
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-decoration: none;
-    color: var(--muted);
-    background: var(--panel);
-  }
-
-  .toggle a.on {
-    background: var(--accent);
-    color: #fffdf7;
   }
 
   .section-head {

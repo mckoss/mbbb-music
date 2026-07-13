@@ -35,9 +35,9 @@ export function load({ locals }) {
     };
   });
 
-  // Within a group: by seniority (earliest joined date first); members without a
-  // date sort after those with one; ties and the undated group fall back to last
-  // name.
+  // Within an instrument section: by seniority (earliest joined date first);
+  // members without a date sort after those with one; ties and the undated group
+  // fall back to last name.
   const bySeniority = (a: (typeof all)[number], b: (typeof all)[number]) => {
     if (a.joinedDate && b.joinedDate) {
       if (a.joinedDate !== b.joinedDate) return a.joinedDate < b.joinedDate ? -1 : 1;
@@ -47,8 +47,8 @@ export function load({ locals }) {
   };
 
   // One canonical list: active first (then former), each ordered by seniority.
-  // The client derives the seniority and by-instrument views from this; the sort
-  // keys are dropped from the payload.
+  // The client groups it by instrument; the sort keys are dropped from the
+  // payload.
   const active = all.filter((m) => !m.isFormer).sort(bySeniority);
   const former = all.filter((m) => m.isFormer).sort(bySeniority);
   const members = [...active, ...former].map(({ joinedDate, lastName, ...m }) => m);
