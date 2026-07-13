@@ -111,7 +111,9 @@ export const actions = {
     return { ok: true };
   },
 
-  // Update the gig's top-level info fields (name/date/times/location/notes).
+  // Update the gig's top-level info fields. Two of them are public-facing:
+  // `publicNotes` is published on /shows and in the calendar feed, and `hidden`
+  // takes the gig off both. `notes` stays band-only.
   updateInfo: async ({ request, params, locals }) => {
     requireGigEditor(locals);
     const form = await request.formData();
@@ -124,7 +126,10 @@ export const actions = {
         address: String(form.get('locationAddress') ?? ''),
       },
       notes: String(form.get('notes') ?? ''),
+      publicNotes: String(form.get('publicNotes') ?? ''),
+      eventUrl: String(form.get('eventUrl') ?? ''),
       canceled: form.get('canceled') === 'on',
+      hidden: form.get('hidden') === 'on',
     });
     if (!gig) return fail(404, { message: 'Gig not found' });
     return { ok: true };

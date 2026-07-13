@@ -17,6 +17,11 @@ import {
   mapsUrl,
   compareByDate,
   canEditGigs,
+  isPublicShow,
+  publicGig,
+  publicShows,
+  normalizeUrl,
+  urlHost,
 } from '../src/lib/gig.ts';
 import {
   listGigs,
@@ -109,6 +114,102 @@ test('canEditGigs allows admins and organizers only', () => {
   assert.equal(canEditGigs(undefined), false);
 });
 
+// --- Event URL --------------------------------------------------------------
+
+test('normalizeUrl accepts http(s) and assumes https for a bare host', () => {
+  assert.equal(normalizeUrl('https://whidbeyislandfair.com/'), 'https://whidbeyislandfair.com/');
+  assert.equal(normalizeUrl('http://example.org/fair'), 'http://example.org/fair');
+  // What people actually paste.
+  assert.equal(normalizeUrl('whidbeyislandfair.com/schedule'), 'https://whidbeyislandfair.com/schedule');
+  assert.equal(normalizeUrl('  example.org  '), 'https://example.org/');
+});
+
+test('normalizeUrl rejects anything that is not http(s)', () => {
+  // The one that matters: this value becomes an href on a page the world reads.
+  assert.equal(normalizeUrl('javascript:alert(document.cookie)'), undefined);
+  assert.equal(normalizeUrl('JavaScript:alert(1)'), undefined);
+  assert.equal(normalizeUrl('data:text/html,<script>alert(1)</script>'), undefined);
+  assert.equal(normalizeUrl('mailto:someone@example.com'), undefined);
+  assert.equal(normalizeUrl('file:///etc/passwd'), undefined);
+  assert.equal(normalizeUrl(''), undefined);
+  assert.equal(normalizeUrl(undefined), undefined);
+  assert.equal(normalizeUrl('   '), undefined);
+});
+
+test('urlHost shows where a link actually goes', () => {
+  assert.equal(urlHost('https://www.whidbeyislandfair.com/schedule?x=1'), 'whidbeyislandfair.com');
+  assert.equal(urlHost('http://example.org'), 'example.org');
+});
+
+// --- Public projection ------------------------------------------------------
+// The load-bearing security property of the whole public-shows feature: a gig's
+// band-only fields must not survive the trip to an anonymous visitor.
+
+test('publicGig publishes only public fields — never notes, sets, or hidden', () => {
+  const gig = makeGig({
+    name: 'Maxwelton Parade',
+    date: '2026-07-04',
+    times: [{ start: '11:00', end: '13:00' }],
+    location: { name: 'Maxwelton Beach', address: '6799 Maxwelton Rd' },
+    notes: 'Gate code 4417. Pay $600, ask for Dave, cell 555-0123.',
+    publicNotes: 'Come early — the parade fills up.',
+    sets: [{ id: 's1', name: 'Set 1', songSlugs: ['second-line'] }],
+  });
+
+  const pub = publicGig(gig);
+
+  // The allowlist let the public fields through...
+  assert.equal(pub.name, 'Maxwelton Parade');
+  assert.equal(pub.date, '2026-07-04');
+  assert.deepEqual(pub.times, [{ start: '11:00', end: '13:00' }]);
+  assert.equal(pub.publicNotes, 'Come early — the parade fills up.');
+
+  // ...and kept everything else out. This is the assertion that matters: the
+  // band's notes and setlist are simply not in the object.
+  assert.equal('notes' in pub, false);
+  assert.equal('sets' in pub, false);
+  assert.equal(JSON.stringify(pub).includes('555-0123'), false);
+  assert.equal(JSON.stringify(pub).includes('Gate code'), false);
+  assert.equal(JSON.stringify(pub).includes('second-line'), false);
+});
+
+test('publicGig scrubs a hostile eventUrl even if one reached the store', () => {
+  // Belt and braces: normalizeUrl guards the write path, but a hand-edited
+  // gigs.json must not be able to put a javascript: href on the public page.
+  const hostile = { id: 'x', name: 'Fair', date: '2026-08-01', sets: [], eventUrl: 'javascript:alert(1)' };
+  assert.equal('eventUrl' in publicGig(hostile), false);
+
+  const good = { ...hostile, eventUrl: 'https://whidbeyislandfair.com/' };
+  assert.equal(publicGig(good).eventUrl, 'https://whidbeyislandfair.com/');
+});
+
+test('publicGig returns copies, so a caller cannot mutate the stored gig', () => {
+  const gig = makeGig({ name: 'Fair', date: '2026-08-01', location: { name: 'Park' } });
+  const pub = publicGig(gig);
+  pub.location.name = 'Somewhere else';
+  assert.equal(gig.location.name, 'Park');
+});
+
+test('isPublicShow: public by default, opt out with hidden, and a date is required', () => {
+  assert.equal(isPublicShow(makeGig({ name: 'Show', date: '2026-07-04' })), true);
+  assert.equal(isPublicShow(makeGig({ name: 'Private party', date: '2026-07-04', hidden: true })), false);
+  // No date → nowhere to list it.
+  assert.equal(isPublicShow(makeGig({ name: 'TBD' })), false);
+});
+
+test('publicShows filters hidden/undated gigs and sorts by date', () => {
+  const shows = publicShows([
+    makeGig({ name: 'Later', date: '2026-09-01' }),
+    makeGig({ name: 'Corporate booking', date: '2026-08-01', hidden: true }),
+    makeGig({ name: 'Earlier', date: '2026-07-04' }),
+    makeGig({ name: 'Undated' }),
+  ]);
+  assert.deepEqual(
+    shows.map((s) => s.name),
+    ['Earlier', 'Later']
+  );
+});
+
 // --- Store (against a temp dir; never the real data/) -----------------------
 
 async function withTempDir(fn) {
@@ -153,6 +254,63 @@ test('store: create/list/get/update/delete round-trips', async () => {
     assert.equal(deleteGig(gig.id, dir), true);
     assert.equal(deleteGig(gig.id, dir), false);
     assert.deepEqual(listGigs(dir), []);
+  });
+});
+
+test('store: publicNotes and hidden round-trip and clear', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig({ name: 'Show', date: '2026-07-04' }, dir);
+
+    const shown = updateGig(gig.id, { publicNotes: 'Free, all ages.', hidden: true }, dir);
+    assert.equal(shown.publicNotes, 'Free, all ages.');
+    assert.equal(shown.hidden, true);
+
+    // Clearing removes the keys rather than storing '' / false.
+    const cleared = updateGig(gig.id, { publicNotes: '', hidden: false }, dir);
+    assert.equal(cleared.publicNotes, undefined);
+    assert.equal('hidden' in cleared, false);
+  });
+});
+
+test('store: eventUrl is normalized on write and rejected when unsafe', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig({ name: 'Fair', date: '2026-08-15' }, dir);
+
+    assert.equal(
+      updateGig(gig.id, { eventUrl: 'whidbeyislandfair.com/schedule' }, dir).eventUrl,
+      'https://whidbeyislandfair.com/schedule'
+    );
+    // A javascript: URL is dropped, not stored.
+    assert.equal(updateGig(gig.id, { eventUrl: 'javascript:alert(1)' }, dir).eventUrl, undefined);
+    // Clearing removes the key.
+    assert.equal('eventUrl' in updateGig(gig.id, { eventUrl: '' }, dir), false);
+  });
+});
+
+test('store: rev advances on calendar-visible edits, not on setlist changes', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig({ name: 'Show', date: '2026-07-04' }, dir);
+    assert.equal(gig.rev, undefined, 'a fresh gig has no revisions yet');
+
+    // A moved date is exactly what a subscriber must be told about.
+    assert.equal(updateGig(gig.id, { date: '2026-07-05' }, dir).rev, 1);
+    assert.equal(updateGig(gig.id, { location: { name: 'The Barn' } }, dir).rev, 2);
+    assert.equal(updateGig(gig.id, { canceled: true }, dir).rev, 3);
+
+    // A no-op write must NOT bump: it would churn every subscriber's calendar
+    // for nothing.
+    assert.equal(updateGig(gig.id, { name: 'Show' }, dir).rev, 3);
+
+    // Nor should band-only edits — a setlist or a private note is invisible in
+    // the feed, so there is nothing for a subscriber to re-sync.
+    assert.equal(updateGig(gig.id, { notes: 'bring stands' }, dir).rev, 3);
+    const withSong = addSong(gig.id, getGig(gig.id, dir).sets[0].id, 'second-line', dir);
+    assert.equal(withSong.rev, 3);
+
+    // But the public blurb is in the feed, so it does bump.
+    assert.equal(updateGig(gig.id, { publicNotes: 'Free, all ages.' }, dir).rev, 4);
+    // As is the host's event page — subscribers see it as the event's URL.
+    assert.equal(updateGig(gig.id, { eventUrl: 'https://example.org/fair' }, dir).rev, 5);
   });
 });
 

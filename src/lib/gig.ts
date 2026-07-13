@@ -28,10 +28,34 @@ export interface Gig {
   date: string; // YYYY-MM-DD
   times?: GigTime[];
   location?: GigLocation;
+  /**
+   * Band-only notes: call times, parking, the contact's cell number, pay. NEVER
+   * leaves the authenticated app — see publicNotes for anything the world may see.
+   */
   notes?: string;
+  /** Blurb shown to the public on /shows and in the public calendar feed. */
+  publicNotes?: string;
+  /**
+   * The host organization's own page for the event we're playing (the fair, the
+   * festival, the parade) — where the full schedule, tickets and parking live.
+   * Public by nature. Always http(s): see normalizeUrl.
+   */
+  eventUrl?: string;
+  /**
+   * Keep this gig off the public /shows page and calendar feed — a private party,
+   * a corporate booking, a rehearsal. Public by default: most gigs are shows.
+   */
+  hidden?: boolean;
   sets: GigSet[];
   /** A canceled gig stays in the list (struck through) but isn't happening. */
   canceled?: boolean;
+  /**
+   * Edit counter, bumped on every info change. It is the iCal SEQUENCE: a
+   * subscriber's calendar only accepts an update to an event it already has when
+   * the sequence goes *up*, so without this a rescheduled gig would silently
+   * keep its old date on every phone that already subscribed.
+   */
+  rev?: number;
 }
 
 /** Input shape for creating a gig (id and sets are assigned/defaulted). */
@@ -41,6 +65,9 @@ export interface GigInput {
   times?: GigTime[];
   location?: GigLocation;
   notes?: string;
+  publicNotes?: string;
+  eventUrl?: string;
+  hidden?: boolean;
   sets?: GigSet[];
   canceled?: boolean;
 }
@@ -96,6 +123,42 @@ export function normalizeLocation(input: unknown): GigLocation | undefined {
   return { ...(name ? { name } : {}), ...(address ? { address } : {}) };
 }
 
+/**
+ * Coerce a pasted event URL to a safe absolute http(s) URL, or undefined.
+ *
+ * This one is a guard, not a convenience. The value ends up as an `href` on
+ * /shows — a page the whole world can read — and Svelte does not sanitize hrefs,
+ * so a `javascript:` URL pasted into the editor would render as a live script.
+ * Anything that isn't http or https is rejected outright.
+ *
+ * A bare "whidbeyislandfair.com/schedule" is what people actually paste, so a
+ * missing scheme is assumed to be https rather than treated as an error.
+ */
+export function normalizeUrl(input: unknown): string | undefined {
+  const raw = String(input ?? '').trim();
+  if (!raw) return undefined;
+  // Has a scheme? Keep it (so we can reject it below). Otherwise assume https.
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+  if (!url.hostname) return undefined;
+  return url.toString();
+}
+
+/** "https://www.whidbeyislandfair.com/x" -> "whidbeyislandfair.com". */
+export function urlHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
 /** Coerce arbitrary input to a clean GigSet[], assigning ids where missing. */
 export function normalizeSets(input: unknown): GigSet[] {
   if (!Array.isArray(input)) return [];
@@ -121,6 +184,7 @@ export function emptySet(name?: string): GigSet {
 export function makeGig(input: GigInput): Gig {
   const sets = normalizeSets(input.sets);
   const location = normalizeLocation(input.location);
+  const eventUrl = normalizeUrl(input.eventUrl);
   return {
     id: newId(),
     name: String(input.name ?? '').trim() || 'Untitled gig',
@@ -128,9 +192,68 @@ export function makeGig(input: GigInput): Gig {
     ...(input.times ? { times: normalizeTimes(input.times) } : {}),
     ...(location ? { location } : {}),
     ...(input.notes ? { notes: String(input.notes) } : {}),
+    ...(input.publicNotes ? { publicNotes: String(input.publicNotes) } : {}),
+    ...(eventUrl ? { eventUrl } : {}),
+    ...(input.hidden ? { hidden: true } : {}),
     sets: sets.length > 0 ? sets : [emptySet()],
     ...(input.canceled ? { canceled: true } : {}),
   };
+}
+
+// --- Public view -------------------------------------------------------------
+
+/**
+ * Is this gig listed publicly (on /shows and in the calendar feed)? Gigs are
+ * public by default — the band mostly plays shows it wants people at — so this
+ * is an opt-*out*: `hidden` takes a private booking off the page. A gig with no
+ * date can't be listed either; there'd be nowhere to put it.
+ *
+ * Only ever pair this with publicGig(): visibility and redaction are two
+ * different jobs, and a gig being listed does not make its `notes` public.
+ */
+export function isPublicShow(gig: Gig): boolean {
+  return !gig.hidden && isValidDate(gig.date);
+}
+
+/** The public projection of a gig: what a non-member may see. */
+export interface PublicShow {
+  id: string;
+  name: string;
+  date: string;
+  times?: GigTime[];
+  location?: GigLocation;
+  publicNotes?: string;
+  eventUrl?: string;
+  canceled?: boolean;
+  rev?: number;
+}
+
+/**
+ * Strip a gig down to its public fields. This is an allowlist, not a redaction:
+ * band-only fields (notes, sets, RSVPs) can't leak by being forgotten here,
+ * because nothing is copied unless it's named. Everything served to an
+ * unauthenticated visitor goes through this.
+ */
+export function publicGig(gig: Gig): PublicShow {
+  return {
+    id: gig.id,
+    name: gig.name,
+    date: gig.date,
+    ...(gig.times?.length ? { times: gig.times.map((t) => ({ ...t })) } : {}),
+    ...(gig.location ? { location: { ...gig.location } } : {}),
+    ...(gig.publicNotes ? { publicNotes: gig.publicNotes } : {}),
+    // Re-normalized on the way out, not merely copied: a gig stored before this
+    // field was validated (or hand-edited in gigs.json) must not be able to put
+    // a javascript: href on the public page.
+    ...(normalizeUrl(gig.eventUrl) ? { eventUrl: normalizeUrl(gig.eventUrl) } : {}),
+    ...(gig.canceled ? { canceled: true } : {}),
+    ...(gig.rev ? { rev: gig.rev } : {}),
+  };
+}
+
+/** Every publicly-listed gig, oldest first. */
+export function publicShows(gigs: Gig[]): PublicShow[] {
+  return gigs.filter(isPublicShow).map(publicGig).sort(compareByDate);
 }
 
 // --- Formatting (display helpers) ------------------------------------------
@@ -182,6 +305,9 @@ export function mapsUrl(address: string): string {
 }
 
 /** Sort comparator: by date ascending, then name. */
-export function compareByDate(a: Gig, b: Gig): number {
+export function compareByDate(
+  a: Pick<Gig, 'date' | 'name'>,
+  b: Pick<Gig, 'date' | 'name'>
+): number {
   return a.date.localeCompare(b.date) || a.name.localeCompare(b.name);
 }

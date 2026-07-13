@@ -6,6 +6,9 @@
 //   - /admin/*                   → admin only
 // /blob and /api/* are protected too (they serve the music library).
 //
+// The one exception is /shows — the public show listing and its calendar feed
+// (see isPublic below), which anyone may read without signing in.
+//
 // When OAuth isn't configured the app runs OPEN (a synthetic admin) so local
 // dev/preview keeps working until credentials are added.
 
@@ -67,6 +70,21 @@ function logDownload(user: SessionUser | null, method: string, path: string, par
 // Paths reachable without a role. /pending also needs a session (handled below).
 const ALWAYS_OPEN = ['/login', '/auth/login', '/auth/callback', '/auth/logout'];
 
+/**
+ * The public show listing and its calendar feed — the only part of this app that
+ * an anonymous visitor may read, and deliberately so: the feed exists to be
+ * subscribed to by calendar clients, which fetch it with no cookie and would
+ * otherwise be handed the login page as their "calendar".
+ *
+ * This is a *route* gate, not a data gate. It says nothing about what those
+ * routes may serve — they publish only what publicGig() allows through, so a
+ * gig's band-only notes, setlists and RSVPs stay behind the login even here.
+ * Covers /shows, /shows/calendar.ics, and SvelteKit's /shows/__data.json load.
+ */
+function isPublic(path: string): boolean {
+  return path === '/shows' || path.startsWith('/shows/');
+}
+
 function isAsset(path: string): boolean {
   return path.startsWith('/_app/') || path === '/favicon.png' || path === '/favicon.ico' || path === '/robots.txt';
 }
@@ -101,7 +119,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const user: SessionUser | null = email ? { email, name: null, role } : null;
   event.locals.user = user;
 
-  if (isAsset(path) || ALWAYS_OPEN.includes(path)) return resolve(event);
+  if (isAsset(path) || ALWAYS_OPEN.includes(path) || isPublic(path)) return resolve(event);
 
   // /pending: the holding area for signed-in-but-unapproved users.
   if (path === '/pending') {

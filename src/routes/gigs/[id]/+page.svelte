@@ -13,6 +13,7 @@
     formatGigTimes,
     formatGigTimeRange,
     mapsUrl,
+    urlHost,
   } from '$lib/gig';
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
@@ -650,13 +651,36 @@
         <input name="locationAddress" value={gig.location?.address ?? ''} />
       </label>
       <label class="field">
-        <span>Notes</span>
+        <span>Notes <span class="tag private">Band only</span></span>
         <textarea name="notes" rows="4">{gig.notes ?? ''}</textarea>
+        <span class="hint">Call times, parking, the contact's number, pay. Never leaves the app.</span>
+      </label>
+
+      <label class="field">
+        <span>Public blurb <span class="tag public">Public</span></span>
+        <textarea name="publicNotes" rows="3">{gig.publicNotes ?? ''}</textarea>
+        <span class="hint">
+          Shown to anyone on the <a href="/shows">public shows page</a> and in the calendar feed.
+        </span>
+      </label>
+
+      <label class="field">
+        <span>Host's event page <span class="tag public">Public</span></span>
+        <input name="eventUrl" type="url" inputmode="url" value={gig.eventUrl ?? ''} />
+        <span class="hint">
+          The organizer's own page for the whole event — full schedule, tickets, parking. Linked
+          from the shows page and the calendar entry.
+        </span>
       </label>
 
       <label class="check">
         <input type="checkbox" name="canceled" checked={gig.canceled ?? false} />
         <span>Canceled — keep in the list but mark this gig as not happening</span>
+      </label>
+
+      <label class="check">
+        <input type="checkbox" name="hidden" checked={gig.hidden ?? false} />
+        <span>Hide from the public shows page — a private party or corporate booking</span>
       </label>
 
       <div class="form-actions">
@@ -687,6 +711,22 @@
         </p>
       {/if}
       {#if gig.notes}<p class="notes">{gig.notes}</p>{/if}
+      {#if gig.publicNotes}
+        <p class="public-notes"><span class="tag public">Public</span> {gig.publicNotes}</p>
+      {/if}
+      {#if gig.eventUrl}
+        <p class="event-url">
+          <a href={gig.eventUrl} target="_blank" rel="noopener">{urlHost(gig.eventUrl)} ↗</a>
+          <span class="event-url-label">event page</span>
+        </p>
+      {/if}
+      <p class="public-link">
+        {#if gig.hidden}
+          <span class="tag private">Hidden</span> Not listed publicly.
+        {:else}
+          Listed on the <a href="/shows">public shows page</a>.
+        {/if}
+      </p>
     </div>
   {/if}
 
@@ -1161,6 +1201,53 @@
     color: var(--ink);
   }
 
+  .public-notes {
+    white-space: pre-wrap;
+    color: var(--ink);
+    margin-top: 6px;
+  }
+
+  .public-link {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .event-url {
+    margin-top: 6px;
+    font-size: 0.9rem;
+  }
+
+  .event-url-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-left: 6px;
+  }
+
+  /* Public vs band-only is the one distinction on this page that must never be
+     misread, so it's a badge on both the editor field and the read-only view —
+     not a caption someone can skim past. */
+  .tag {
+    display: inline-block;
+    text-transform: uppercase;
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: 1px;
+  }
+
+  .tag.public {
+    background: #cc0000;
+    color: #fff;
+  }
+
+  .tag.private {
+    background: var(--line);
+    color: var(--muted);
+  }
+
   /* Info editor */
   .info-form {
     background: var(--panel);
@@ -1182,6 +1269,11 @@
     font-size: 0.78rem;
     font-weight: 700;
     color: var(--muted);
+  }
+
+  .field .hint {
+    font-weight: 400;
+    font-size: 0.76rem;
   }
 
   .check {

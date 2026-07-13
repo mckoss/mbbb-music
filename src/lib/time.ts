@@ -1,4 +1,4 @@
-const PACIFIC_TIME = 'America/Los_Angeles';
+export const PACIFIC_TIME = 'America/Los_Angeles';
 
 const pacificDateTime = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -29,6 +29,15 @@ const pacificClock = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   timeZone: PACIFIC_TIME,
 });
+
+/**
+ * Today's calendar date in band time, as YYYY-MM-DD. Gig dates are bare local
+ * days, so "upcoming vs past" has to be decided in the band's zone — not the
+ * server's (UTC on Railway, which flips over 5pm the day before).
+ */
+export function pacificToday(now: Date = new Date()): string {
+  return pacificYmd.format(now);
+}
 
 const pacificDate = new Intl.DateTimeFormat('en-US', {
   month: 'short',
