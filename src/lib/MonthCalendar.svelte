@@ -1,14 +1,18 @@
 <script lang="ts">
   // A small, date-picker-sized month grid. Days that have a gig are colored
   // (green = active, red = canceled) and link to that gig. Used three-up at the
-  // top of the gig list to show the current month and the next two.
-  import type { Gig } from '$lib/gig';
+  // top of the gig list to show the current month and the next two, and again on
+  // the public /shows page.
+  import { primaryGig, type Gig } from '$lib/gig';
   import { rsvpMark, rsvpLabel, type RsvpStatus } from '$lib/rsvp';
+
+  /** All this grid needs of a gig. Both Gig and PublicShow satisfy it. */
+  type CalendarGig = Pick<Gig, 'id' | 'name' | 'canceled'>;
 
   interface DayCell {
     day: number;
     iso: string;
-    gigs: Gig[];
+    gigs: CalendarGig[];
   }
 
   let {
@@ -17,13 +21,18 @@
     gigsByDate,
     today,
     rsvpByDate = new Map(),
+    hrefFor = gigHref,
   }: {
     year: number;
     month: number;
-    gigsByDate: Map<string, Gig[]>;
+    gigsByDate: Map<string, CalendarGig[]>;
     today: string;
     // The signed-in member's reply for a gig on a given day (drives the ✓/?/✗ mark).
     rsvpByDate?: Map<string, RsvpStatus>;
+    // Where a gig day links. Defaults to the gig's page in the app — which the
+    // public /shows page overrides, since an anonymous visitor sent to /gigs/<id>
+    // would just land on the login screen.
+    hrefFor?: (gigs: CalendarGig[]) => string;
   } = $props();
 
   const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -46,18 +55,17 @@
   });
 
   // Green if any gig that day is still on; red only when every gig is canceled.
-  function status(gigs: Gig[]): 'active' | 'canceled' | null {
+  function status(gigs: CalendarGig[]): 'active' | 'canceled' | null {
     if (gigs.length === 0) return null;
     return gigs.some((g) => !g.canceled) ? 'active' : 'canceled';
   }
 
-  // Open the first live gig that day, falling back to the first one.
-  function href(gigs: Gig[]): string {
-    const g = gigs.find((x) => !x.canceled) ?? gigs[0];
-    return `/gigs/${g.id}`;
+  // Default link target: the gig's page in the app.
+  function gigHref(gigs: CalendarGig[]): string {
+    return `/gigs/${primaryGig(gigs).id}`;
   }
 
-  function label(gigs: Gig[]): string {
+  function label(gigs: CalendarGig[]): string {
     return gigs.map((g) => (g.canceled ? `${g.name} (canceled)` : g.name)).join(', ');
   }
 </script>
@@ -76,7 +84,7 @@
         <a
           class="day {status(cell.gigs)}"
           class:today={cell.iso === today}
-          href={href(cell.gigs)}
+          href={hrefFor(cell.gigs)}
           title={mine ? `${label(cell.gigs)} — you: ${rsvpLabel(mine)}` : label(cell.gigs)}
         >{cell.day}{#if mine}<span class="rsvp {mine}" aria-hidden="true">{rsvpMark(mine)}</span>{/if}</a>
       {:else}

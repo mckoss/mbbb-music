@@ -105,11 +105,16 @@
         set in performance mode.
       </p>
     </div>
-    {#if canEdit}
-      <form method="POST" action="?/create" use:enhance>
-        <button type="submit" class="new">+ New gig</button>
-      </form>
-    {/if}
+    <div class="head-actions">
+      <!-- What the public sees. Opens in its own tab: /shows is a standalone,
+           band-branded page with no way back into the app. -->
+      <a class="shows-link" href="/shows" target="_blank" rel="noopener">Public shows page ↗</a>
+      {#if canEdit}
+        <form method="POST" action="?/create" use:enhance>
+          <button type="submit" class="new">+ New gig</button>
+        </form>
+      {/if}
+    </div>
   </header>
 
   {#if unconfirmed.length > 0}
@@ -224,6 +229,34 @@
   .body {
     color: var(--muted);
     max-width: 60ch;
+  }
+
+  .head-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* Secondary to "+ New gig": a way to check what the public sees, not a primary
+     action. Sized to be tappable on a tablet all the same. */
+  .shows-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--accent-strong);
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .shows-link:hover {
+    border-color: var(--accent-strong);
   }
 
   .new {

@@ -304,6 +304,15 @@ export function mapsUrl(address: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+/**
+ * The gig a calendar day stands for when more than one falls on it: the first
+ * one still on, else the first. Shared so the month grid and whatever it links
+ * to can't disagree about which gig a day means.
+ */
+export function primaryGig<T extends { canceled?: boolean }>(gigs: T[]): T {
+  return gigs.find((g) => !g.canceled) ?? gigs[0];
+}
+
 /** Sort comparator: by date ascending, then name. */
 export function compareByDate(
   a: Pick<Gig, 'date' | 'name'>,
