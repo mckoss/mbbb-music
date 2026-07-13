@@ -14,6 +14,7 @@
     urlHost,
     type PublicShow,
   } from '$lib/gig';
+  import { googleSubscribeUrl, webcalUrl } from '$lib/ics';
   import MonthCalendar from '$lib/MonthCalendar.svelte';
 
   interface Month {
@@ -36,13 +37,10 @@
 
   const SITE = 'https://mutinybaybrassband.com';
 
-  // Google takes the https feed URL directly; Apple/Outlook want the webcal
-  // scheme, which is what makes the OS offer to *subscribe* rather than download
-  // a one-off copy that never updates again.
-  const googleUrl = $derived(
-    `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(data.feedUrl)}`
-  );
-  const webcalUrl = $derived(data.feedUrl.replace(/^https?:/, 'webcal:'));
+  // Both subscribe links hang off the feed URL; see $lib/ics for why each takes
+  // the shape it does (Google's is fussy about the scheme).
+  const googleUrl = $derived(googleSubscribeUrl(data.feedUrl));
+  const webcal = $derived(webcalUrl(data.feedUrl));
 
   let copied = $state(false);
   async function copyFeed() {
@@ -253,7 +251,7 @@
         <a class="btn btn-primary" href={googleUrl} target="_blank" rel="noopener">
           Add to Google Calendar
         </a>
-        <a class="btn btn-outline" href={webcalUrl}>Add to Apple Calendar or Outlook</a>
+        <a class="btn btn-outline" href={webcal}>Add to Apple Calendar or Outlook</a>
       </div>
       <p class="feed">
         <span class="feed-label">Or paste this into any calendar app:</span>

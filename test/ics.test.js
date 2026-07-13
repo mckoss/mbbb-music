@@ -10,6 +10,8 @@ import {
   eventWindow,
   showEvent,
   buildCalendar,
+  webcalUrl,
+  googleSubscribeUrl,
 } from '../src/lib/ics.ts';
 
 const OPTS = { origin: 'https://music.example.com', stamp: new Date('2026-07-13T17:00:00Z') };
@@ -20,6 +22,30 @@ function prop(ics, name) {
   const line = unfolded.split('\r\n').find((l) => l.startsWith(`${name}:`) || l.startsWith(`${name};`));
   return line ?? null;
 }
+
+// --- Subscribe links --------------------------------------------------------
+
+test('webcalUrl swaps the scheme so a client subscribes instead of downloading', () => {
+  assert.equal(
+    webcalUrl('https://mbbb-music.mckoss.com/shows/calendar.ics'),
+    'webcal://mbbb-music.mckoss.com/shows/calendar.ics'
+  );
+  assert.equal(webcalUrl('http://localhost:5199/shows/calendar.ics'), 'webcal://localhost:5199/shows/calendar.ics');
+});
+
+test('googleSubscribeUrl passes webcal:// in cid, not https://', () => {
+  const url = googleSubscribeUrl('https://mbbb-music.mckoss.com/shows/calendar.ics');
+
+  // This is the bug this test exists to prevent: Google's add-by-URL endpoint
+  // rejects an https:// cid with "Unable to add this calendar; check the URL".
+  const cid = new URL(url).searchParams.get('cid');
+  assert.equal(cid, 'webcal://mbbb-music.mckoss.com/shows/calendar.ics');
+  assert.ok(!cid.startsWith('https:'), 'cid must not carry the https:// URL');
+
+  assert.equal(new URL(url).origin, 'https://calendar.google.com');
+  // The scheme's colon and slashes have to survive as encoded characters.
+  assert.match(url, /cid=webcal%3A%2F%2F/);
+});
 
 // --- Text escaping ----------------------------------------------------------
 
