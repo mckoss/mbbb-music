@@ -2,7 +2,9 @@
 // attaches the signed-in identity; we only report the kind of view. The service
 // worker owns offline queueing/replay for this endpoint.
 
-type BeaconType = 'score-view' | 'performance' | 'gig-view';
+// Must stay a subset of BEACON_TYPES in $lib/server/activity (the endpoint
+// rejects anything else).
+type BeaconType = 'score-view' | 'practice' | 'performance' | 'gig-view' | 'print';
 
 let listenersInstalled = false;
 

@@ -80,16 +80,16 @@
     [instLabel, current?.label, format === 'lyre' ? 'Lyre' : 'Letter'].filter(Boolean).join(' · ')
   );
 
-  // Record a score view (or a performance) when the overlay opens or switches
-  // mode. Server-side dedup collapses repeats; the local key avoids re-firing on
-  // unrelated reactive ticks.
+  // Record the view when the overlay opens or switches mode — each mode is its
+  // own kind of use (plain view / practice / performance). Server-side dedup
+  // collapses repeats; the local key avoids re-firing on unrelated reactive ticks.
   let lastTracked = '';
   $effect(() => {
     if (!browser || !open || !tune) return;
     const key = `${tune.slug}|${instrument}|${mode}`;
     if (key === lastTracked) return;
     lastTracked = key;
-    track(mode === 'performance' ? 'performance' : 'score-view', tune.title, instrument);
+    track(mode === 'score' ? 'score-view' : mode, tune.title, instrument);
   });
 
   // Recording picker for the practice player: default to the first take (the
@@ -200,7 +200,10 @@
   // Open the raw PDF in a new tab so the browser's own viewer handles a reliable
   // full-document print (the on-screen view shows one rasterized page at a time).
   function print() {
-    if (browser && current) window.open(openUrl(current.sha), '_blank', 'noopener');
+    if (browser && current) {
+      track('print', tune?.title ?? null, instrument);
+      window.open(openUrl(current.sha), '_blank', 'noopener');
+    }
     filesOpen = false;
   }
 </script>

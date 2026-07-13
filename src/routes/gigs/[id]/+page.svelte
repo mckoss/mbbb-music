@@ -74,9 +74,8 @@
     track('gig-view', gig.name, gig.id);
   });
 
-  // Record a set run when entering it (?perform=<setId>[&mode=practice]). A
-  // performance run is a real performance; a practice run is logged as a score
-  // view (rehearsal), matching the score overlay's practice/performance split.
+  // Record a set run when entering it (?perform=<setId>[&mode=practice]), as a
+  // performance or a practice run — the same split the score overlay records.
   let lastPerform = '';
   $effect(() => {
     if (!browser) return;
@@ -90,7 +89,7 @@
     const key = `${gig.id}|${setId}|${mode}`;
     if (key === lastPerform) return;
     lastPerform = key;
-    track(mode === 'practice' ? 'score-view' : 'performance', gig.name, `set:${setId}`);
+    track(mode, gig.name, `set:${setId}`);
   });
 
   // Friendly, slug-based chart URLs (no raw sha in the address bar / save name).

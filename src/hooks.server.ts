@@ -13,7 +13,7 @@ import type { Handle } from '@sveltejs/kit';
 
 import { authConfig, readSession, SESSION_COOKIE } from '$lib/server/auth';
 import { roleOf } from '$lib/server/users';
-import { logEvent } from '$lib/server/activity';
+import { logEvent, touchSeen } from '$lib/server/activity';
 import { getGig } from '$lib/server/gigs';
 import type { SessionUser } from '$lib/types';
 
@@ -37,6 +37,18 @@ function pdfDownloadLabel(path: string, params: URLSearchParams): string | null 
     if (name.toLowerCase().endsWith('.pdf')) return name;
   }
   return null;
+}
+
+/**
+ * Note that an approved user is here, and record the request if it's a PDF
+ * download. Presence is what the activity report shows as "last seen": sessions
+ * are long-lived, so an actual OAuth login says little about who is using the
+ * site.
+ */
+function notePresence(user: SessionUser | null, method: string, path: string, params: URLSearchParams): void {
+  if (!user?.role) return;
+  touchSeen(user.email);
+  logDownload(user, method, path, params);
 }
 
 /** Record a PDF download for an approved user (best-effort; never throws). */
@@ -78,7 +90,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
     event.locals.authOpen = true;
     event.locals.user = { email: 'open@localhost', name: 'Open mode', role: 'admin' };
-    logDownload(event.locals.user, event.request.method, path, event.url.searchParams);
+    if (!isAsset(path)) notePresence(event.locals.user, event.request.method, path, event.url.searchParams);
     return resolve(event);
   }
 
@@ -109,6 +121,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (user.role !== 'admin') return redirectTo('/');
   }
 
-  logDownload(user, event.request.method, path, event.url.searchParams);
+  notePresence(user, event.request.method, path, event.url.searchParams);
   return resolve(event);
 };

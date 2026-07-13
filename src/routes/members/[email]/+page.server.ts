@@ -5,6 +5,7 @@ import { error } from '@sveltejs/kit';
 
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
+import { logEvent } from '$lib/server/activity';
 import { instrumentLabel, monthYear, tenureLabel } from '$lib/members';
 
 export function load({ params, locals }) {
@@ -15,11 +16,20 @@ export function load({ params, locals }) {
   if (!user) throw error(404, 'Unknown member.');
 
   const p = getProfile(email);
+  const name = p.fullName || user.name || email;
+
+  // Looking someone up is roster use too — labeled with whose card it was.
+  try {
+    logEvent({ email: locals.user.email, type: 'members-view', label: name, detail: email });
+  } catch {
+    /* analytics must not break the profile */
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   return {
     member: {
       email,
-      name: p.fullName || user.name || email,
+      name,
       primary: p.primaryInstrument ? instrumentLabel(p.primaryInstrument) : null,
       instruments: p.instruments.map((s) => instrumentLabel(s)).filter(Boolean),
       phone: p.phone,

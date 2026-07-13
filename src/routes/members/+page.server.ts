@@ -4,6 +4,7 @@ import { error } from '@sveltejs/kit';
 
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
+import { logEvent } from '$lib/server/activity';
 import { instrumentLabel, tenureLabel } from '$lib/members';
 
 /** Last word of a display name (lowercased), for the secondary sort. */
@@ -14,6 +15,13 @@ function lastNameOf(name: string): string {
 
 export function load({ locals }) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
+
+  // Roster view — a feature we report on. Repeat loads collapse (dedup window).
+  try {
+    logEvent({ email: locals.user.email, type: 'members-view', label: null });
+  } catch {
+    /* analytics must not break the roster */
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const all = listUsers().map((u) => {
