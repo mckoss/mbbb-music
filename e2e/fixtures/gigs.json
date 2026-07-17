@@ -1,0 +1,16 @@
+{
+  "gigs": [
+    {
+      "id": "e2e-parade",
+      "name": "Maxwelton Fourth of July Parade",
+      "date": "2026-07-04",
+      "times": [{ "start": "11:00", "end": "13:00" }],
+      "location": { "name": "Maxwelton Beach", "address": "6799 Maxwelton Rd, Clinton, WA" },
+      "notes": "Call time 10:30. Park behind the barn. Pay: $150. Contact Sam 555-0142.",
+      "publicNotes": "Come early — the parade route fills up fast.",
+      "eventUrl": "https://whidbeyislandfair.com/",
+      "sets": [],
+      "rev": 2
+    }
+  ]
+}

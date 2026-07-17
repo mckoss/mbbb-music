@@ -12,9 +12,11 @@
     formatGigDate,
     formatGigTimes,
     formatGigTimeRange,
+    isValidDate,
     mapsUrl,
     urlHost,
   } from '$lib/gig';
+  import { gigCalendar, googleEventUrl } from '$lib/ics';
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { activePdfs, activeScore, activeScoreForRun, partsForFormat } from '$lib/resolve';
@@ -128,6 +130,28 @@
 
   // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
+
+  // --- Add to my calendar ---------------------------------------------------
+  // A per-gig, one-time copy (the /shows feed is the auto-updating subscription).
+  // The .ics is built client-side and offered as a download, so the band-only
+  // call notes go straight into the member's calendar without touching a server.
+  const googleCalUrl = $derived(googleEventUrl(gig, { origin: page.url.origin }));
+
+  function downloadGigIcs() {
+    const body = gigCalendar(gig, { origin: page.url.origin, stamp: new Date() });
+    const blob = new Blob([body], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MBBB - ${gig.name}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next tick, not synchronously: the download is asynchronous,
+    // and freeing the object URL before the browser has read the blob cancels it
+    // outright (seen in headless Chromium, and a latent risk in real browsers).
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 
   // Resolve a song's printable chart in the chosen instrument/format.
   function scoreFor(slug: string) {
@@ -720,6 +744,15 @@
           <span class="event-url-label">event page</span>
         </p>
       {/if}
+      {#if isValidDate(gig.date)}
+        <div class="add-cal">
+          <span class="add-cal-label">Add to my calendar:</span>
+          <a class="cal-btn" href={googleCalUrl} target="_blank" rel="noopener">Google Calendar</a>
+          <button type="button" class="cal-btn" onclick={downloadGigIcs}>
+            Apple / Outlook (.ics)
+          </button>
+        </div>
+      {/if}
       <p class="public-link">
         {#if gig.hidden}
           <span class="tag private">Hidden</span> Not listed publicly.
@@ -1222,6 +1255,38 @@
     color: var(--muted);
     font-size: 0.8rem;
     margin-left: 6px;
+  }
+
+  .add-cal {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .add-cal-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .cal-btn {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .cal-btn:hover {
+    border-color: var(--accent-strong);
   }
 
   /* Public vs band-only is the one distinction on this page that must never be

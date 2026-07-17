@@ -114,7 +114,10 @@ function normalizeSources(sources) {
 export function loadConfig(overrides = {}, env = process.env) {
   const raw = readRawConfig(overrides, env);
 
-  const dataDir = resolve(overrides.dataDir || raw.dataDir || 'data');
+  // MBBB_DATA_DIR points the app at an alternate data dir without editing a
+  // production-ready config.json — a test/ops escape hatch alongside MBBB_NO_AUTH
+  // (see auth.ts). The e2e suite uses it to run against isolated fixture data.
+  const dataDir = resolve(overrides.dataDir || env.MBBB_DATA_DIR || raw.dataDir || 'data');
   const sources = overrides.sources || normalizeSources(raw.sources);
 
   return {
