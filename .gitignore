@@ -31,3 +31,10 @@ data/
 # Throwaway sandbox for --fixture demo runs (kept away from real data/).
 tmp/
 
+# Playwright: browser artifacts and the isolated e2e data dir (seeded per run
+# from e2e/fixtures/ by e2e/global-setup.ts). The committed fixtures stay.
+/test-results/
+/playwright-report/
+/blob-report/
+/e2e/.data/
+

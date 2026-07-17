@@ -22,7 +22,7 @@
 // Imported with .js specifiers (the SvelteKit/TS convention) rather than bare
 // paths, so this module is unit-testable under plain `node --test` — the test
 // loader resolves .js to the .ts source. Same reason as src/lib/server/gigs.ts.
-import { isValidDate, type GigTime, type PublicShow } from './gig.js';
+import { isValidDate, type Gig, type GigLocation, type GigTime, type PublicShow } from './gig.js';
 import { PACIFIC_TIME } from './time.js';
 
 /** Assumed length of a slot given only a start time. */
@@ -196,8 +196,8 @@ function icsStamp(at: Date): string {
 }
 
 /** The location line: venue name and address, as a person would read it. */
-function locationText(show: PublicShow): string {
-  return [show.location?.name, show.location?.address].filter(Boolean).join(', ');
+function locationText(ev: { location?: GigLocation }): string {
+  return [ev.location?.name, ev.location?.address].filter(Boolean).join(', ');
 }
 
 export interface IcsOptions {
@@ -208,19 +208,22 @@ export interface IcsOptions {
   stamp: Date;
 }
 
-/**
- * One VEVENT for a show. The UID is derived from the gig id and a fixed domain
- * (NOT the origin): it must stay identical for the life of the gig, and pinning
- * it to the host would mint fresh UIDs — and so duplicate events on every
- * subscriber's calendar — the day the app moves domains.
- */
-export function showEvent(show: PublicShow, opts: IcsOptions): string[] {
-  const window = eventWindow(show);
+/** The date/time, summary, status and location of one VEVENT — everything both
+ *  the public feed and a personal one-off copy share. The three fields that
+ *  differ between them (UID, DESCRIPTION, URL) come in via `parts`. */
+type EventCore = Pick<PublicShow, 'name' | 'date' | 'times' | 'location' | 'canceled' | 'rev'>;
+
+function veventLines(
+  ev: EventCore,
+  opts: IcsOptions,
+  parts: { uid: string; description: string; url: string }
+): string[] {
+  const window = eventWindow(ev);
   const lines = [
     'BEGIN:VEVENT',
-    `UID:gig-${show.id}@mutinybaybrassband.com`,
+    `UID:${parts.uid}`,
     `DTSTAMP:${icsStamp(opts.stamp)}`,
-    `SEQUENCE:${show.rev ?? 0}`,
+    `SEQUENCE:${ev.rev ?? 0}`,
   ];
 
   if (window.allDay) {
@@ -234,12 +237,25 @@ export function showEvent(show: PublicShow, opts: IcsOptions): string[] {
   // A canceled show stays in the feed as CANCELLED rather than vanishing, so it
   // strikes through on a subscriber's calendar instead of quietly disappearing —
   // "the gig is off" reads very differently from "did I imagine that gig?".
-  lines.push(`SUMMARY:${escapeText(show.canceled ? `CANCELED: ${show.name}` : show.name)}`);
-  lines.push(`STATUS:${show.canceled ? 'CANCELLED' : 'CONFIRMED'}`);
+  lines.push(`SUMMARY:${escapeText(ev.canceled ? `CANCELED: ${ev.name}` : ev.name)}`);
+  lines.push(`STATUS:${ev.canceled ? 'CANCELLED' : 'CONFIRMED'}`);
 
-  const location = locationText(show);
+  const location = locationText(ev);
   if (location) lines.push(`LOCATION:${escapeText(location)}`);
 
+  lines.push(`DESCRIPTION:${escapeText(parts.description)}`);
+  lines.push(`URL:${parts.url}`);
+  lines.push('END:VEVENT');
+  return lines;
+}
+
+/**
+ * One VEVENT for a public show (the subscribable feed). The UID is derived from
+ * the gig id and a fixed domain (NOT the origin): it must stay identical for the
+ * life of the gig, and pinning it to the host would mint fresh UIDs — and so
+ * duplicate events on every subscriber's calendar — the day the app moves domains.
+ */
+export function showEvent(show: PublicShow, opts: IcsOptions): string[] {
   // A VEVENT has exactly one URL. When the host has their own page for the event
   // (the fair's schedule, the festival's tickets), that's what someone tapping
   // the event in their calendar actually wants — so it wins, and our /shows page
@@ -251,31 +267,120 @@ export function showEvent(show: PublicShow, opts: IcsOptions): string[] {
   ]
     .filter(Boolean)
     .join('\n\n');
-  lines.push(`DESCRIPTION:${escapeText(description)}`);
-  lines.push(`URL:${show.eventUrl ?? `${opts.origin}/shows`}`);
-  lines.push('END:VEVENT');
-  return lines;
+  return veventLines(show, opts, {
+    uid: `gig-${show.id}@mutinybaybrassband.com`,
+    description,
+    url: show.eventUrl ?? `${opts.origin}/shows`,
+  });
+}
+
+// --- Per-gig personal calendar (one-time copy) -------------------------------
+//
+// The button on a gig's detail page. Unlike the public feed, this is aimed at a
+// signed-in band member and their own calendar: it carries the band-only call
+// notes and links back to the gig packet (call times, parking, pay) rather than
+// the public /shows page. A one-time copy — it does not re-poll and update the
+// way a subscription does.
+
+/** The gig fields a personal calendar entry draws on. */
+export type CalendarGig = Pick<
+  Gig,
+  'id' | 'name' | 'date' | 'times' | 'location' | 'notes' | 'eventUrl' | 'canceled' | 'rev'
+>;
+
+/** Band-only description: the call notes, the host's event page, and a link
+ *  back to the gig packet where the call details live. */
+function gigDetails(gig: CalendarGig, origin: string): string {
+  return [gig.notes, gig.eventUrl ? `Event info: ${gig.eventUrl}` : null, `${origin}/gigs/${gig.id}`]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /**
- * The whole subscribable calendar. Lines are CRLF-terminated per RFC 5545 —
- * iOS in particular rejects a file with bare newlines — and folded to 75 octets.
+ * One VEVENT for a gig, for a member's own calendar. The UID is deliberately
+ * distinct from the public feed's (`-me`): a member who both subscribes to
+ * /shows AND adds this richer personal copy gets two independent events, so the
+ * lean public one can never overwrite the one carrying their call notes.
  */
-export function buildCalendar(shows: PublicShow[], opts: IcsOptions): string {
+export function gigEvent(gig: CalendarGig, opts: IcsOptions): string[] {
+  return veventLines(gig, opts, {
+    uid: `gig-${gig.id}-me@mutinybaybrassband.com`,
+    description: gigDetails(gig, opts.origin),
+    url: `${opts.origin}/gigs/${gig.id}`,
+  });
+}
+
+/**
+ * Wrap already-built VEVENT lines in a VCALENDAR envelope with the Pacific
+ * VTIMEZONE, then fold and CRLF-terminate the whole thing. Lines are
+ * CRLF-terminated per RFC 5545 — iOS in particular rejects a file with bare
+ * newlines — and folded to 75 octets. `header` is the calendar-level metadata
+ * that differs between the subscribable feed and a one-off personal file.
+ */
+function assembleCalendar(header: string[], eventLines: string[]): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Mutiny Bay Brass Band//Shows//EN',
     'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:Mutiny Bay Brass Band',
-    'X-WR-CALDESC:Shows by the Mutiny Bay Brass Band, Whidbey Island WA.',
-    `X-WR-TIMEZONE:${PACIFIC_TIME}`,
-    `REFRESH-INTERVAL;VALUE=DURATION:${REFRESH}`,
-    `X-PUBLISHED-TTL:${REFRESH}`,
+    ...header,
     ...VTIMEZONE,
-    ...shows.filter((s) => isValidDate(s.date)).flatMap((show) => showEvent(show, opts)),
+    ...eventLines,
     'END:VCALENDAR',
   ];
   return lines.map(foldLine).join('\r\n') + '\r\n';
+}
+
+/** The whole subscribable calendar — every public show, re-polled by clients. */
+export function buildCalendar(shows: PublicShow[], opts: IcsOptions): string {
+  return assembleCalendar(
+    [
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:Mutiny Bay Brass Band',
+      'X-WR-CALDESC:Shows by the Mutiny Bay Brass Band, Whidbey Island WA.',
+      `X-WR-TIMEZONE:${PACIFIC_TIME}`,
+      `REFRESH-INTERVAL;VALUE=DURATION:${REFRESH}`,
+      `X-PUBLISHED-TTL:${REFRESH}`,
+    ],
+    shows.filter((s) => isValidDate(s.date)).flatMap((show) => showEvent(show, opts))
+  );
+}
+
+/**
+ * A one-event calendar file for a single gig, for a member to import into their
+ * own calendar. No REFRESH/TTL: this is a snapshot, not a feed — nothing re-polls
+ * it. Suitable for Apple Calendar, Outlook, and file-import into Google Calendar.
+ */
+export function gigCalendar(gig: CalendarGig, opts: IcsOptions): string {
+  return assembleCalendar([`X-WR-TIMEZONE:${PACIFIC_TIME}`], gigEvent(gig, opts));
+}
+
+/**
+ * Google Calendar's "create event" (TEMPLATE) link — pre-fills the new-event
+ * form in the member's own Google account. `dates` are the local wall-clock
+ * times paired with `ctz` (the timezone Google resolves them in); an all-day
+ * gig uses bare dates with an exclusive end and no `ctz`.
+ */
+export function googleEventUrl(gig: CalendarGig, opts: { origin: string }): string {
+  const window = eventWindow(gig);
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: gig.canceled ? `CANCELED: ${gig.name}` : gig.name,
+  });
+
+  if (window.allDay) {
+    params.set('dates', `${icsDate(window.start)}/${icsDate(window.end)}`);
+  } else {
+    params.set(
+      'dates',
+      `${icsDateTime(window.start.date, window.start.time)}/${icsDateTime(window.end.date, window.end.time)}`
+    );
+    params.set('ctz', PACIFIC_TIME);
+  }
+
+  const location = locationText(gig);
+  if (location) params.set('location', location);
+  params.set('details', gigDetails(gig, opts.origin));
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }

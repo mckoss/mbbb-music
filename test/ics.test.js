@@ -12,6 +12,9 @@ import {
   buildCalendar,
   webcalUrl,
   googleSubscribeUrl,
+  gigEvent,
+  gigCalendar,
+  googleEventUrl,
 } from '../src/lib/ics.ts';
 
 const OPTS = { origin: 'https://music.example.com', stamp: new Date('2026-07-13T17:00:00Z') };
@@ -223,4 +226,72 @@ test('buildCalendar drops gigs with no date (they have nowhere to go)', () => {
 
 test('an unchanged calendar is byte-identical (so the ETag holds)', () => {
   assert.equal(buildCalendar([SHOW], OPTS), buildCalendar([SHOW], OPTS));
+});
+
+// --- Per-gig personal calendar ----------------------------------------------
+
+// A full gig, as the detail page holds it: band-only `notes` on top of the
+// public fields.
+const GIG = {
+  ...SHOW,
+  notes: 'Call 10:30, park behind the barn. Pay: $150. Contact Sam 555-0142.',
+  eventUrl: 'https://whidbeyislandfair.com/',
+};
+
+test('gigEvent carries the band-only notes and links to the gig packet', () => {
+  const ics = gigEvent(GIG, OPTS).join('\r\n');
+  // The private call notes belong in the member's own copy.
+  assert.match(ics, /Call 10:30/);
+  assert.match(ics, /Pay: \$150/);
+  // The URL is the gig packet (call details), not the public /shows page.
+  assert.match(ics, /URL:https:\/\/music\.example\.com\/gigs\/abc123/);
+  assert.doesNotMatch(ics, /music\.example\.com\/shows/);
+  // The host's event page rides along in the description.
+  assert.match(ics, /Event info: https:\/\/whidbeyislandfair\.com\//);
+});
+
+test('the personal UID is distinct from the public feed UID', () => {
+  // A member who both subscribes AND adds the personal copy must get two
+  // independent events, so the lean public one never overwrites the rich one.
+  assert.ok(gigEvent(GIG, OPTS).includes('UID:gig-abc123-me@mutinybaybrassband.com'));
+  assert.ok(showEvent(SHOW, OPTS).includes('UID:gig-abc123@mutinybaybrassband.com'));
+});
+
+test('gigCalendar is a one-event VCALENDAR with no subscribe/refresh metadata', () => {
+  const ics = gigCalendar(GIG, OPTS);
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n'));
+  assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
+  assert.equal((ics.match(/BEGIN:VEVENT/g) ?? []).length, 1);
+  assert.ok(ics.includes('BEGIN:VTIMEZONE'));
+  // It's a snapshot, not a feed: no re-poll hints.
+  assert.ok(!ics.includes('REFRESH-INTERVAL'));
+  assert.ok(!ics.includes('X-PUBLISHED-TTL'));
+});
+
+test('googleEventUrl builds a TEMPLATE link with local times and a Pacific ctz', () => {
+  const url = googleEventUrl(GIG, { origin: 'https://music.example.com' });
+  const params = new URL(url).searchParams;
+  assert.equal(new URL(url).origin, 'https://calendar.google.com');
+  assert.equal(params.get('action'), 'TEMPLATE');
+  assert.equal(params.get('text'), 'Maxwelton Parade');
+  assert.equal(params.get('dates'), '20260704T110000/20260704T130000');
+  assert.equal(params.get('ctz'), 'America/Los_Angeles');
+  assert.equal(params.get('location'), 'Maxwelton Beach, 6799 Maxwelton Rd, Clinton, WA');
+  assert.match(params.get('details'), /Call 10:30/);
+});
+
+test('googleEventUrl for an all-day gig uses bare dates and no ctz', () => {
+  const url = googleEventUrl({ id: 'x', name: 'Fair', date: '2026-08-01' }, { origin: 'https://music.example.com' });
+  const params = new URL(url).searchParams;
+  assert.equal(params.get('dates'), '20260801/20260802');
+  assert.equal(params.get('ctz'), null);
+});
+
+test('a canceled gig is marked CANCELED in both the .ics and the Google link', () => {
+  const canceled = { ...GIG, canceled: true };
+  assert.match(gigEvent(canceled, OPTS).join('\r\n'), /SUMMARY:CANCELED: Maxwelton Parade/);
+  assert.equal(
+    new URL(googleEventUrl(canceled, { origin: 'https://music.example.com' })).searchParams.get('text'),
+    'CANCELED: Maxwelton Parade'
+  );
 });
