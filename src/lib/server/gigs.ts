@@ -195,6 +195,18 @@ export function addSet(id: string, name: string | undefined, dataDir?: string): 
   return updateGig(id, { sets: gig.sets }, dataDir);
 }
 
+/** Rename a set. A blank name clears it (the UI falls back to "Set N"). */
+export function renameSet(id: string, setId: string, name: string, dataDir?: string): Gig | null {
+  const gig = getGig(id, dataDir);
+  if (!gig) return null;
+  const set = findSet(gig, setId);
+  if (!set) return gig;
+  const trimmed = name.trim();
+  if (trimmed) set.name = trimmed;
+  else delete set.name;
+  return updateGig(id, { sets: gig.sets }, dataDir);
+}
+
 /** Remove a set from a gig (never drops the last set; clears it instead). */
 export function removeSet(id: string, setId: string, dataDir?: string): Gig | null {
   const gig = getGig(id, dataDir);
