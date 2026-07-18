@@ -130,6 +130,8 @@
 
   // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
+  // Which set's name is being edited inline (null = none).
+  let renamingSet = $state<string | null>(null);
 
   // --- Add to my calendar ---------------------------------------------------
   // A per-gig, one-time copy (the /shows feed is the auto-updating subscription).
@@ -697,12 +699,16 @@
         </span>
       </label>
 
+      <!-- The hasX markers let the server tell "unchecked" apart from "this form
+           didn't have the checkbox" (a stale cached bundle) — see updateInfo. -->
       <label class="check">
+        <input type="hidden" name="hasCanceled" value="1" />
         <input type="checkbox" name="canceled" checked={gig.canceled ?? false} />
         <span>Canceled — keep in the list but mark this gig as not happening</span>
       </label>
 
       <label class="check">
+        <input type="hidden" name="hasHidden" value="1" />
         <input type="checkbox" name="hidden" checked={gig.hidden ?? false} />
         <span>Hide from the public shows page — a private party or corporate booking</span>
       </label>
@@ -869,7 +875,43 @@
     {#each gig.sets as set, si (set.id)}
       <div class="set">
         <header class="set-head">
-          <h3>{set.name || `Set ${si + 1}`}</h3>
+          {#if canEdit && renamingSet === set.id}
+            <form
+              class="rename-set"
+              method="POST"
+              action="?/renameSet"
+              use:enhance={() => async ({ update, result }) => {
+                await update({ reset: false });
+                if (result.type === 'success') markSelfMutation();
+                renamingSet = null;
+              }}
+            >
+              <input type="hidden" name="setId" value={set.id} />
+              <input
+                name="name"
+                value={set.name ?? ''}
+                placeholder={`Set ${si + 1}`}
+                aria-label="Set name"
+              />
+              <button type="submit" class="add-btn">Save</button>
+              <button type="button" class="ghost-btn" onclick={() => (renamingSet = null)}>
+                Cancel
+              </button>
+            </form>
+          {:else}
+            <div class="set-title">
+              <h3>{set.name || `Set ${si + 1}`}</h3>
+              {#if canEdit}
+                <button
+                  type="button"
+                  class="icon"
+                  title="Rename set"
+                  aria-label="Rename set"
+                  onclick={() => (renamingSet = set.id)}>✎</button
+                >
+              {/if}
+            </div>
+          {/if}
           <div class="set-actions">
             {#if set.songSlugs.some((slug) => scoreFor(slug))}
               <button class="practice-set" onclick={() => startSet(set.id, 'practice')}>✎ Practice set</button>
@@ -1639,6 +1681,23 @@
     display: flex;
     align-items: center;
     gap: 12px;
+  }
+
+  .set-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .rename-set {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .rename-set input {
+    min-height: 40px;
   }
 
   .perform {

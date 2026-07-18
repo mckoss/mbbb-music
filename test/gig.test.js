@@ -31,6 +31,7 @@ import {
   updateGig,
   deleteGig,
   addSet,
+  renameSet,
   removeSet,
   addSong,
   removeSong,
@@ -369,6 +370,52 @@ test('store: setlist add/remove sets and songs', async () => {
     const encoreId = g.sets[1].id;
     g = removeSet(gig.id, encoreId, dir);
     assert.equal(g.sets.length, 1);
+  });
+});
+
+test('store: renameSet sets, trims, and clears a set name', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig({ name: 'Gig', date: '2026-08-01' }, dir);
+    const setId = gig.sets[0].id;
+
+    let g = renameSet(gig.id, setId, '  Opening set  ', dir);
+    assert.equal(g.sets[0].name, 'Opening set');
+
+    // Blank (or all-whitespace) clears the name — the UI falls back to "Set N".
+    g = renameSet(gig.id, setId, '   ', dir);
+    assert.equal(g.sets[0].name, undefined);
+
+    // Unknown set id: the gig is returned untouched, not an error.
+    g = renameSet(gig.id, 'nope', 'Encore', dir);
+    assert.equal(g.sets[0].name, undefined);
+
+    // Unknown gig id: null, matching the other set mutations.
+    assert.equal(renameSet('nope', setId, 'x', dir), null);
+  });
+});
+
+test('store: updateGig leaves fields absent from the patch untouched', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig(
+      {
+        name: 'Fair Set',
+        date: '2026-08-01',
+        publicNotes: 'Bring a chair',
+        eventUrl: 'https://example.com/fair',
+        hidden: true,
+        canceled: true,
+      },
+      dir
+    );
+
+    // A patch naming only `name` (what a stale client's form posted) must not
+    // clear the fields it never mentioned.
+    const g = updateGig(gig.id, { name: 'Fair Set 2' }, dir);
+    assert.equal(g.name, 'Fair Set 2');
+    assert.equal(g.publicNotes, 'Bring a chair');
+    assert.equal(g.eventUrl, 'https://example.com/fair');
+    assert.equal(g.hidden, true);
+    assert.equal(g.canceled, true);
   });
 });
 

@@ -43,6 +43,19 @@
       "hidden": true,
       "sets": [],
       "rev": 1
+    },
+    {
+      "id": "e2e-edit",
+      "name": "Edit Fixture Gig",
+      "date": "2026-11-11",
+      "times": [{ "start": "12:00" }],
+      "location": { "name": "Edit Hall" },
+      "notes": "Band-only edit note",
+      "publicNotes": "Public edit blurb",
+      "eventUrl": "https://example.com/edit-fixture",
+      "hidden": true,
+      "sets": [{ "id": "e2e-edit-set", "songSlugs": [] }],
+      "rev": 1
     }
   ]
 }

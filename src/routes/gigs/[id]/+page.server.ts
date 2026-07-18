@@ -9,6 +9,7 @@ import {
   deleteGig,
   duplicateGig,
   addSet,
+  renameSet,
   removeSet,
   addSong,
   removeSong,
@@ -17,7 +18,7 @@ import {
 import { getRsvps, setRsvp } from '$lib/server/rsvps';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
-import { canEditGigs, type GigTime } from '$lib/gig';
+import { canEditGigs, type GigInput, type GigTime } from '$lib/gig';
 import { parseRsvpStatus, type RsvpStatus } from '$lib/rsvp';
 
 function requireGigEditor(locals: App.Locals) {
@@ -117,20 +118,28 @@ export const actions = {
   updateInfo: async ({ request, params, locals }) => {
     requireGigEditor(locals);
     const form = await request.formData();
-    const gig = updateGig(params.id, {
-      name: String(form.get('name') ?? ''),
-      date: String(form.get('date') ?? ''),
-      times: parseTimes(form),
-      location: {
+    // Patch only the fields this form actually posted. A stale client — a
+    // cached bundle whose edit form predates a field — must not clear values it
+    // never displayed: an absent field means "leave it alone", present-but-blank
+    // means "clear it". An unchecked checkbox is also absent from a POST, so
+    // each checkbox travels with a hasX marker input that proves the form knew
+    // about it.
+    const patch: Partial<GigInput> = {};
+    if (form.has('name')) patch.name = String(form.get('name') ?? '');
+    if (form.has('date')) patch.date = String(form.get('date') ?? '');
+    if (form.has('start')) patch.times = parseTimes(form);
+    if (form.has('locationName') || form.has('locationAddress')) {
+      patch.location = {
         name: String(form.get('locationName') ?? ''),
         address: String(form.get('locationAddress') ?? ''),
-      },
-      notes: String(form.get('notes') ?? ''),
-      publicNotes: String(form.get('publicNotes') ?? ''),
-      eventUrl: String(form.get('eventUrl') ?? ''),
-      canceled: form.get('canceled') === 'on',
-      hidden: form.get('hidden') === 'on',
-    });
+      };
+    }
+    if (form.has('notes')) patch.notes = String(form.get('notes') ?? '');
+    if (form.has('publicNotes')) patch.publicNotes = String(form.get('publicNotes') ?? '');
+    if (form.has('eventUrl')) patch.eventUrl = String(form.get('eventUrl') ?? '');
+    if (form.has('hasCanceled')) patch.canceled = form.get('canceled') === 'on';
+    if (form.has('hasHidden')) patch.hidden = form.get('hidden') === 'on';
+    const gig = updateGig(params.id, patch);
     if (!gig) return fail(404, { message: 'Gig not found' });
     return { ok: true };
   },
@@ -140,6 +149,15 @@ export const actions = {
     const form = await request.formData();
     const name = String(form.get('name') ?? '').trim() || undefined;
     if (!addSet(params.id, name)) return fail(404, { message: 'Gig not found' });
+    return { ok: true };
+  },
+
+  renameSet: async ({ request, params, locals }) => {
+    requireGigEditor(locals);
+    const form = await request.formData();
+    const setId = String(form.get('setId') ?? '');
+    const name = String(form.get('name') ?? '');
+    if (!renameSet(params.id, setId, name)) return fail(404, { message: 'Gig not found' });
     return { ok: true };
   },
 
