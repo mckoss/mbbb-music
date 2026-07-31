@@ -28,12 +28,14 @@ test.describe('add a single gig to my calendar', () => {
     const p = url.searchParams;
     expect(p.get('action')).toBe('TEMPLATE');
     expect(p.get('text')).toBe('Maxwelton Fourth of July Parade');
-    // Local wall-clock times paired with the Pacific ctz (not UTC).
-    expect(p.get('dates')).toBe('20260704T110000/20260704T130000');
+    // Local wall-clock times paired with the Pacific ctz (not UTC). The member's
+    // event starts at the 10:30 call, not the public 11:00 downbeat.
+    expect(p.get('dates')).toBe('20260704T103000/20260704T130000');
     expect(p.get('ctz')).toBe('America/Los_Angeles');
     expect(p.get('location')).toBe('Maxwelton Beach, 6799 Maxwelton Rd, Clinton, WA');
-    // The band-only call notes ride along in the details for a member's own copy.
-    expect(p.get('details')).toContain('Call time 10:30');
+    // The band-only call time and notes ride along in the details.
+    expect(p.get('details')).toContain('Call time: 10:30 AM');
+    expect(p.get('details')).toContain('Pay: $150');
   });
 
   test('the .ics button downloads a well-formed single-event calendar', async ({ page }) => {
@@ -62,10 +64,11 @@ test.describe('add a single gig to my calendar', () => {
     expect(ics.match(/BEGIN:VEVENT/g)?.length).toBe(1);
     expect(ics).toContain('BEGIN:VTIMEZONE');
     expect(ics).toContain('SUMMARY:Maxwelton Fourth of July Parade');
-    expect(ics).toContain('DTSTART;TZID=America/Los_Angeles:20260704T110000');
-    // A personal copy: distinct UID from the public feed, carrying the call notes.
+    // The member's copy starts at the 10:30 call, not the public 11:00 downbeat.
+    expect(ics).toContain('DTSTART;TZID=America/Los_Angeles:20260704T103000');
+    // A personal copy: distinct UID from the public feed, carrying the call time.
     expect(ics).toContain('UID:gig-e2e-parade-me@mutinybaybrassband.com');
-    expect(ics).toContain('Call time 10:30');
+    expect(ics).toContain('Call time: 10:30 AM');
     // A snapshot, not a subscription — no re-poll hints.
     expect(ics).not.toContain('REFRESH-INTERVAL');
   });

@@ -2,7 +2,14 @@
   import { page } from '$app/state';
   import { enhance } from '$app/forms';
   import type { Gig } from '$lib/gig';
-  import { canEditGigs, formatGigDate, formatGigTimes, formatGigLocation, isValidDate } from '$lib/gig';
+  import {
+    canEditGigs,
+    formatGigDate,
+    formatGigTime,
+    formatGigTimes,
+    formatGigLocation,
+    isValidDate,
+  } from '$lib/gig';
   import { listDownloaded } from '$lib/offline';
   import MonthCalendar from '$lib/MonthCalendar.svelte';
   import type { RsvpStatus } from '$lib/rsvp';
@@ -152,6 +159,9 @@
             {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
           </h3>
           <p class="when">{formatGigDate(gig.date)}</p>
+          {#if gig.callTime}
+            <p class="meta call">Call time {formatGigTime(gig.callTime)}</p>
+          {/if}
           {#if formatGigTimes(gig.times)}
             <p class="meta">{formatGigTimes(gig.times)}</p>
           {/if}
@@ -476,6 +486,11 @@
     color: var(--muted);
     font-size: 0.85rem;
     margin-top: 2px;
+  }
+
+  .meta.call {
+    color: var(--accent-strong);
+    font-weight: 600;
   }
 
   .count {

@@ -90,6 +90,12 @@ test('makeGig defaults name, blanks bad date, and ensures one set', () => {
   assert.deepEqual(g2.sets[0].songSlugs, ['a']);
 });
 
+test('makeGig keeps a valid callTime and drops a malformed one', () => {
+  assert.equal(makeGig({ name: 'Fair', callTime: '10:30' }).callTime, '10:30');
+  assert.equal('callTime' in makeGig({ name: 'Fair', callTime: 'ten-ish' }), false);
+  assert.equal('callTime' in makeGig({ name: 'Fair' }), false);
+});
+
 test('formatting helpers', () => {
   assert.match(formatGigDate('2026-06-14'), /2026/);
   assert.equal(formatGigDate(''), 'No date');
@@ -151,6 +157,7 @@ test('publicGig publishes only public fields — never notes, sets, or hidden', 
     name: 'Maxwelton Parade',
     date: '2026-07-04',
     times: [{ start: '11:00', end: '13:00' }],
+    callTime: '10:30',
     location: { name: 'Maxwelton Beach', address: '6799 Maxwelton Rd' },
     notes: 'Gate code 4417. Pay $600, ask for Dave, cell 555-0123.',
     publicNotes: 'Come early — the parade fills up.',
@@ -169,6 +176,8 @@ test('publicGig publishes only public fields — never notes, sets, or hidden', 
   // band's notes and setlist are simply not in the object.
   assert.equal('notes' in pub, false);
   assert.equal('sets' in pub, false);
+  // The call is band logistics, not a public listing time.
+  assert.equal('callTime' in pub, false);
   assert.equal(JSON.stringify(pub).includes('555-0123'), false);
   assert.equal(JSON.stringify(pub).includes('Gate code'), false);
   assert.equal(JSON.stringify(pub).includes('second-line'), false);
@@ -273,6 +282,19 @@ test('store: publicNotes and hidden round-trip and clear', async () => {
   });
 });
 
+test('store: callTime round-trips, rejects a malformed value, and clears', async () => {
+  await withTempDir(async (dir) => {
+    const gig = createGig({ name: 'Fair', date: '2026-08-15' }, dir);
+
+    assert.equal(updateGig(gig.id, { callTime: '13:15' }, dir).callTime, '13:15');
+    // A malformed value is dropped, not stored.
+    assert.equal(updateGig(gig.id, { callTime: 'noonish' }, dir).callTime, undefined);
+    assert.equal(updateGig(gig.id, { callTime: '13:15' }, dir).callTime, '13:15');
+    // Blank clears the key (present-but-blank in the form means "clear").
+    assert.equal('callTime' in updateGig(gig.id, { callTime: '' }, dir), false);
+  });
+});
+
 test('store: eventUrl is normalized on write and rejected when unsafe', async () => {
   await withTempDir(async (dir) => {
     const gig = createGig({ name: 'Fair', date: '2026-08-15' }, dir);
@@ -312,6 +334,11 @@ test('store: rev advances on calendar-visible edits, not on setlist changes', as
     assert.equal(updateGig(gig.id, { publicNotes: 'Free, all ages.' }, dir).rev, 4);
     // As is the host's event page — subscribers see it as the event's URL.
     assert.equal(updateGig(gig.id, { eventUrl: 'https://example.org/fair' }, dir).rev, 5);
+
+    // The call time is band-only, but it IS the start of a member's personal
+    // .ics copy — the bumped SEQUENCE lets a re-downloaded copy replace it.
+    assert.equal(updateGig(gig.id, { callTime: '13:00' }, dir).rev, 6);
+    assert.equal(updateGig(gig.id, { callTime: '13:00' }, dir).rev, 6); // no-op
   });
 });
 
@@ -322,6 +349,7 @@ test('store: duplicateGig copies info and setlists into a new gig', async () => 
         name: 'Summer Fair',
         date: '2026-07-04',
         times: [{ start: '14:00', end: '16:00' }],
+        callTime: '13:15',
         location: { name: 'Town Green', address: '1 Main St' },
         notes: 'Bring stands',
         sets: [
@@ -339,6 +367,7 @@ test('store: duplicateGig copies info and setlists into a new gig', async () => 
     assert.equal(copy.name, 'Summer Fair Copy');
     assert.equal(copy.date, original.date);
     assert.deepEqual(copy.times, original.times);
+    assert.equal(copy.callTime, '13:15');
     assert.deepEqual(copy.location, original.location);
     assert.equal(copy.notes, original.notes);
     assert.deepEqual(
@@ -400,6 +429,7 @@ test('store: updateGig leaves fields absent from the patch untouched', async () 
       {
         name: 'Fair Set',
         date: '2026-08-01',
+        callTime: '10:30',
         publicNotes: 'Bring a chair',
         eventUrl: 'https://example.com/fair',
         hidden: true,
@@ -412,6 +442,7 @@ test('store: updateGig leaves fields absent from the patch untouched', async () 
     // clear the fields it never mentioned.
     const g = updateGig(gig.id, { name: 'Fair Set 2' }, dir);
     assert.equal(g.name, 'Fair Set 2');
+    assert.equal(g.callTime, '10:30');
     assert.equal(g.publicNotes, 'Bring a chair');
     assert.equal(g.eventUrl, 'https://example.com/fair');
     assert.equal(g.hidden, true);

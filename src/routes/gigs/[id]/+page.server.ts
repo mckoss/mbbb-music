@@ -128,6 +128,7 @@ export const actions = {
     if (form.has('name')) patch.name = String(form.get('name') ?? '');
     if (form.has('date')) patch.date = String(form.get('date') ?? '');
     if (form.has('start')) patch.times = parseTimes(form);
+    if (form.has('callTime')) patch.callTime = String(form.get('callTime') ?? '');
     if (form.has('locationName') || form.has('locationAddress')) {
       patch.location = {
         name: String(form.get('locationName') ?? ''),

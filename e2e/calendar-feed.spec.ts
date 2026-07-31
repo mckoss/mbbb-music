@@ -27,8 +27,11 @@ test.describe('public calendar feed', () => {
     expect(body).not.toContain('PAYCODE-SECRET-9931');
     expect(body).not.toContain('e2e-hidden');
     expect(body).not.toContain('RSVP Fixture Rehearsal');
-    // e2e-parade's band-only note must not ride along; only its publicNotes may.
-    expect(body).not.toContain('Call time 10:30');
+    // e2e-parade's band-only fields must not ride along; only its publicNotes
+    // may. The feed's parade event starts at the public 11:00, never the call.
+    expect(body).not.toContain('Call time');
+    expect(body).not.toContain('T103000');
+    expect(body).toContain('T110000');
     expect(body).toContain('Come early');
   });
 

@@ -10,6 +10,7 @@
   import {
     canEditGigs,
     formatGigDate,
+    formatGigTime,
     formatGigTimes,
     formatGigTimeRange,
     isValidDate,
@@ -656,6 +657,14 @@
         <input type="date" name="date" value={gig.date} />
       </label>
 
+      <label class="field">
+        <span>Call time <span class="tag private">Band only</span></span>
+        <input type="time" name="callTime" value={gig.callTime ?? ''} />
+        <span class="hint">
+          When the band needs to be there — ahead of the listed performance times below.
+        </span>
+      </label>
+
       <fieldset class="times">
         <legend>Times</legend>
         <p class="hint">Add a start (and optional end) for each playing slot.</p>
@@ -679,7 +688,7 @@
       <label class="field">
         <span>Notes <span class="tag private">Band only</span></span>
         <textarea name="notes" rows="4">{gig.notes ?? ''}</textarea>
-        <span class="hint">Call times, parking, the contact's number, pay. Never leaves the app.</span>
+        <span class="hint">Parking, the contact's number, pay. Never leaves the app.</span>
       </label>
 
       <label class="field">
@@ -722,6 +731,9 @@
     <!-- Read-only info. -->
     <div class="info">
       <p class="when">{formatGigDate(gig.date)}</p>
+      {#if gig.callTime}
+        <p class="call-time">Call time {formatGigTime(gig.callTime)}</p>
+      {/if}
       {#if gig.times?.length}
         <ul class="time-list">
           {#each gig.times as t, i (i)}
@@ -1243,6 +1255,11 @@
   .when {
     font-weight: 700;
     font-size: 1.05rem;
+  }
+
+  .call-time {
+    font-weight: 600;
+    color: var(--accent-strong);
   }
 
   .time-list {

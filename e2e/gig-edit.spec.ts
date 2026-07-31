@@ -60,6 +60,7 @@ test('a partial updateInfo post cannot wipe fields it did not carry', async ({
   await expect(page.locator('input[name="eventUrl"]')).toHaveValue(
     'https://example.com/edit-fixture'
   );
+  await expect(page.locator('input[name="callTime"]')).toHaveValue('11:15');
   await expect(page.locator('textarea[name="notes"]')).toHaveValue('Band-only edit note');
   await expect(page.locator('textarea[name="publicNotes"]')).toHaveValue('Public edit blurb');
   await expect(page.locator('input[name="hidden"]')).toBeChecked();

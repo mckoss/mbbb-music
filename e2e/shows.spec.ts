@@ -26,9 +26,10 @@ test.describe('public shows page', () => {
     expect(body).not.toContain('Private Corporate Holiday Party');
     expect(body).not.toContain('PAYCODE-SECRET-9931');
     expect(body).not.toContain('1 Private Way');
-    // e2e-parade's band-only note (call time / pay / contact) must not leak; only
-    // its publicNotes may show.
-    expect(body).not.toContain('Call time 10:30');
+    // e2e-parade's band-only fields (call time, pay/contact notes) must not
+    // leak; only its publicNotes may show.
+    expect(body).not.toContain('Call time');
+    expect(body).not.toContain('10:30');
     expect(body).not.toContain('Pay: $150');
     // The hidden rehearsal is off the public page too.
     expect(body).not.toContain('RSVP Fixture Rehearsal');

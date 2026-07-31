@@ -20,6 +20,7 @@ import {
   normalizeLocation,
   normalizeUrl,
   isValidDate,
+  isValidTime,
   emptySet,
   newId,
   type Gig,
@@ -80,6 +81,7 @@ export function duplicateGig(id: string, dataDir?: string): Gig | null {
       name: `${source.name} Copy`,
       date: source.date,
       ...(source.times ? { times: source.times.map((t) => ({ ...t })) } : {}),
+      ...(source.callTime ? { callTime: source.callTime } : {}),
       ...(source.location ? { location: { ...source.location } } : {}),
       ...(source.notes ? { notes: source.notes } : {}),
       ...(source.publicNotes ? { publicNotes: source.publicNotes } : {}),
@@ -97,14 +99,16 @@ export function duplicateGig(id: string, dataDir?: string): Gig | null {
 }
 
 /**
- * The parts of a gig that a calendar subscriber can see. Comparing this before
+ * The parts of a gig that a calendar entry can see. Comparing this before
  * and after an edit tells us whether to bump `rev` (the iCal SEQUENCE): a
  * setlist change is invisible to a subscriber and shouldn't churn their
- * calendar, but a moved date or a new venue must.
+ * calendar, but a moved date or a new venue must. `callTime` never reaches the
+ * public feed, but it *is* the start of a member's personal calendar copy, and
+ * the bumped SEQUENCE is what lets a re-downloaded copy replace the old one.
  */
 function calendarFingerprint(gig: Gig): string {
-  const { name, date, times, location, publicNotes, eventUrl, canceled, hidden } = gig;
-  return JSON.stringify({ name, date, times, location, publicNotes, eventUrl, canceled, hidden });
+  const { name, date, times, callTime, location, publicNotes, eventUrl, canceled, hidden } = gig;
+  return JSON.stringify({ name, date, times, callTime, location, publicNotes, eventUrl, canceled, hidden });
 }
 
 /**
@@ -125,6 +129,11 @@ export function updateGig(id: string, patch: Partial<GigInput>, dataDir?: string
     const times = normalizeTimes(patch.times);
     if (times.length > 0) gig.times = times;
     else delete gig.times;
+  }
+  if (patch.callTime !== undefined) {
+    // Blank (or malformed) clears it — same contract as the other optionals.
+    if (isValidTime(patch.callTime)) gig.callTime = patch.callTime;
+    else delete gig.callTime;
   }
   if (patch.location !== undefined) {
     const loc = normalizeLocation(patch.location);

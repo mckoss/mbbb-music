@@ -140,6 +140,32 @@ test('a late start with no end rolls its default duration into the next day', ()
   assert.deepEqual(w.end, { date: '2026-06-15', time: '01:30' });
 });
 
+test('a call time moves the start earlier; the end stays at the last slot', () => {
+  const w = eventWindow({
+    date: '2026-06-14',
+    times: [{ start: '14:30', end: '16:00' }],
+    callTime: '13:45',
+  });
+  assert.deepEqual(w.start, { date: '2026-06-14', time: '13:45' });
+  assert.deepEqual(w.end, { date: '2026-06-14', time: '16:00' });
+});
+
+test('a call time with no performance times makes a timed event, not all-day', () => {
+  const w = eventWindow({ date: '2026-06-14', callTime: '10:00' });
+  assert.equal(w.allDay, false);
+  assert.deepEqual(w.start, { date: '2026-06-14', time: '10:00' });
+  assert.deepEqual(w.end, { date: '2026-06-14', time: '12:00' });
+});
+
+test('a call time at or after the first start (bad data) is ignored', () => {
+  const w = eventWindow({
+    date: '2026-06-14',
+    times: [{ start: '14:30', end: '16:00' }],
+    callTime: '15:00',
+  });
+  assert.deepEqual(w.start, { date: '2026-06-14', time: '14:30' });
+});
+
 // --- VEVENT -----------------------------------------------------------------
 
 const SHOW = {
@@ -248,6 +274,30 @@ test('gigEvent carries the band-only notes and links to the gig packet', () => {
   assert.doesNotMatch(ics, /music\.example\.com\/shows/);
   // The host's event page rides along in the description.
   assert.match(ics, /Event info: https:\/\/whidbeyislandfair\.com\//);
+});
+
+test('a call time starts the personal event and is spelled out in the details', () => {
+  const called = { ...GIG, callTime: '10:15' };
+  const ics = gigEvent(called, OPTS).join('\r\n');
+  // The member's calendar block starts at the call, not the downbeat...
+  assert.match(ics, /DTSTART;TZID=America\/Los_Angeles:20260704T101500/);
+  assert.match(ics, /DTEND;TZID=America\/Los_Angeles:20260704T130000/);
+  // ...and the description says so in words.
+  assert.match(ics, /Call time: 10:15 AM/);
+
+  // The Google TEMPLATE link agrees with the .ics.
+  const params = new URL(googleEventUrl(called, OPTS)).searchParams;
+  assert.equal(params.get('dates'), '20260704T101500/20260704T130000');
+  assert.match(params.get('details'), /Call time: 10:15 AM/);
+});
+
+test('the public feed never carries a call time (the projection has no field)', () => {
+  // publicGig strips callTime (covered in gig.test.js); belt and braces here:
+  // even a PublicShow-shaped object smuggling one in only shifts DTSTART — the
+  // text never appears because showEvent's description ignores it.
+  const ics = showEvent(SHOW, OPTS).join('\r\n');
+  assert.doesNotMatch(ics, /Call time/);
+  assert.match(ics, /DTSTART;TZID=America\/Los_Angeles:20260704T110000/);
 });
 
 test('the personal UID is distinct from the public feed UID', () => {

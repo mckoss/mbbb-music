@@ -31,6 +31,7 @@ test.describe('gig list', () => {
     await expect(page).toHaveURL(/\/gigs\/e2e-parade$/);
     await expect(page.getByRole('heading', { name: 'Maxwelton Fourth of July Parade' })).toBeVisible();
     // Band-only detail the public page never shows is visible here.
-    await expect(page.getByText('Call time 10:30')).toBeVisible();
+    await expect(page.locator('.call-time')).toHaveText('Call time 10:30 AM');
+    await expect(page.getByText('Pay: $150')).toBeVisible();
   });
 });

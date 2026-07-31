@@ -22,7 +22,14 @@
 // Imported with .js specifiers (the SvelteKit/TS convention) rather than bare
 // paths, so this module is unit-testable under plain `node --test` — the test
 // loader resolves .js to the .ts source. Same reason as src/lib/server/gigs.ts.
-import { isValidDate, type Gig, type GigLocation, type GigTime, type PublicShow } from './gig.js';
+import {
+  formatGigTime,
+  isValidDate,
+  type Gig,
+  type GigLocation,
+  type GigTime,
+  type PublicShow,
+} from './gig.js';
 import { PACIFIC_TIME } from './time.js';
 
 /** Assumed length of a slot given only a start time. */
@@ -140,16 +147,35 @@ export type EventWindow =
  * rendering of "we know the day, not the hour" (and DTEND for an all-day event
  * is exclusive, hence the next day). A slot with a start but no end gets an
  * assumed two hours; a gig running past midnight rolls the end into the next day.
+ *
+ * A band-only `callTime` (only ever present on a member's personal copy — the
+ * public projection has no such field) moves the start to the call: the whole
+ * point of that calendar entry is being there when the band assembles, not when
+ * the downbeat lands.
  */
-export function eventWindow(show: Pick<PublicShow, 'date' | 'times'>): EventWindow {
+export function eventWindow(
+  show: Pick<PublicShow, 'date' | 'times'> & Pick<Gig, 'callTime'>
+): EventWindow {
   const times = show.times ?? [];
   if (times.length === 0) {
-    return { allDay: true, start: show.date, end: nextDay(show.date) };
+    if (!show.callTime) {
+      return { allDay: true, start: show.date, end: nextDay(show.date) };
+    }
+    // A call but no performance times yet: a timed event from the call.
+    return {
+      allDay: false,
+      start: { date: show.date, time: show.callTime },
+      end: plusMinutes(show.date, show.callTime, DEFAULT_DURATION_MIN),
+    };
   }
 
   const first: GigTime = times[0];
   const last: GigTime = times[times.length - 1];
-  const start = { date: show.date, time: first.start };
+  // The call precedes the downbeat; a callTime at/after the first start (bad
+  // data) is ignored rather than allowed to invert the window.
+  const startTime =
+    show.callTime && show.callTime < first.start ? show.callTime : first.start;
+  const start = { date: show.date, time: startTime };
   let end = last.end
     ? { date: show.date, time: last.end }
     : plusMinutes(show.date, last.start, DEFAULT_DURATION_MIN);
@@ -211,7 +237,8 @@ export interface IcsOptions {
 /** The date/time, summary, status and location of one VEVENT — everything both
  *  the public feed and a personal one-off copy share. The three fields that
  *  differ between them (UID, DESCRIPTION, URL) come in via `parts`. */
-type EventCore = Pick<PublicShow, 'name' | 'date' | 'times' | 'location' | 'canceled' | 'rev'>;
+type EventCore = Pick<PublicShow, 'name' | 'date' | 'times' | 'location' | 'canceled' | 'rev'> &
+  Pick<Gig, 'callTime'>;
 
 function veventLines(
   ev: EventCore,
@@ -285,13 +312,18 @@ export function showEvent(show: PublicShow, opts: IcsOptions): string[] {
 /** The gig fields a personal calendar entry draws on. */
 export type CalendarGig = Pick<
   Gig,
-  'id' | 'name' | 'date' | 'times' | 'location' | 'notes' | 'eventUrl' | 'canceled' | 'rev'
+  'id' | 'name' | 'date' | 'times' | 'callTime' | 'location' | 'notes' | 'eventUrl' | 'canceled' | 'rev'
 >;
 
-/** Band-only description: the call notes, the host's event page, and a link
- *  back to the gig packet where the call details live. */
+/** Band-only description: the call time, the call notes, the host's event page,
+ *  and a link back to the gig packet where the call details live. */
 function gigDetails(gig: CalendarGig, origin: string): string {
-  return [gig.notes, gig.eventUrl ? `Event info: ${gig.eventUrl}` : null, `${origin}/gigs/${gig.id}`]
+  return [
+    gig.callTime ? `Call time: ${formatGigTime(gig.callTime)}` : null,
+    gig.notes,
+    gig.eventUrl ? `Event info: ${gig.eventUrl}` : null,
+    `${origin}/gigs/${gig.id}`,
+  ]
     .filter(Boolean)
     .join('\n\n');
 }

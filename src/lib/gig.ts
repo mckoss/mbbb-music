@@ -27,10 +27,17 @@ export interface Gig {
   name: string;
   date: string; // YYYY-MM-DD
   times?: GigTime[];
+  /**
+   * When band members must arrive ("HH:MM"), ahead of the listed performance
+   * times. Band-only: like notes it never reaches the public /shows page or
+   * feed, but it does drive a member's personal calendar copy (the event starts
+   * at the call, not the downbeat).
+   */
+  callTime?: string;
   location?: GigLocation;
   /**
-   * Band-only notes: call times, parking, the contact's cell number, pay. NEVER
-   * leaves the authenticated app — see publicNotes for anything the world may see.
+   * Band-only notes: parking, the contact's cell number, pay. NEVER leaves the
+   * authenticated app — see publicNotes for anything the world may see.
    */
   notes?: string;
   /** Blurb shown to the public on /shows and in the public calendar feed. */
@@ -63,6 +70,7 @@ export interface GigInput {
   name?: string;
   date?: string;
   times?: GigTime[];
+  callTime?: string;
   location?: GigLocation;
   notes?: string;
   publicNotes?: string;
@@ -190,6 +198,7 @@ export function makeGig(input: GigInput): Gig {
     name: String(input.name ?? '').trim() || 'Untitled gig',
     date: isValidDate(input.date) ? input.date : '',
     ...(input.times ? { times: normalizeTimes(input.times) } : {}),
+    ...(isValidTime(input.callTime) ? { callTime: input.callTime } : {}),
     ...(location ? { location } : {}),
     ...(input.notes ? { notes: String(input.notes) } : {}),
     ...(input.publicNotes ? { publicNotes: String(input.publicNotes) } : {}),
