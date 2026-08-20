@@ -22,6 +22,7 @@ import {
   publicShows,
   normalizeUrl,
   urlHost,
+  importSourcesFor,
 } from '../src/lib/gig.ts';
 import {
   listGigs,
@@ -34,6 +35,7 @@ import {
   renameSet,
   removeSet,
   addSong,
+  importSet,
   removeSong,
   moveSong,
 } from '../src/lib/server/gigs.ts';
@@ -447,6 +449,51 @@ test('store: updateGig leaves fields absent from the patch untouched', async () 
     assert.equal(g.eventUrl, 'https://example.com/fair');
     assert.equal(g.hidden, true);
     assert.equal(g.canceled, true);
+  });
+});
+
+test('importSourcesFor: non-empty sets only, past newest-first then future newest-first', () => {
+  const mk = (id, date, sets) => ({ id, name: id, date, sets });
+  const me = mk('me', '2026-06-01', [{ id: 's', songSlugs: ['a'] }]);
+  const gigs = [
+    me,
+    mk('old', '2025-01-01', [{ id: 'o1', songSlugs: ['a'] }]),
+    mk('recent', '2026-05-01', [{ id: 'r1', songSlugs: [] }, { id: 'r2', name: 'Encore', songSlugs: ['b'] }]),
+    mk('empty', '2026-04-01', [{ id: 'e1', songSlugs: [] }]),
+    mk('far', '2027-01-01', [{ id: 'f1', songSlugs: ['c'] }]),
+    mk('soon', '2026-07-01', [{ id: 'n1', songSlugs: ['c'] }]),
+  ];
+  const out = importSourcesFor(me, gigs);
+  assert.deepEqual(
+    out.map((g) => g.id),
+    ['recent', 'old', 'far', 'soon']
+  );
+  // Empty sets dropped; unnamed sets labeled by original position.
+  assert.deepEqual(out[0].sets, [{ id: 'r2', name: 'Encore', count: 1 }]);
+  assert.deepEqual(out[1].sets, [{ id: 'o1', name: 'Set 1', count: 1 }]);
+});
+
+test('store: importSet appends another gig\'s set without touching existing songs', async () => {
+  await withTempDir(async (dir) => {
+    const src = createGig({ name: 'Last year', date: '2025-08-01' }, dir);
+    const srcSet = src.sets[0].id;
+    addSong(src.id, srcSet, 'a', dir);
+    addSong(src.id, srcSet, 'b', dir);
+    addSong(src.id, srcSet, 'c', dir);
+
+    const gig = createGig({ name: 'This year', date: '2026-08-01' }, dir);
+    const setId = gig.sets[0].id;
+    addSong(gig.id, setId, 'x', dir);
+    addSong(gig.id, setId, 'b', dir);
+
+    const g = importSet(gig.id, setId, src.id, srcSet, dir);
+    // Existing order kept; imported songs follow; 'b' not repeated in-set.
+    assert.deepEqual(g.sets[0].songSlugs, ['x', 'b', 'a', 'c']);
+    // Source untouched.
+    assert.deepEqual(addSong(src.id, srcSet, 'a', dir).sets[0].songSlugs, ['a', 'b', 'c']);
+    // Unknown source set fails cleanly.
+    assert.equal(importSet(gig.id, setId, src.id, 'nope', dir), null);
+    assert.equal(importSet(gig.id, setId, 'nope', srcSet, dir), null);
   });
 });
 

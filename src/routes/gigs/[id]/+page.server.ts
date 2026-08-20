@@ -14,6 +14,7 @@ import {
   addSong,
   removeSong,
   moveSong,
+  importSet,
 } from '$lib/server/gigs';
 import { getRsvps, setRsvp } from '$lib/server/rsvps';
 import { listUsers } from '$lib/server/users';
@@ -196,6 +197,18 @@ export const actions = {
     const slug = String(form.get('slug') ?? '');
     const dir = String(form.get('dir') ?? '') === 'up' ? 'up' : 'down';
     if (!moveSong(params.id, setId, slug, dir)) return fail(404, { message: 'Gig not found' });
+    return { ok: true };
+  },
+
+  // Append one set from another gig onto a set of this gig. The picker encodes
+  // the source as "<gigId>:<setId>".
+  importSet: async ({ request, params, locals }) => {
+    requireGigEditor(locals);
+    const form = await request.formData();
+    const setId = String(form.get('setId') ?? '');
+    const [fromGigId, fromSetId] = String(form.get('source') ?? '').split(':');
+    if (!fromGigId || !fromSetId) return fail(400, { message: 'No set selected' });
+    if (!importSet(params.id, setId, fromGigId, fromSetId)) return fail(404, { message: 'Set not found' });
     return { ok: true };
   },
 

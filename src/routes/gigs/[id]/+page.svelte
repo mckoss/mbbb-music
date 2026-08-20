@@ -10,6 +10,7 @@
   import {
     canEditGigs,
     formatGigDate,
+    importSourcesFor,
     formatGigTime,
     formatGigTimes,
     formatGigTimeRange,
@@ -39,6 +40,7 @@
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+  const importSources = $derived(importSourcesFor(gig, page.data.gigs as Gig[]));
 
   // --- Attendance / RSVP ----------------------------------------------------
   // The roster + my own reply come from the server load (+page.server.ts), which
@@ -1001,6 +1003,22 @@
             </select>
             <button type="submit" class="add-btn">Add</button>
           </form>
+          {#if importSources.length > 0}
+            <form class="add-song" method="POST" action="?/importSet" use:enhance={selfEdit}>
+              <input type="hidden" name="setId" value={set.id} />
+              <select name="source" aria-label="Import a set from another gig">
+                <option value="">Import a set from another gig…</option>
+                {#each importSources as g (g.id)}
+                  <optgroup label="{g.name} · {formatGigDate(g.date)}">
+                    {#each g.sets as s (s.id)}
+                      <option value="{g.id}:{s.id}">{s.name} ({s.count} songs)</option>
+                    {/each}
+                  </optgroup>
+                {/each}
+              </select>
+              <button type="submit" class="add-btn">Import</button>
+            </form>
+          {/if}
         {/if}
       </div>
     {/each}

@@ -234,6 +234,33 @@ export function addSong(id: string, setId: string, slug: string, dataDir?: strin
   return updateGig(id, { sets: gig.sets }, dataDir);
 }
 
+/**
+ * Append every song from a set in another gig onto a set in this gig. Songs are
+ * appended after the target's existing songs (never replacing them); the only
+ * songs skipped are those already in the target set, which keeps the no-
+ * duplicates-within-a-set invariant every other set editor relies on. Songs
+ * already in *other* sets of this gig are imported regardless. Returns null
+ * when either gig or set can't be found.
+ */
+export function importSet(
+  id: string,
+  setId: string,
+  fromGigId: string,
+  fromSetId: string,
+  dataDir?: string
+): Gig | null {
+  const gig = getGig(id, dataDir);
+  const from = getGig(fromGigId, dataDir);
+  if (!gig || !from) return null;
+  const set = findSet(gig, setId);
+  const source = findSet(from, fromSetId);
+  if (!set || !source) return null;
+  for (const slug of source.songSlugs) {
+    if (!set.songSlugs.includes(slug)) set.songSlugs.push(slug);
+  }
+  return updateGig(id, { sets: gig.sets }, dataDir);
+}
+
 /** Remove a song slug from a set. */
 export function removeSong(id: string, setId: string, slug: string, dataDir?: string): Gig | null {
   const gig = getGig(id, dataDir);

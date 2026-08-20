@@ -65,6 +65,41 @@ export interface Gig {
   rev?: number;
 }
 
+/**
+ * A gig an editor can import a set from, trimmed to what the per-set import
+ * picker shows: only non-empty sets, each with a display name and song count.
+ */
+export interface ImportSource {
+  id: string;
+  name: string;
+  date: string;
+  sets: { id: string; name: string; count: number }[];
+}
+
+/**
+ * The gigs an editor can import a set from, for the per-set picker on `gig`'s
+ * page: every other gig with at least one non-empty set, past gigs first (most
+ * recent leading), then future gigs (also most recent first). Empty sets are
+ * dropped; unnamed sets are labeled "Set N" by their position in the source
+ * gig, matching that gig's own page.
+ */
+export function importSourcesFor(gig: Gig, gigs: Gig[]): ImportSource[] {
+  const sources: ImportSource[] = gigs
+    .filter((g) => g.id !== gig.id && g.sets.some((s) => s.songSlugs.length > 0))
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      date: g.date,
+      sets: g.sets
+        .map((s, i) => ({ id: s.id, name: s.name || `Set ${i + 1}`, count: s.songSlugs.length }))
+        .filter((s) => s.count > 0),
+    }));
+  const newestFirst = (a: ImportSource, b: ImportSource) => b.date.localeCompare(a.date);
+  const past = sources.filter((g) => g.date <= gig.date).sort(newestFirst);
+  const future = sources.filter((g) => g.date > gig.date).sort(newestFirst);
+  return [...past, ...future];
+}
+
 /** Input shape for creating a gig (id and sets are assigned/defaulted). */
 export interface GigInput {
   name?: string;
