@@ -747,6 +747,28 @@
             <span class="video-play" aria-hidden="true">▶</span>
           </a>
         {/if}
+        <form class="field-row" method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+          <input type="hidden" name="scope" value="song" />
+          <input type="hidden" name="targetId" value={editing.slug} />
+          <input type="hidden" name="field" value="timeSig" />
+          <label>Time signature (count-in)<input name="value" value={editing.tempo?.source === 'override' ? editing.tempo.timeSig : ''} placeholder={editing.tempo ? `${editing.tempo.timeSig} from score (blank to use it)` : 'e.g. 4/4, 3/4, 6/8'} /></label>
+          <button type="submit">Save</button>
+        </form>
+        <form class="field-row" method="POST" action="?/correct" use:enhance={afterCorrect(editing.slug)}>
+          <input type="hidden" name="scope" value="song" />
+          <input type="hidden" name="targetId" value={editing.slug} />
+          <input type="hidden" name="field" value="bpm" />
+          <label>Count-in BPM (felt beat)<input name="value" inputmode="numeric" value={editing.tempo?.source === 'override' ? editing.tempo.bpm : ''} placeholder={editing.tempo ? `${editing.tempo.bpm} from score (blank to use it)` : 'e.g. 120'} /></label>
+          <button type="submit">Save</button>
+        </form>
+        {#if editing.tempo}
+          <p class="muted">
+            Count-in: {editing.tempo.timeSig} felt in {editing.tempo.beatsPerBar} at {editing.tempo.bpm} bpm{editing.tempo.pickupBeats ? `, ${editing.tempo.pickupBeats}-beat pickup` : ''}
+            ({editing.tempo.source === 'override' ? 'overridden' : 'from the MuseScore file'}).
+          </p>
+        {:else}
+          <p class="muted">No MuseScore file — set a time signature and BPM here to enable a matched count-in.</p>
+        {/if}
       </section>
 
       <section class="editor-block">

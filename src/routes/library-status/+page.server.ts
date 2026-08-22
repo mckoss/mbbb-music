@@ -7,6 +7,7 @@ import { error, fail } from '@sveltejs/kit';
 import { setSongStatus } from '$lib/server/song-status';
 import { editField, CORRECTABLE_FIELDS, type Scope } from '$lib/server/corrections';
 import { INSTRUMENT_CHOICES } from '../../sync/instruments.js';
+import { parseTimeSig, MIN_BPM, MAX_BPM } from '../../sync/mscz.js';
 import { slugify } from '../../sync/slugify.js';
 import { youtubeId, youtubeWatchUrl } from '$lib/youtube';
 
@@ -57,6 +58,20 @@ function normalize(scope: Scope, field: string, raw: string): { value: string } 
       const id = youtubeId(v);
       if (!id) return { err: 'enter a YouTube link (e.g. https://youtu.be/…)' };
       return { value: youtubeWatchUrl(id) }; // store canonical form
+    }
+    if (field === 'bpm') {
+      if (v === '') return { value: '' }; // empty reverts to the score's tempo
+      const n = Number.parseInt(v, 10);
+      if (!Number.isInteger(n) || n < MIN_BPM || n > MAX_BPM) {
+        return { err: `bpm must be ${MIN_BPM}–${MAX_BPM}` };
+      }
+      return { value: String(n) };
+    }
+    if (field === 'timeSig') {
+      if (v === '') return { value: '' }; // empty reverts to the score's meter
+      const sig = parseTimeSig(v);
+      if (!sig) return { err: 'enter a time signature like 4/4, 3/4, or 6/8' };
+      return { value: `${sig.sigN}/${sig.sigD}` };
     }
   }
   return { err: 'unsupported field' };

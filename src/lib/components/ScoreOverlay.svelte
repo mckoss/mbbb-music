@@ -236,7 +236,7 @@
       <div class="immersive-bar">
         <button class="back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
         {@render recordingSelect()}
-        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} tempo={tune?.tempo ?? null} />
       </div>
     {:else if !isScore}
       <!-- Perform: minimal chrome — just a floating back arrow (top-left) that
@@ -321,7 +321,7 @@
            the right of it as a small thumbnail that opens YouTube in a new tab. -->
       <div class="player-row">
         {@render recordingSelect()}
-        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} tempo={tune?.tempo ?? null} />
         {#if videoUrl}
           <a class="video-link" href={videoUrl} target="_blank" rel="noopener" title="Open reference video on YouTube">
             {#if videoId}

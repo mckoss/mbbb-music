@@ -1,12 +1,14 @@
 <script lang="ts">
   import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
   import { formatTime } from '$lib/format';
+  import type { TuneTempo } from '$lib/types';
 
   let {
     sha,
     title,
-    compact = false
-  }: { sha: string | null; title: string; compact?: boolean } = $props();
+    compact = false,
+    tempo = null
+  }: { sha: string | null; title: string; compact?: boolean; tempo?: TuneTempo | null } = $props();
 
   const isCurrent = $derived(sha != null && $audio.sha === sha);
   const playing = $derived(isCurrent && $audio.playing);
@@ -21,13 +23,24 @@
     if (sha != null) ensureLoaded(sha, title);
   });
 
-  // Count-in: a fixed metronome lead-in so a player knows when the downbeat
-  // lands instead of being caught out by the MP3 jumping straight into the
-  // first note. There's no BPM in the catalog, so this is a plain N-beat,
-  // one-second-apart count (~60 BPM); the final beat is accented and the MP3
-  // starts on the beat immediately after it.
+  // Count-in: a metronome lead-in so a player knows when the downbeat lands
+  // instead of being caught out by the MP3 jumping straight into the first
+  // note. When the catalog carries the song's tempo (extracted from its
+  // MuseScore file, or a human override), the count matches the music: felt
+  // beats per bar at the song's felt BPM, with playback starting early under a
+  // pickup bar. Without metadata it falls back to the manual N-beat, ~60 BPM
+  // count. The final beat is accented.
   let countIn = $state(true);
-  let beats = $state(4); // 3 or 4 — picked by the user, kept simple
+  let beats = $state(4); // manual fallback: 3 or 4, picked by the user
+  // One bar of count at the song's tempo (fallback: 1s beats).
+  const period = $derived(tempo ? 60 / tempo.bpm : 1.0);
+  const countBeats = $derived(tempo ? tempo.beatsPerBar : beats);
+  // A pickup (anacrusis) shorter than a bar: the MP3 starts this many felt
+  // beats BEFORE the count's downbeat, so the first full-bar downbeat lands on
+  // the count while the clicks carry through the pickup notes.
+  const pickup = $derived(
+    tempo?.pickupBeats && tempo.pickupBeats < tempo.beatsPerBar ? tempo.pickupBeats : 0
+  );
   // While counting in, this holds the current beat number shown big in the UI
   // (beats..1); null means no count-in is running.
   let countdown = $state<number | null>(null);
@@ -105,13 +118,14 @@
     pulse = false;
   }
 
-  // Schedule N beats one second apart, then start the MP3 on the next beat.
-  // Tones, the visual countdown, and the downbeat are all driven from the ONE
-  // AudioContext clock the tones are scheduled on — so the song can never start
-  // while count tones are still pending. (The old version scheduled tones on
-  // the audio clock but the downbeat on setTimeout; when iOS resumed the
-  // context late, the frozen clock made the tones fire in a burst after the
-  // song had already started.)
+  // Schedule one bar of count at the song's tempo, then start the MP3 on the
+  // next beat (or `pickup` beats before it, so a pickup's first full-bar
+  // downbeat lands on the count). Tones, the visual countdown, and the song
+  // start are all driven from the ONE AudioContext clock the tones are
+  // scheduled on — so the song can never start while count tones are still
+  // pending. (The old version scheduled tones on the audio clock but the
+  // downbeat on setTimeout; when iOS resumed the context late, the frozen
+  // clock made the tones fire in a burst after the song had already started.)
   async function runCountIn(onDownbeat: () => void) {
     const c = audioContext();
     // No Web Audio (or it failed to create): skip straight to playback so Play
@@ -122,7 +136,11 @@
     }
     clearCountIn();
     const token = countToken;
-    countdown = beats; // show the count immediately, before the first tone
+    // Capture the count's shape for this run — props may change mid-count.
+    const nBeats = countBeats;
+    const beatSec = period;
+    const startBeat = nBeats - pickup; // when the MP3 starts, in beats
+    countdown = nBeats; // show the count immediately, before the first tone
 
     // Resume must COMPLETE before tones are scheduled: a suspended context's
     // currentTime is frozen, so tones scheduled against it land "in the past"
@@ -135,36 +153,39 @@
     }
     if (token !== countToken) return; // cancelled while resuming
 
-    const period = 1.0; // seconds per beat (~60 BPM; no BPM metadata yet)
     const lead = 0.12; // small offset so the first tone isn't clipped
     const clockLive = c.state === 'running';
     const start = c.currentTime + lead;
     if (clockLive) {
-      for (let i = 0; i < beats; i++) {
-        click(start + i * period, i === beats - 1); // last beat accented
+      for (let i = 0; i < nBeats; i++) {
+        click(start + i * beatSec, i === nBeats - 1); // last beat accented
       }
     }
 
-    // Drive the countdown and the downbeat by polling the audio clock. If the
-    // clock isn't advancing (context stuck suspended — no tones sounding), fall
-    // back to wall time, at most 1.5s behind, so Play never hangs.
+    // Drive the countdown and the song start by polling the audio clock. If
+    // the clock isn't advancing (context stuck suspended — no tones sounding),
+    // fall back to wall time, at most 1.5s behind, so Play never hangs.
     const wallStart = performance.now() + lead * 1000;
     let shownBeat = -1;
+    let songStarted = false;
     tickInterval = setInterval(() => {
       if (token !== countToken) return;
       const audioElapsed = c.state === 'running' ? c.currentTime - start : -Infinity;
       const wallElapsed = (performance.now() - wallStart) / 1000;
       const elapsed = Math.max(audioElapsed, wallElapsed - 1.5);
-      if (elapsed >= beats * period) {
-        clearCountIn(); // stops any not-yet-sounded tones before the song starts
+      if (!songStarted && elapsed >= startBeat * beatSec) {
+        songStarted = true;
         onDownbeat();
+      }
+      if (elapsed >= nBeats * beatSec) {
+        clearCountIn(); // stops any not-yet-sounded tones once the bar is over
         return;
       }
       if (elapsed >= 0) {
-        const beatIndex = Math.min(Math.floor(elapsed / period), beats - 1);
+        const beatIndex = Math.min(Math.floor(elapsed / beatSec), nBeats - 1);
         if (beatIndex !== shownBeat) {
           shownBeat = beatIndex;
-          countdown = beats - beatIndex;
+          countdown = nBeats - beatIndex;
           pulse = true;
           setTimeout(() => (pulse = false), 150);
         }
@@ -228,10 +249,18 @@
       <span>Count-in</span>
     </label>
     {#if countIn}
-      <select class="beats-sel" bind:value={beats} {disabled} aria-label="Count-in beats">
-        <option value={3}>3</option>
-        <option value={4}>4</option>
-      </select>
+      {#if tempo}
+        <span
+          class="tempo-chip"
+          title={`Count-in from the song: ${tempo.beatsPerBar} beats at ${tempo.bpm} bpm${tempo.pickupBeats ? `, ${tempo.pickupBeats}-beat pickup` : ''}`}
+          >{tempo.timeSig} · {tempo.bpm}</span
+        >
+      {:else}
+        <select class="beats-sel" bind:value={beats} {disabled} aria-label="Count-in beats">
+          <option value={3}>3</option>
+          <option value={4}>4</option>
+        </select>
+      {/if}
     {/if}
     <button class="play" onclick={onPlay} {disabled} aria-label={playLabel}>
       {#if countdown != null}{countdown}{:else}{playing ? '❚❚' : '▶'}{/if}
@@ -285,13 +314,21 @@
         <span>Count-in</span>
       </label>
       {#if countIn}
-        <label class="beats">
-          <span class="eyebrow">Beats</span>
-          <select bind:value={beats} {disabled}>
-            <option value={3}>3</option>
-            <option value={4}>4</option>
-          </select>
-        </label>
+        {#if tempo}
+          <span
+            class="tempo-chip"
+            title={`Count-in from the song: ${tempo.beatsPerBar} beats at ${tempo.bpm} bpm${tempo.pickupBeats ? `, ${tempo.pickupBeats}-beat pickup` : ''}`}
+            >{tempo.timeSig} · {tempo.bpm} bpm</span
+          >
+        {:else}
+          <label class="beats">
+            <span class="eyebrow">Beats</span>
+            <select bind:value={beats} {disabled}>
+              <option value={3}>3</option>
+              <option value={4}>4</option>
+            </select>
+          </label>
+        {/if}
       {/if}
       <!-- Visual beat indicator: a big number plus a dot that flashes on each
            beat, so the downbeat is visible even with the sound off. -->
@@ -403,6 +440,14 @@
     color: var(--muted);
   }
 
+  /* Read-only tempo badge shown when the song's meter/BPM are known. */
+  .tempo-chip {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
   .beats select {
     min-height: 36px;
     border: 1px solid var(--accent);
@@ -458,6 +503,7 @@
   }
 
   .player.compact .toggle,
+  .player.compact .tempo-chip,
   .player.compact .time {
     color: #dfddd4;
   }

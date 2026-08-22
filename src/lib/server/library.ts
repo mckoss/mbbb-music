@@ -8,8 +8,10 @@ import { resolve } from 'node:path';
 
 import { loadConfig } from '../../sync/config.js';
 import { buildCatalog, liveAssets, applyCorrections } from '../../sync/catalog.js';
+import { resolveTempo } from '../../sync/mscz.js';
 import { statusMap, statusMtimeMs } from './song-status.js';
 import { effectiveOverlay, revision as correctionsRevision } from './corrections.js';
+import { msczFacts } from './tempo.js';
 import { DEFAULT_STATUS } from '$lib/song-status';
 
 export interface AssetMeta {
@@ -91,13 +93,23 @@ function load(): Loaded {
   // never changed by a correction). A song correction overlays presentation only:
   // `title` (display name) and `displaySlug` (slug-like, for download filenames /
   // any user-facing slug), both keyed by that stable identity.
+  const casDir = resolve(cfg.dataDir, 'cas');
   const tunes = built.tunes.map((t) => {
     const sp = overlay.song[t.slug];
+    // Count-in tempo: opening facts from the song's MuseScore blob (cached by
+    // sha in tempo.ts), then bpm/timeSig overrides from the corrections overlay.
+    const msczSha = t.musescore[0]?.sha256;
+    const facts = msczSha ? msczFacts(msczSha, casDir) : null;
+    const tempo = resolveTempo(facts, {
+      bpm: sp?.bpm ? Number(sp.bpm) : null,
+      timeSig: sp?.timeSig || null,
+    });
     return {
       ...t,
       title: sp?.displayName || t.title,
       displaySlug: sp?.displaySlug || t.slug,
       videoUrl: sp?.videoUrl || undefined,
+      tempo: tempo ?? undefined,
       status: statuses[t.slug] ?? DEFAULT_STATUS,
     };
   });
@@ -112,7 +124,7 @@ function load(): Loaded {
     }
   }
 
-  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir: resolve(cfg.dataDir, 'cas') };
+  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir };
   return cached;
 }
 
