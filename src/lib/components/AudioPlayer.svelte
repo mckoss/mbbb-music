@@ -1,14 +1,26 @@
 <script lang="ts">
+  import { page } from '$app/state';
+
   import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
   import { formatTime } from '$lib/format';
-  import type { TuneTempo } from '$lib/types';
+  import type { Catalog, TuneTempo } from '$lib/types';
 
   let {
     sha,
     title,
-    compact = false,
-    tempo = null
-  }: { sha: string | null; title: string; compact?: boolean; tempo?: TuneTempo | null } = $props();
+    compact = false
+  }: { sha: string | null; title: string; compact?: boolean } = $props();
+
+  // The count-in tempo self-resolves from the catalog by the recording's sha —
+  // whichever tune owns this recording supplies its meter/BPM. Doing the lookup
+  // here (not at call sites) keeps every practice surface uniform: score
+  // overlay, gig set practice, the file viewer, and anything added later.
+  const tempo = $derived.by<TuneTempo | null>(() => {
+    if (sha == null) return null;
+    const catalog = page.data.catalog as Catalog | undefined;
+    const tune = catalog?.tunes?.find((t) => t.audio?.some((a) => a.sha256 === sha));
+    return tune?.tempo ?? null;
+  });
 
   const isCurrent = $derived(sha != null && $audio.sha === sha);
   const playing = $derived(isCurrent && $audio.playing);
