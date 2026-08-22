@@ -22,7 +22,7 @@
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { activePdfs, activeScore, activeScoreForRun, partsForFormat } from '$lib/resolve';
-  import { instrumentDisplay, partOptionLabel, partShortLabel, audioLabel } from '$lib/format';
+  import { instrumentDisplay, partOptionLabel, partShortLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { scoreSearch } from '$lib/nav';
@@ -34,7 +34,7 @@
     instrumentImageSrc,
   } from '$lib/members';
   import PdfPager from '$lib/components/PdfPager.svelte';
-  import AudioPlayer from '$lib/components/AudioPlayer.svelte';
+  import PracticePlayer from '$lib/components/PracticePlayer.svelte';
   import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
 
   const gig = $derived(page.data.gig as Gig);
@@ -439,17 +439,8 @@
   );
   const isPractice = $derived(performMode === 'practice');
 
-  // The current song's recordings, for the practice player. Reset the picker to
-  // the first take whenever the song changes so each song starts on its default.
-  const performAudios = $derived(performTune?.audio ?? []);
-  let chosenAudioSha = $state<string | null>(null);
-  $effect(() => {
-    void performSlug;
-    chosenAudioSha = performAudios[0]?.sha256 ?? null;
-  });
-  const practiceAudio = $derived(
-    performAudios.find((a) => a.sha256 === chosenAudioSha) ?? performAudios[0] ?? null
-  );
+  // The practice player (recording picker + transport) is the shared
+  // PracticePlayer component, fed the current song's tune.
 
   function setPerformPart(sha: string) {
     performPartSha = sha || null;
@@ -528,18 +519,6 @@
       <div class="practice-bar">
         <button class="exit" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
         <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
-        {#if performAudios.length > 1}
-          <select
-            class="rec-sel"
-            value={chosenAudioSha}
-            onchange={(e) => (chosenAudioSha = e.currentTarget.value)}
-            aria-label="Recording"
-          >
-            {#each performAudios as a (a.sha256)}
-              <option value={a.sha256}>{audioLabel(a.originalName, a.museScore)}</option>
-            {/each}
-          </select>
-        {/if}
         {#if performParts.length > 1}
           <select
             class="part-sel"
@@ -552,11 +531,7 @@
             {/each}
           </select>
         {/if}
-        {#if practiceAudio}
-          <AudioPlayer compact sha={practiceAudio.sha256} title={performSlug ? titleOf(performSlug) : ''} />
-        {:else}
-          <span class="no-audio">No recording for this song.</span>
-        {/if}
+        <PracticePlayer tune={performTune} />
         <button class="ghost nav" onclick={prevSong} disabled={clampedIndex <= 0} aria-label="Previous song" title="Previous song">‹</button>
         <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
       </div>
@@ -2215,7 +2190,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .practice-bar .rec-sel,
+  /* Part is usually a short label (1st / 2nd …); keep it tight so it steals only
+     a little from the scrub bar. (Recording picker + player styles live in the
+     shared PracticePlayer component.) */
   .practice-bar .part-sel {
     min-height: 44px;
     border-radius: 6px;
@@ -2223,23 +2200,6 @@
     background: #2c2d31;
     color: #fffdf7;
     padding: 0 8px;
-  }
-
-  .practice-bar .rec-sel {
-    max-width: 28vw;
-  }
-
-  /* Part is usually a short label (1st / 2nd …); keep it tight so it steals only
-     a little from the scrub bar. */
-  .practice-bar .part-sel {
     max-width: 22vw;
-  }
-
-  /* Fills the player's slot when a song has no recording, so the nav buttons
-     still sit flush right. */
-  .practice-bar .no-audio {
-    flex: 1;
-    color: #b9b6ac;
-    font-size: 0.85rem;
   }
 </style>

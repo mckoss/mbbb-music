@@ -9,7 +9,7 @@
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { youtubeId, youtubeThumb } from '$lib/youtube';
   import { track } from '$lib/track';
-  import AudioPlayer from './AudioPlayer.svelte';
+  import PracticePlayer from './PracticePlayer.svelte';
   import PdfPager from './PdfPager.svelte';
 
   // The overlay is driven entirely by the URL: it's open when ?view=score, and
@@ -92,15 +92,9 @@
     track(mode === 'score' ? 'score-view' : mode, tune.title, instrument);
   });
 
-  // Recording picker for the practice player: default to the first take (the
-  // catalog orders the full-band mix first), reset when the song changes.
+  // Recordings live in PracticePlayer (picker + transport + fallback, shared
+  // with the gig practice bar); this count is only for the no-chart hint below.
   const audios = $derived(tune?.audio ?? []);
-  let chosenAudioSha = $state<string | null>(null);
-  $effect(() => {
-    void tune?.slug;
-    chosenAudioSha = audios[0]?.sha256 ?? null;
-  });
-  const practiceAudio = $derived(audios.find((a) => a.sha256 === chosenAudioSha) ?? audios[0] ?? null);
 
   // A song's optional reference video (a YouTube link, set on Library Status).
   // Not a synced asset — it opens externally; shown as a small thumbnail beside
@@ -212,21 +206,6 @@
 
 <!-- The recording picker, shared by the Score view's player line and the
      immersive Practice bar. Shown only when a song has more than one take. -->
-{#snippet recordingSelect()}
-  {#if audios.length > 1}
-    <select
-      class="rec-sel"
-      value={chosenAudioSha}
-      onchange={(e) => (chosenAudioSha = e.currentTarget.value)}
-      aria-label="Recording"
-    >
-      {#each audios as a (a.sha256)}
-        <option value={a.sha256}>{audioLabel(a.originalName, a.museScore)}</option>
-      {/each}
-    </select>
-  {/if}
-{/snippet}
-
 {#if open && tune}
   <div class="overlay" class:immersive>
     {#if isPractice}
@@ -235,8 +214,7 @@
            below it with no overlap. The arrow steps back to the Score view. -->
       <div class="immersive-bar">
         <button class="back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
-        {@render recordingSelect()}
-        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        <PracticePlayer {tune} />
       </div>
     {:else if !isScore}
       <!-- Perform: minimal chrome — just a floating back arrow (top-left) that
@@ -320,8 +298,7 @@
       <!-- Audio gets its own full-width row. A reference video (if any) sits at
            the right of it as a small thumbnail that opens YouTube in a new tab. -->
       <div class="player-row">
-        {@render recordingSelect()}
-        <AudioPlayer compact sha={practiceAudio?.sha256 ?? null} title={title} />
+        <PracticePlayer {tune} />
         {#if videoUrl}
           <a class="video-link" href={videoUrl} target="_blank" rel="noopener" title="Open reference video on YouTube">
             {#if videoId}
@@ -687,17 +664,6 @@
     z-index: 10;
     background: rgba(32, 33, 36, 0.92);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-  }
-
-  .rec-sel {
-    min-height: 44px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 253, 247, 0.25);
-    background: #2c2d31;
-    color: #fffdf7;
-    padding: 0 8px;
-    max-width: 40vw;
-    flex: none;
   }
 
   @media print {
