@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { audio, playSha, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
+  import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
   import { formatTime } from '$lib/format';
 
   let {
@@ -38,14 +38,30 @@
   // Play tap so iOS Safari allows it, and resumed there too (iOS suspends a
   // context that wasn't started by a user gesture).
   let ctx: AudioContext | null = null;
-  // Timers for an in-progress count-in, so we can cancel it cleanly.
-  let beatTimers: ReturnType<typeof setTimeout>[] = [];
+  // Bumped on every clear; an in-flight (async) count-in checks it after each
+  // await/tick and bails when it no longer matches.
+  let countToken = 0;
+  // Oscillators scheduled but not yet finished. Web Audio tones fire on the
+  // audio clock regardless of JS timers, so cancelling a count-in must stop
+  // these explicitly or the leftover clicks sound over whatever plays next.
+  let liveOscs: OscillatorNode[] = [];
+  let tickInterval: ReturnType<typeof setInterval> | null = null;
 
   function audioContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    if (!ctx) ctx = new Ctor();
+    if (!ctx) {
+      ctx = new Ctor();
+      // iOS mutes Web Audio (but not <audio> media playback) under the
+      // ring/silent switch unless the page declares a playback session —
+      // without this the MP3 plays while the count-in is silent.
+      try {
+        (navigator as unknown as { audioSession?: { type: string } }).audioSession!.type = 'playback';
+      } catch {
+        // older browsers: no audioSession — nothing to do
+      }
+    }
     return ctx;
   }
 
@@ -64,19 +80,39 @@
     osc.connect(gain).connect(c.destination);
     osc.start(at);
     osc.stop(at + 0.1);
+    liveOscs.push(osc);
+    osc.onended = () => {
+      liveOscs = liveOscs.filter((o) => o !== osc);
+    };
   }
 
   function clearCountIn() {
-    for (const t of beatTimers) clearTimeout(t);
-    beatTimers = [];
+    countToken++;
+    if (tickInterval != null) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+    }
+    for (const o of liveOscs) {
+      o.onended = null;
+      try {
+        o.stop();
+      } catch {
+        // already stopped
+      }
+    }
+    liveOscs = [];
     countdown = null;
     pulse = false;
   }
 
   // Schedule N beats one second apart, then start the MP3 on the next beat.
-  // Tones are scheduled on the AudioContext clock (sample-accurate), while the
-  // visual countdown is driven by setTimeout on the same 1s grid.
-  function runCountIn(onDownbeat: () => void) {
+  // Tones, the visual countdown, and the downbeat are all driven from the ONE
+  // AudioContext clock the tones are scheduled on — so the song can never start
+  // while count tones are still pending. (The old version scheduled tones on
+  // the audio clock but the downbeat on setTimeout; when iOS resumed the
+  // context late, the frozen clock made the tones fire in a burst after the
+  // song had already started.)
+  async function runCountIn(onDownbeat: () => void) {
     const c = audioContext();
     // No Web Audio (or it failed to create): skip straight to playback so Play
     // never becomes a dead button.
@@ -84,29 +120,56 @@
       onDownbeat();
       return;
     }
-    void c.resume(); // required on iOS; safe elsewhere
-
     clearCountIn();
-    const start = c.currentTime + 0.12; // small offset so the first tone isn't clipped
-    for (let i = 0; i < beats; i++) {
-      const accent = i === beats - 1; // last beat is the accented pickup to the downbeat
-      click(start + i, accent);
-      const n = beats - i; // big number: beats..1
-      beatTimers.push(
-        setTimeout(() => {
-          countdown = n;
+    const token = countToken;
+    countdown = beats; // show the count immediately, before the first tone
+
+    // Resume must COMPLETE before tones are scheduled: a suspended context's
+    // currentTime is frozen, so tones scheduled against it land "in the past"
+    // and squish into a burst whenever the clock finally starts. Bound the wait
+    // so a wedged context can't turn Play into a dead button.
+    try {
+      await Promise.race([c.resume(), new Promise((r) => setTimeout(r, 300))]);
+    } catch {
+      // resume failed — the wall-clock fallback below still runs the count
+    }
+    if (token !== countToken) return; // cancelled while resuming
+
+    const period = 1.0; // seconds per beat (~60 BPM; no BPM metadata yet)
+    const lead = 0.12; // small offset so the first tone isn't clipped
+    const clockLive = c.state === 'running';
+    const start = c.currentTime + lead;
+    if (clockLive) {
+      for (let i = 0; i < beats; i++) {
+        click(start + i * period, i === beats - 1); // last beat accented
+      }
+    }
+
+    // Drive the countdown and the downbeat by polling the audio clock. If the
+    // clock isn't advancing (context stuck suspended — no tones sounding), fall
+    // back to wall time, at most 1.5s behind, so Play never hangs.
+    const wallStart = performance.now() + lead * 1000;
+    let shownBeat = -1;
+    tickInterval = setInterval(() => {
+      if (token !== countToken) return;
+      const audioElapsed = c.state === 'running' ? c.currentTime - start : -Infinity;
+      const wallElapsed = (performance.now() - wallStart) / 1000;
+      const elapsed = Math.max(audioElapsed, wallElapsed - 1.5);
+      if (elapsed >= beats * period) {
+        clearCountIn(); // stops any not-yet-sounded tones before the song starts
+        onDownbeat();
+        return;
+      }
+      if (elapsed >= 0) {
+        const beatIndex = Math.min(Math.floor(elapsed / period), beats - 1);
+        if (beatIndex !== shownBeat) {
+          shownBeat = beatIndex;
+          countdown = beats - beatIndex;
           pulse = true;
           setTimeout(() => (pulse = false), 150);
-        }, i * 1000)
-      );
-    }
-    // The downbeat falls one beat after the last count tone.
-    beatTimers.push(
-      setTimeout(() => {
-        clearCountIn();
-        onDownbeat();
-      }, beats * 1000)
-    );
+        }
+      }
+    }, 50);
   }
 
   function startPlayback() {
@@ -134,7 +197,11 @@
       // Warm the MP3 *inside this tap* so it buffers during the count-in and the
       // downbeat starts instantly — otherwise a cold load stalls after the beats.
       prime(sha, title);
-      runCountIn(startPlayback);
+      // The downbeat always plays from 0:00 (playFromTop supersedes the warm-up
+      // and rewinds), rather than toggle(), which would *pause* if the muted
+      // warm-up play were still in flight.
+      const s = sha;
+      void runCountIn(() => playFromTop(s, title));
     } else {
       startPlayback();
     }

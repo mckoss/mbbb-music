@@ -51,6 +51,12 @@ function element(): HTMLAudioElement | null {
   return el;
 }
 
+// Each prime() gets a generation number; any real play bumps it. On a cold
+// load the muted warm-up's play() promise can resolve *after* the count-in's
+// downbeat has started real playback — without the generation check, its
+// pause/rewind would silence the song that just started.
+let primeGeneration = 0;
+
 /**
  * Select a blob and start buffering it *now*, without audible playback. Call
  * this inside the Play tap so a count-in can overlap the network fetch — by the
@@ -62,6 +68,7 @@ function element(): HTMLAudioElement | null {
 export function prime(sha: string, title: string): void {
   const a = element();
   if (!a) return;
+  const gen = ++primeGeneration;
   const changed = !a.src.endsWith(`/blob/${sha}`);
   if (changed) {
     a.src = `/blob/${sha}`;
@@ -75,12 +82,13 @@ export function prime(sha: string, title: string): void {
   void a
     .play()
     .then(() => {
+      if (gen !== primeGeneration) return; // real playback superseded this warm-up
       a.pause();
       a.currentTime = 0;
       a.muted = false;
     })
     .catch(() => {
-      a.muted = false;
+      if (gen === primeGeneration) a.muted = false;
     });
 }
 
@@ -110,6 +118,8 @@ export function ensureLoaded(sha: string, title: string): void {
 export function playSha(sha: string, title: string): void {
   const a = element();
   if (!a) return;
+  primeGeneration++;
+  a.muted = false;
   const src = `/blob/${sha}`;
   const changed = !a.src.endsWith(`/blob/${sha}`);
   if (changed) {
@@ -122,12 +132,34 @@ export function playSha(sha: string, title: string): void {
   void a.play();
 }
 
+/**
+ * Start the given blob from the very beginning — the count-in downbeat. Unlike
+ * playSha this always rewinds, so a warm-up that advanced the muted element a
+ * little can't make the downbeat start mid-phrase.
+ */
+export function playFromTop(sha: string, title: string): void {
+  const a = element();
+  if (!a) return;
+  primeGeneration++;
+  a.muted = false;
+  const changed = !a.src.endsWith(`/blob/${sha}`);
+  if (changed) a.src = `/blob/${sha}`;
+  a.currentTime = 0;
+  audio.update((s) => ({ ...s, sha, title, position: 0, ...(changed ? { duration: 0 } : {}) }));
+  void a.play();
+}
+
 /** Toggle play/pause for the current track. */
 export function toggle(): void {
   const a = element();
   if (!a || !a.src) return;
-  if (a.paused) void a.play();
-  else a.pause();
+  if (a.paused) {
+    primeGeneration++;
+    a.muted = false;
+    void a.play();
+  } else {
+    a.pause();
+  }
 }
 
 export function pause(): void {
