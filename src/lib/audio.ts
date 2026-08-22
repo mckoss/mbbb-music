@@ -51,24 +51,24 @@ function element(): HTMLAudioElement | null {
   return el;
 }
 
-// Each prime() gets a generation number; any real play bumps it. On a cold
-// load the muted warm-up's play() promise can resolve *after* the count-in's
-// downbeat has started real playback — without the generation check, its
-// pause/rewind would silence the song that just started.
-let primeGeneration = 0;
-
 /**
  * Select a blob and start buffering it *now*, without audible playback. Call
  * this inside the Play tap so a count-in can overlap the network fetch — by the
  * downbeat the file is warm and playback starts instantly instead of stalling
- * on a cold load. The silent muted play/pause also blesses the element so the
- * later programmatic `play()` is allowed on iOS (which only permits playback
- * that traces back to a user gesture).
+ * on a cold load. The synchronous play()+pause() pair also blesses the element
+ * so the later programmatic `play()` is allowed on iOS (which only permits
+ * playback that traces back to a user gesture).
+ *
+ * The pause MUST be synchronous with the play, never awaited: iPadOS ignores
+ * programmatic `muted`/`volume` on <audio>, so a "muted" warm-up that actually
+ * plays until its promise resolves is AUDIBLE there — the song leaks out under
+ * the count-in and then appears to restart at the downbeat. Pausing in the same
+ * tick means playback never starts (nothing sounds) while the gesture-play
+ * still counts for the unlock, and preload='auto' keeps the fetch going.
  */
 export function prime(sha: string, title: string): void {
   const a = element();
   if (!a) return;
-  const gen = ++primeGeneration;
   const changed = !a.src.endsWith(`/blob/${sha}`);
   if (changed) {
     a.src = `/blob/${sha}`;
@@ -78,18 +78,11 @@ export function prime(sha: string, title: string): void {
     audio.update((s) => ({ ...s, sha, title }));
   }
   a.preload = 'auto';
-  a.muted = true;
-  void a
-    .play()
-    .then(() => {
-      if (gen !== primeGeneration) return; // real playback superseded this warm-up
-      a.pause();
-      a.currentTime = 0;
-      a.muted = false;
-    })
-    .catch(() => {
-      if (gen === primeGeneration) a.muted = false;
-    });
+  const p = a.play();
+  a.pause();
+  a.currentTime = 0;
+  // The immediate pause makes the play() promise reject (AbortError) — expected.
+  if (p) void p.catch(() => {});
 }
 
 /**
@@ -118,8 +111,6 @@ export function ensureLoaded(sha: string, title: string): void {
 export function playSha(sha: string, title: string): void {
   const a = element();
   if (!a) return;
-  primeGeneration++;
-  a.muted = false;
   const src = `/blob/${sha}`;
   const changed = !a.src.endsWith(`/blob/${sha}`);
   if (changed) {
@@ -134,14 +125,12 @@ export function playSha(sha: string, title: string): void {
 
 /**
  * Start the given blob from the very beginning — the count-in downbeat. Unlike
- * playSha this always rewinds, so a warm-up that advanced the muted element a
- * little can't make the downbeat start mid-phrase.
+ * playSha this always rewinds, so nothing that advanced the element during the
+ * count can make the downbeat start mid-phrase.
  */
 export function playFromTop(sha: string, title: string): void {
   const a = element();
   if (!a) return;
-  primeGeneration++;
-  a.muted = false;
   const changed = !a.src.endsWith(`/blob/${sha}`);
   if (changed) a.src = `/blob/${sha}`;
   a.currentTime = 0;
@@ -153,13 +142,8 @@ export function playFromTop(sha: string, title: string): void {
 export function toggle(): void {
   const a = element();
   if (!a || !a.src) return;
-  if (a.paused) {
-    primeGeneration++;
-    a.muted = false;
-    void a.play();
-  } else {
-    a.pause();
-  }
+  if (a.paused) void a.play();
+  else a.pause();
 }
 
 export function pause(): void {
