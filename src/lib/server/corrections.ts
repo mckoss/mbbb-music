@@ -33,7 +33,7 @@ export type Scope = 'file' | 'song' | 'folder';
  */
 export const CORRECTABLE_FIELDS: Record<Scope, readonly string[]> = {
   file: ['instrumentSlug', 'key', 'partNumber', 'songSlug'],
-  song: ['displaySlug', 'displayName', 'videoUrl'],
+  song: ['displaySlug', 'displayName', 'videoUrl', 'bpm', 'timeSig'],
   folder: ['songSlug'],
 };
 

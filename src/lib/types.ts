@@ -74,11 +74,23 @@ export interface UnreachableItem {
   unreachable: true;
 }
 
+// Count-in tempo for the practice player, resolved from the song's MuseScore
+// file (opening tempo/time signature) with optional human overrides. All values
+// are in FELT beats — the count a bandleader would give (6/8 → 2 beats per bar).
+export interface TuneTempo {
+  bpm: number; // felt-beat BPM the count-in ticks at
+  beatsPerBar: number; // felt beats per bar (6/8 → 2, 4/4 → 4)
+  timeSig: string; // display signature as written, e.g. "6/8"
+  pickupBeats?: number; // felt beats of anacrusis; playback starts this many beats early
+  source: 'score' | 'override';
+}
+
 export interface Tune {
   slug: string; // stable identity (derived from the sync); gig setlists + status key on it
   displaySlug?: string; // slug-like, for download filenames / user-facing slug uses
   title: string;
   videoUrl?: string; // human-entered reference-video link (YouTube), not a synced asset
+  tempo?: TuneTempo; // count-in tempo (absent when no .mscz and no override)
   status: SongStatus; // admin-assigned, or 'Unfiled' when unannotated
   lastModified: string | null;
   parts: CatalogPart[];
