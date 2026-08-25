@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { page } from '$app/state';
 
   import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
+  import { buildCountInWav, COUNT_IN_LEAD_SECONDS } from '$lib/count-in';
   import { formatTime } from '$lib/format';
   import type { Catalog, TuneTempo } from '$lib/types';
 
@@ -59,56 +61,31 @@
   // Pulses true for a moment on each beat to drive the flashing-dot indicator.
   let pulse = $state(false);
 
-  // One shared AudioContext for the click tones. Created lazily *inside* the
-  // Play tap so iOS Safari allows it, and resumed there too (iOS suspends a
-  // context that wasn't started by a user gesture).
-  let ctx: AudioContext | null = null;
   // Bumped on every clear; an in-flight (async) count-in checks it after each
-  // await/tick and bails when it no longer matches.
+  // media event/tick and bails when it no longer matches.
   let countToken = 0;
-  // Oscillators scheduled but not yet finished. Web Audio tones fire on the
-  // audio clock regardless of JS timers, so cancelling a count-in must stop
-  // these explicitly or the leftover clicks sound over whatever plays next.
-  let liveOscs: OscillatorNode[] = [];
+  // The entire count is one generated WAV played through HTML media. iPadOS
+  // routes this like the MP3, whereas Web Audio can remain silent in an
+  // installed PWA even while its AudioContext claims to be running.
+  let countAudio: HTMLAudioElement | null = null;
+  let countUrl: string | null = null;
+  let countShape = '';
   let tickInterval: ReturnType<typeof setInterval> | null = null;
 
-  function audioContext(): AudioContext | null {
-    if (typeof window === 'undefined') return null;
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return null;
-    if (!ctx) {
-      ctx = new Ctor();
-      // iOS mutes Web Audio (but not <audio> media playback) under the
-      // ring/silent switch unless the page declares a playback session —
-      // without this the MP3 plays while the count-in is silent.
-      try {
-        (navigator as unknown as { audioSession?: { type: string } }).audioSession!.type = 'playback';
-      } catch {
-        // older browsers: no audioSession — nothing to do
-      }
-    }
-    return ctx;
-  }
+  function prepareCountAudio(nBeats: number, beatSec: number): HTMLAudioElement | null {
+    if (!browser) return null;
+    const shape = `${nBeats}:${beatSec}`;
+    if (countAudio && countShape === shape) return countAudio;
 
-  // A short metronome blip. The accented (downbeat-cueing) final beat is higher
-  // and louder so it's unmistakable by ear.
-  function click(at: number, accent: boolean) {
-    const c = ctx;
-    if (!c) return;
-    const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.frequency.value = accent ? 1320 : 880;
-    const peak = accent ? 0.5 : 0.3;
-    gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(peak, at + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.09);
-    osc.connect(gain).connect(c.destination);
-    osc.start(at);
-    osc.stop(at + 0.1);
-    liveOscs.push(osc);
-    osc.onended = () => {
-      liveOscs = liveOscs.filter((o) => o !== osc);
-    };
+    if (countAudio) countAudio.pause();
+    if (countUrl) URL.revokeObjectURL(countUrl);
+    countUrl = URL.createObjectURL(
+      new Blob([buildCountInWav(nBeats, beatSec)], { type: 'audio/wav' })
+    );
+    countAudio = new Audio(countUrl);
+    countAudio.preload = 'auto';
+    countShape = shape;
+    return countAudio;
   }
 
   function clearCountIn() {
@@ -117,80 +94,67 @@
       clearInterval(tickInterval);
       tickInterval = null;
     }
-    for (const o of liveOscs) {
-      o.onended = null;
+    if (countAudio) {
+      countAudio.pause();
       try {
-        o.stop();
+        countAudio.currentTime = 0;
       } catch {
-        // already stopped
+        // The element may not have loaded enough metadata to seek yet.
       }
     }
-    liveOscs = [];
     countdown = null;
     pulse = false;
   }
 
+  $effect(() => {
+    return () => {
+      clearCountIn();
+      if (countUrl) URL.revokeObjectURL(countUrl);
+    };
+  });
+
   // Schedule one bar of count at the song's tempo, then start the MP3 on the
   // next beat (or `pickup` beats before it, so a pickup's first full-bar
-  // downbeat lands on the count). Tones, the visual countdown, and the song
-  // start are all driven from the ONE AudioContext clock the tones are
-  // scheduled on — so the song can never start while count tones are still
-  // pending. (The old version scheduled tones on the audio clock but the
-  // downbeat on setTimeout; when iOS resumed the context late, the frozen
-  // clock made the tones fire in a burst after the song had already started.)
-  async function runCountIn(onDownbeat: () => void) {
-    const c = audioContext();
-    // No Web Audio (or it failed to create): skip straight to playback so Play
-    // never becomes a dead button.
-    if (!c) {
+  // downbeat lands on the count). The WAV, visual countdown, and song start
+  // all follow the media element's clock, so stalled media cannot leave the
+  // visuals pretending that silent beats are sounding.
+  function runCountIn(onDownbeat: () => void) {
+    clearCountIn();
+    const token = countToken;
+    const nBeats = countBeats;
+    const beatSec = period;
+    const startBeat = nBeats - pickup;
+    const a = prepareCountAudio(nBeats, beatSec);
+    if (!a) {
       onDownbeat();
       return;
     }
-    clearCountIn();
-    const token = countToken;
-    // Capture the count's shape for this run — props may change mid-count.
-    const nBeats = countBeats;
-    const beatSec = period;
-    const startBeat = nBeats - pickup; // when the MP3 starts, in beats
-    countdown = nBeats; // show the count immediately, before the first tone
-
-    // Resume must COMPLETE before tones are scheduled: a suspended context's
-    // currentTime is frozen, so tones scheduled against it land "in the past"
-    // and squish into a burst whenever the clock finally starts. Bound the wait
-    // so a wedged context can't turn Play into a dead button.
+    countdown = nBeats;
     try {
-      await Promise.race([c.resume(), new Promise((r) => setTimeout(r, 300))]);
+      a.currentTime = 0;
     } catch {
-      // resume failed — the wall-clock fallback below still runs the count
+      // A fresh blob has no prior position, so an early seek failure is safe.
     }
-    if (token !== countToken) return; // cancelled while resuming
-
-    const lead = 0.12; // small offset so the first tone isn't clipped
-    const clockLive = c.state === 'running';
-    const start = c.currentTime + lead;
-    if (clockLive) {
-      for (let i = 0; i < nBeats; i++) {
-        click(start + i * beatSec, i === nBeats - 1); // last beat accented
-      }
+    const playPromise = a.play(); // invoked directly inside the user's Play tap
+    if (playPromise) {
+      void playPromise.catch(() => {
+        if (token !== countToken) return;
+        clearCountIn();
+        onDownbeat(); // media was refused: do not leave Play stuck
+      });
     }
 
-    // Drive the countdown and the song start by polling the audio clock. If
-    // the clock isn't advancing (context stuck suspended — no tones sounding),
-    // fall back to wall time, at most 1.5s behind, so Play never hangs.
-    const wallStart = performance.now() + lead * 1000;
     let shownBeat = -1;
     let songStarted = false;
     tickInterval = setInterval(() => {
       if (token !== countToken) return;
-      const audioElapsed = c.state === 'running' ? c.currentTime - start : -Infinity;
-      const wallElapsed = (performance.now() - wallStart) / 1000;
-      const elapsed = Math.max(audioElapsed, wallElapsed - 1.5);
-      if (!songStarted && elapsed >= startBeat * beatSec) {
+      const elapsed = a.currentTime - COUNT_IN_LEAD_SECONDS;
+      if (!songStarted && (a.ended || elapsed >= startBeat * beatSec)) {
         songStarted = true;
         onDownbeat();
       }
-      if (elapsed >= nBeats * beatSec) {
-        clearCountIn(); // stops any not-yet-sounded tones once the bar is over
+      if (a.ended || elapsed >= nBeats * beatSec) {
+        clearCountIn();
         return;
       }
       if (elapsed >= 0) {
@@ -234,7 +198,7 @@
       // and rewinds), rather than toggle(), which would *pause* if the muted
       // warm-up play were still in flight.
       const s = sha;
-      void runCountIn(() => playFromTop(s, title));
+      runCountIn(() => playFromTop(s, title));
     } else {
       startPlayback();
     }
