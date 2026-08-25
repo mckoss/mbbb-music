@@ -2,7 +2,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
 
-  import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
+  import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded, mountAudioPlayer } from '$lib/audio';
   import { buildCountInWav, COUNT_IN_LEAD_SECONDS, songPlayTime } from '$lib/count-in';
   import { formatTime } from '$lib/format';
   import type { Catalog, TuneTempo } from '$lib/types';
@@ -36,6 +36,11 @@
   $effect(() => {
     if (sha != null) ensureLoaded(sha, title);
   });
+
+  // The shared song may survive a direct transition to another player view,
+  // but leaving playback controls entirely (for example, Back to Collection)
+  // releases the final owner and pauses it.
+  $effect(() => mountAudioPlayer());
 
   // Count-in: a metronome lead-in so a player knows when the downbeat lands
   // instead of being caught out by the MP3 jumping straight into the first

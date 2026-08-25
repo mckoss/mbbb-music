@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { createPresenceGroup } from '$lib/presence';
 
 export interface AudioState {
   sha: string | null;
@@ -23,6 +24,16 @@ const initial: AudioState = {
 export const audio = writable<AudioState>(initial);
 
 let el: HTMLAudioElement | null = null;
+
+// AudioPlayer instances are the ownership boundary for the shared transport.
+// Leaving the last view with playback controls pauses the song; a direct route
+// transition to another player view claims it during the deferred handoff and
+// keeps playback continuous.
+const mountPlayerPresence = createPresenceGroup(pause);
+
+export function mountAudioPlayer(): () => void {
+  return mountPlayerPresence();
+}
 
 function element(): HTMLAudioElement | null {
   if (!browser) return null;
