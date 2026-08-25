@@ -6,6 +6,7 @@ import { getProfile, editProfile } from '$lib/server/members';
 import { photoOf, listUsers } from '$lib/server/users';
 import { saveAvatar, loadAvatar, MAX_AVATAR_BYTES } from '$lib/server/avatars';
 import { INSTRUMENT_CHOICES, SHIRT_SIZES, tenureLabel, type ProfilePatch, type ShirtSize } from '$lib/members';
+import { clientVersionFromForm } from '$lib/client-version';
 
 function requireUser(locals: App.Locals) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
@@ -58,6 +59,7 @@ export const actions = {
   save: async ({ request, locals }) => {
     const me = requireUser(locals);
     const form = await request.formData();
+    locals.clientVersion = clientVersionFromForm(form, locals.clientVersion);
     const target = resolveTarget(me, String(form.get('email') ?? ''));
 
     // Avatar: an upload sets it; the "remove" toggle clears it (falling back to
@@ -87,28 +89,36 @@ export const actions = {
     if (joinedDate && endDate && endDate < joinedDate) {
       return fail(400, { message: 'End date is before the joined date.' });
     }
-    const homeAddress = str(form, 'homeAddress');
-    const homeLatitude = str(form, 'homeLatitude');
-    const homeLongitude = str(form, 'homeLongitude');
-    if (Boolean(homeLatitude) !== Boolean(homeLongitude)) {
-      return fail(400, { message: 'The home map pin is incomplete. Please place it again.' });
-    }
-    if ((homeLatitude || homeLongitude) && !homeAddress) {
-      return fail(400, { message: 'Enter a home address before saving its map pin.' });
+    // An already-open pre-map profile form has none of these controls. Treat
+    // omission as "preserve" so that submitting an older UI cannot erase an
+    // address saved by 1.50. Explicit empty controls from the current form still
+    // mean "clear".
+    const homePatch: ProfilePatch = {};
+    if (form.has('homeAddress') || form.has('homeLatitude') || form.has('homeLongitude')) {
+      const homeAddress = str(form, 'homeAddress');
+      const homeLatitude = str(form, 'homeLatitude');
+      const homeLongitude = str(form, 'homeLongitude');
+      if (Boolean(homeLatitude) !== Boolean(homeLongitude)) {
+        return fail(400, { message: 'The home map pin is incomplete. Please place it again.' });
+      }
+      if ((homeLatitude || homeLongitude) && !homeAddress) {
+        return fail(400, { message: 'Enter a home address before saving its map pin.' });
+      }
+      homePatch.homeAddress = homeAddress;
+      homePatch.homeLatitude = homeLatitude == null ? null : Number(homeLatitude);
+      homePatch.homeLongitude = homeLongitude == null ? null : Number(homeLongitude);
     }
 
     const patch: ProfilePatch = {
       fullName: str(form, 'fullName'),
       phone: str(form, 'phone'),
-      homeAddress,
-      homeLatitude: homeLatitude == null ? null : Number(homeLatitude),
-      homeLongitude: homeLongitude == null ? null : Number(homeLongitude),
       primaryInstrument: primary,
       instruments: additional,
       shirtSize: shirt as ShirtSize | null,
       alternateEmail: str(form, 'alternateEmail'),
       joinedDate,
       endDate,
+      ...homePatch,
       ...avatarPatch,
     };
 

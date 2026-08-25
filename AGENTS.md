@@ -295,6 +295,14 @@ When in doubt, add a tiny synthetic fixture instead of a real file.
 
 ## Versioning
 
+All browser-originated writes carry the version of the client bundle that made
+the request. Native/enhanced forms are stamped centrally with
+`_clientVersion`; programmatic mutations must use `writeFetch` from
+`src/lib/client-version.ts`, which sends `x-mbbb-client-version`. Server code
+must treat missing/invalid version context as a legacy/unknown client and use
+presence-aware patches for additive fields so an older form cannot erase newer
+data.
+
 The app carries a semantic version (`MAJOR.MINOR.PATCH`) that is bumped with
 every push.
 

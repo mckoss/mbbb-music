@@ -136,6 +136,22 @@ test('home address and map coordinates round-trip with range validation', () => 
   assert.throws(() => editProfileFieldDb(db, edit({ field: 'homeLongitude', value: '-181' })), /invalid home longitude/);
 });
 
+test('an older partial profile patch preserves newer home fields', () => {
+  const db = freshDb();
+  editProfileDb(
+    db,
+    'jo@x',
+    { homeAddress: '123 Main St, Langley, WA', homeLatitude: 48.0402, homeLongitude: -122.4063 },
+    'jo@x',
+  );
+
+  const profile = editProfileDb(db, 'jo@x', { phone: '360-555-0199' }, 'jo@x');
+  assert.equal(profile.phone, '360-555-0199');
+  assert.equal(profile.homeAddress, '123 Main St, Langley, WA');
+  assert.equal(profile.homeLatitude, 48.0402);
+  assert.equal(profile.homeLongitude, -122.4063);
+});
+
 test('editProfileDb applies a typed patch across fields in one call', () => {
   const db = freshDb();
   const p = editProfileDb(

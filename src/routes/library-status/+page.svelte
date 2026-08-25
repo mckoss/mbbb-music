@@ -13,6 +13,7 @@
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref, viewKind, type ViewKind } from '$lib/view';
   import { youtubeId, youtubeThumb } from '$lib/youtube';
+  import { writeFetch } from '$lib/client-version';
 
   // Written-key choices a part can be corrected to ('' = the instrument default).
   const KEY_CHOICES = [
@@ -280,7 +281,7 @@
   });
 
   async function correctPost(fields: Record<string, string>): Promise<boolean> {
-    const res = await fetch('/library-status?/correct', {
+    const res = await writeFetch('/library-status?/correct', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-sveltekit-action': 'true' },
       body: new URLSearchParams(fields),
@@ -354,7 +355,7 @@
     syncError = null;
     syncing = true;
     try {
-      await fetch('/admin/sync', { method: 'POST' });
+      await writeFetch('/admin/sync', { method: 'POST' });
     } catch {
       /* the stream below still reports status */
     }
@@ -420,7 +421,7 @@
     originsResult = null;
     originsError = null;
     try {
-      const res = await fetch('/admin/origins', { method: 'POST' });
+      const res = await writeFetch('/admin/origins', { method: 'POST' });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       originsResult = (await res.json()) as OriginsResult;
     } catch (e) {

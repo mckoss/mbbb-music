@@ -11,6 +11,9 @@ declare global {
       user: SessionUser | null;
       // True when OAuth isn't configured and the app is running open.
       authOpen: boolean;
+      // Version of the browser bundle that initiated this write, when supplied.
+      // Legacy clients that predate write stamping are null/unknown.
+      clientVersion: string | null;
     }
     interface PageData {
       user?: SessionUser | null;

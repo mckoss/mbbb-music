@@ -112,6 +112,7 @@ async function queueActivity(request: Request): Promise<void> {
     ...payload,
     at: typeof payload.at === 'string' ? payload.at : new Date().toISOString(),
     replayedFromOffline: true,
+    clientVersion: request.headers.get('x-mbbb-client-version'),
   };
   const cache = await caches.open(ACTIVITY_QUEUE);
   const key = new Request(`/_activity-queue/${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -134,9 +135,14 @@ async function flushQueuedActivity(): Promise<void> {
         continue;
       }
       const payload = await hit.json();
+      const clientVersion =
+        typeof payload.clientVersion === 'string' ? payload.clientVersion : version;
       const res = await fetch('/activity', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-mbbb-client-version': clientVersion,
+        },
         body: JSON.stringify({ ...payload, replayedFromOffline: true }),
       });
       if (!res.ok) break;

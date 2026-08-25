@@ -18,6 +18,7 @@ import { authConfig, readSession, SESSION_COOKIE } from '$lib/server/auth';
 import { roleOf } from '$lib/server/users';
 import { logEvent, touchSeen } from '$lib/server/activity';
 import { getGig } from '$lib/server/gigs';
+import { CLIENT_VERSION_HEADER, normalizeClientVersion } from '$lib/client-version';
 import type { SessionUser } from '$lib/types';
 
 let warnedOpen = false;
@@ -94,6 +95,9 @@ function redirectTo(location: string): Response {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+  // Programmatic writes carry this header. Form actions carry the same context
+  // in _clientVersion because native forms cannot add custom request headers.
+  event.locals.clientVersion = normalizeClientVersion(event.request.headers.get(CLIENT_VERSION_HEADER));
   const { enabled, cfg } = authConfig();
   const path = event.url.pathname;
 

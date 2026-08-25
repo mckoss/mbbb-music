@@ -4,6 +4,8 @@
 
 // Must stay a subset of BEACON_TYPES in $lib/server/activity (the endpoint
 // rejects anything else).
+import { writeFetch } from './client-version.js';
+
 type BeaconType = 'score-view' | 'practice' | 'performance' | 'gig-view' | 'print';
 
 let listenersInstalled = false;
@@ -23,7 +25,7 @@ export function track(type: BeaconType, label: string | null, detail?: string | 
   if (typeof fetch === 'undefined') return;
   startActivitySync();
   try {
-    void fetch('/activity', {
+    void writeFetch('/activity', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type, label, detail: detail ?? null, at: new Date().toISOString() }),

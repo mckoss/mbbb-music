@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { track } from '../src/lib/track.ts';
+import { CLIENT_VERSION_HEADER, setClientVersion } from '../src/lib/client-version.ts';
 
 function tick() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -9,11 +10,14 @@ function tick() {
 
 test('track posts activity with the original client timestamp', async () => {
   const bodies = [];
+  const headers = [];
   globalThis.fetch = async (_url, init) => {
     bodies.push(JSON.parse(String(init.body)));
+    headers.push(new Headers(init.headers));
     return { ok: true };
   };
 
+  setClientVersion('1.50.1');
   track('score-view', 'Freedom', 'trumpet');
   await tick();
 
@@ -22,6 +26,7 @@ test('track posts activity with the original client timestamp', async () => {
   assert.equal(bodies[0].label, 'Freedom');
   assert.equal(bodies[0].detail, 'trumpet');
   assert.match(bodies[0].at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(headers[0].get(CLIENT_VERSION_HEADER), '1.50.1');
 });
 
 test('track remains fire-and-forget when activity cannot post', async () => {

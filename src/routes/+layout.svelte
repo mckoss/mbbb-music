@@ -10,6 +10,7 @@
   import { warmCorePages } from '$lib/offline';
   import { consumeSelfMutation } from '$lib/self-update';
   import { startActivitySync } from '$lib/track';
+  import { setClientVersion, stampWriteForm } from '$lib/client-version';
   import type { Catalog, SessionUser } from '$lib/types';
 
   let {
@@ -20,6 +21,19 @@
 
   const user = $derived(data.user ?? null);
   const isAdmin = $derived(user?.role === 'admin');
+
+  // Stamp the exact running bundle version onto every form mutation. This is
+  // per-tab (unlike a cookie), so an older PWA tab cannot masquerade as a newer
+  // client merely because both tabs share browser storage.
+  if (browser) setClientVersion(version);
+  $effect(() => {
+    if (!browser) return;
+    const stamp = (event: SubmitEvent) => {
+      if (event.target instanceof HTMLFormElement) stampWriteForm(event.target);
+    };
+    document.addEventListener('submit', stamp, true);
+    return () => document.removeEventListener('submit', stamp, true);
+  });
 
   // /shows is the public show listing: a standalone page carrying the band's own
   // branding and navigating back to mutinybaybrassband.com. It shows no app
