@@ -426,6 +426,12 @@
   let performPart = $state<number | null>(null);
   let performPartSha = $state<string | null>(null);
   const performParts = $derived(performTune ? partsForFormat(performTune, instrument, format) : []);
+  const performPartOptions = $derived(
+    performParts.map((part) => ({
+      value: part.sha256,
+      label: partShortLabel(part, performParts)
+    }))
+  );
   const performScore = $derived(
     performTune ? activeScoreForRun(performTune, instrument, format, performPartSha, performPart) : null
   );
@@ -439,7 +445,7 @@
   );
   const isPractice = $derived(performMode === 'practice');
 
-  // The practice player (recording picker + transport) is the shared
+  // The practice player (part/recording pickers + transport) is the shared
   // PracticePlayer component, fed the current song's tune.
 
   function setPerformPart(sha: string) {
@@ -519,19 +525,12 @@
       <div class="practice-bar">
         <button class="exit" onclick={donePerform} aria-label="Back to packet" title="Back to packet">←</button>
         <span class="pos">{clampedIndex + 1}/{performSongs.length}</span>
-        {#if performParts.length > 1}
-          <select
-            class="part-sel"
-            value={performScore?.sha ?? ''}
-            onchange={(e) => setPerformPart(e.currentTarget.value)}
-            aria-label="Part"
-          >
-            {#each performParts as p (p.sha256)}
-              <option value={p.sha256}>{partShortLabel(p, performParts)}</option>
-            {/each}
-          </select>
-        {/if}
-        <PracticePlayer tune={performTune} />
+        <PracticePlayer
+          tune={performTune}
+          partOptions={performPartOptions}
+          selectedPart={performScore?.sha ?? ''}
+          onPartChange={setPerformPart}
+        />
         <button class="ghost nav" onclick={prevSong} disabled={clampedIndex <= 0} aria-label="Previous song" title="Previous song">‹</button>
         <button class="ghost nav" onclick={nextSong} disabled={clampedIndex >= performSongs.length - 1}>Next song ›</button>
       </div>
@@ -2190,16 +2189,4 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Part is usually a short label (1st / 2nd …); keep it tight so it steals only
-     a little from the scrub bar. (Recording picker + player styles live in the
-     shared PracticePlayer component.) */
-  .practice-bar .part-sel {
-    min-height: 44px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 253, 247, 0.25);
-    background: #2c2d31;
-    color: #fffdf7;
-    padding: 0 8px;
-    max-width: 22vw;
-  }
 </style>

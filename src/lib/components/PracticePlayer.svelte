@@ -1,9 +1,10 @@
 <script lang="ts">
-  // The shared practice-player organ: recording picker + chosen-take state +
-  // compact transport + no-recording fallback. Used by every practice surface
+  // The shared practice-player organ: part picker + recording picker +
+  // chosen-take state + compact transport + no-recording fallback. Used by every practice surface
   // (score overlay's practice bar and score-view player row, the gig set
-  // practice bar) so the behavior can't drift between them — the surrounding
-  // chrome (back arrows, part pickers, set navigation) stays in each parent.
+  // practice bar) so the behavior can't drift between them. Parents provide
+  // part choices because they own score resolution; back arrows and set
+  // navigation remain surrounding chrome.
   //
   // Renders as a fragment (no wrapper element) so the picker and player sit as
   // direct flex children of whatever bar contains them.
@@ -11,7 +12,22 @@
   import { audioLabel } from '$lib/format';
   import type { Tune } from '$lib/types';
 
-  let { tune }: { tune: Tune | null } = $props();
+  interface PartOption {
+    value: string;
+    label: string;
+  }
+
+  let {
+    tune,
+    partOptions = [],
+    selectedPart = '',
+    onPartChange
+  }: {
+    tune: Tune | null;
+    partOptions?: PartOption[];
+    selectedPart?: string;
+    onPartChange?: (value: string) => void;
+  } = $props();
 
   const audios = $derived(tune?.audio ?? []);
   // Default to the first take (the catalog orders the full-band mix first);
@@ -24,6 +40,18 @@
   const chosen = $derived(audios.find((a) => a.sha256 === chosenSha) ?? audios[0] ?? null);
 </script>
 
+{#if partOptions.length > 1}
+  <select
+    class="part-sel"
+    value={selectedPart}
+    onchange={(e) => onPartChange?.(e.currentTarget.value)}
+    aria-label="Part"
+  >
+    {#each partOptions as option (option.value)}
+      <option value={option.value}>{option.label}</option>
+    {/each}
+  </select>
+{/if}
 {#if audios.length > 1}
   <select
     class="rec-sel"
@@ -44,6 +72,7 @@
 
 <style>
   /* Styled for the dark bars all practice surfaces share. */
+  .part-sel,
   .rec-sel {
     min-height: 44px;
     border-radius: 6px;
@@ -53,6 +82,10 @@
     padding: 0 8px;
     max-width: 32vw;
     flex: none;
+  }
+
+  .part-sel {
+    max-width: 22vw;
   }
 
   /* Fills the player's slot when a song has no recording, so anything pinned

@@ -92,7 +92,9 @@
     track(mode === 'score' ? 'score-view' : mode, tune.title, instrument);
   });
 
-  // Recordings live in PracticePlayer (picker + transport + fallback, shared
+  const practicePartOptions = $derived(partOptions.map((o) => ({ value: o.sha, label: o.label })));
+
+  // Recordings live in PracticePlayer (pickers + transport + fallback, shared
   // with the gig practice bar); this count is only for the no-chart hint below.
   const audios = $derived(tune?.audio ?? []);
 
@@ -204,17 +206,20 @@
 
 <svelte:window onkeydown={onKey} onclick={onWindowClick} />
 
-<!-- The recording picker, shared by the Score view's player line and the
-     immersive Practice bar. Shown only when a song has more than one take. -->
 {#if open && tune}
   <div class="overlay" class:immersive>
     {#if isPractice}
-      <!-- Practice: one top bar in normal flow — back arrow, recording picker,
-           and the one-line player. Reserves its own height so the score sits
+      <!-- Practice: one top bar in normal flow — back arrow, part and recording
+           pickers, and the one-line player. Reserves its own height so the score sits
            below it with no overlap. The arrow steps back to the Score view. -->
       <div class="immersive-bar">
         <button class="back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
-        <PracticePlayer {tune} />
+        <PracticePlayer
+          {tune}
+          partOptions={practicePartOptions}
+          selectedPart={current?.sha ?? ''}
+          onPartChange={setPart}
+        />
       </div>
     {:else if !isScore}
       <!-- Perform: minimal chrome — just a floating back arrow (top-left) that
@@ -642,7 +647,7 @@
   }
 
   /* Practice bar: in normal flow along the top, reserving its height so the score
-     sits below with no overlap. Back · recording · one-line player. */
+     sits below with no overlap. Back · part · recording · one-line player. */
   .immersive-bar {
     margin: 12px 12px 0;
     display: flex;
