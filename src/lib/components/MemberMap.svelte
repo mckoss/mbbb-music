@@ -55,7 +55,7 @@
       <header>
         <div>
           <h3>Band member map</h3>
-          <p>Tap a member for driving directions. Pinch or use +/− to zoom.</p>
+          <p>Tap a dot or data block for driving directions. Pinch or use +/− to zoom.</p>
         </div>
         <button class="close" onclick={close} aria-label="Close map">×</button>
       </header>

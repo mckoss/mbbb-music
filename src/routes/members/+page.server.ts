@@ -77,7 +77,7 @@ export function load({ locals }) {
       const address = location.address || location.name;
       if (!point || !address) return [];
       return [{
-        name: gig.name,
+        name: location.name || gig.name,
         date: gig.date,
         address,
         ...point,
