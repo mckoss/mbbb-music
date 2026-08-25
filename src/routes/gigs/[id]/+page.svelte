@@ -36,6 +36,8 @@
   import PdfPager from '$lib/components/PdfPager.svelte';
   import PracticePlayer from '$lib/components/PracticePlayer.svelte';
   import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
+  import MemberMapCanvas from '$lib/components/MemberMapCanvas.svelte';
+  import type { MemberLocation } from '$lib/member-map';
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
@@ -133,6 +135,30 @@
 
   // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
+  let locationLatitude = $state<number | null>(null);
+  let locationLongitude = $state<number | null>(null);
+  let loadedGigLocation = $state('');
+  $effect(() => {
+    if (loadedGigLocation === gig.id) return;
+    loadedGigLocation = gig.id;
+    locationLatitude = gig.location?.latitude ?? null;
+    locationLongitude = gig.location?.longitude ?? null;
+  });
+  const gigLocationPin = $derived<MemberLocation[]>(
+    locationLatitude == null || locationLongitude == null
+      ? []
+      : [{
+          name: gig.location?.name || gig.name,
+          address: gig.location?.address ?? '',
+          latitude: locationLatitude,
+          longitude: locationLongitude,
+          instrumentSlug: null,
+        }]
+  );
+  function placeGig(latitude: number, longitude: number): void {
+    locationLatitude = Number(latitude.toFixed(6));
+    locationLongitude = Number(longitude.toFixed(6));
+  }
   // Which set's name is being edited inline (null = none).
   let renamingSet = $state<string | null>(null);
 
@@ -661,6 +687,21 @@
         <span>Address</span>
         <input name="locationAddress" value={gig.location?.address ?? ''} />
       </label>
+      <fieldset class="location-pin">
+        <legend>Venue map pin</legend>
+        <input type="hidden" name="locationLatitude" value={locationLatitude ?? ''} />
+        <input type="hidden" name="locationLongitude" value={locationLongitude ?? ''} />
+        <p class="hint">Zoom and tap the map at the venue so it appears precisely on the member car-pool map.</p>
+        <div class="location-map">
+          <MemberMapCanvas members={gigLocationPin} picker onPick={placeGig} />
+        </div>
+        {#if locationLatitude != null && locationLongitude != null}
+          <button type="button" class="ghost-btn clear-location" onclick={() => {
+            locationLatitude = null;
+            locationLongitude = null;
+          }}>Remove venue pin</button>
+        {/if}
+      </fieldset>
       <label class="field">
         <span>Notes <span class="tag private">Band only</span></span>
         <textarea name="notes" rows="4">{gig.notes ?? ''}</textarea>
@@ -1390,6 +1431,38 @@
   .field .hint {
     font-weight: 400;
     font-size: 0.76rem;
+  }
+
+  .location-pin {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .location-pin legend {
+    padding: 0 4px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .location-pin .hint {
+    color: var(--muted);
+    font-size: 0.76rem;
+  }
+
+  .location-map {
+    height: 340px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  .clear-location {
+    align-self: flex-start;
   }
 
   .check {

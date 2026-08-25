@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { directionsUrl } from '$lib/member-map';
+
   let { data } = $props();
   const m = $derived(data.member);
   const avatarSrc = $derived(
@@ -38,6 +40,13 @@
         <dt>Sign-in</dt>
         <dd>{m.email}</dd>
       {/if}
+
+      <dt>Home</dt>
+      <dd>
+        {#if m.address}
+          <a href={directionsUrl(m.address)} target="_blank" rel="noopener">{m.address} · Directions ↗</a>
+        {:else}<span class="empty">—</span>{/if}
+      </dd>
 
       <dt>Shirt size</dt>
       <dd>{#if m.shirtSize}{m.shirtSize}{:else}<span class="empty">—</span>{/if}</dd>

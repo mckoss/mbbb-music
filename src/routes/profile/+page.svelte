@@ -2,6 +2,8 @@
   import { instrumentLabel } from '$lib/members';
   import { instrumentDisplay } from '$lib/format';
   import AvatarCropper from '$lib/components/AvatarCropper.svelte';
+  import MemberMapCanvas from '$lib/components/MemberMapCanvas.svelte';
+  import type { MemberLocation } from '$lib/member-map';
 
   let { data, form } = $props();
 
@@ -11,6 +13,48 @@
     `/members/${encodeURIComponent(p.email)}/avatar?v=${encodeURIComponent(p.updatedAt ?? '')}`
   );
   const also = $derived(new Set(p.instruments));
+  let homeAddress = $state('');
+  let homeLatitude = $state<number | null>(null);
+  let homeLongitude = $state<number | null>(null);
+  let loadedProfile = $state('');
+  let locationMessage = $state('');
+  $effect(() => {
+    if (loadedProfile === p.email) return;
+    loadedProfile = p.email;
+    homeAddress = p.homeAddress ?? '';
+    homeLatitude = p.homeLatitude;
+    homeLongitude = p.homeLongitude;
+  });
+  const homePins = $derived<MemberLocation[]>(
+    homeLatitude == null || homeLongitude == null
+      ? []
+      : [{
+          name: 'Home',
+          address: homeAddress,
+          latitude: homeLatitude,
+          longitude: homeLongitude,
+          instrumentSlug: p.primaryInstrument,
+        }]
+  );
+
+  function placeHome(latitude: number, longitude: number): void {
+    homeLatitude = Number(latitude.toFixed(6));
+    homeLongitude = Number(longitude.toFixed(6));
+    locationMessage = 'Map pin placed. Save the profile to share it with the band.';
+  }
+
+  function useCurrentLocation(): void {
+    if (!navigator.geolocation) {
+      locationMessage = 'This browser cannot read your current location. Tap the map instead.';
+      return;
+    }
+    locationMessage = 'Finding your location…';
+    navigator.geolocation.getCurrentPosition(
+      (position) => placeHome(position.coords.latitude, position.coords.longitude),
+      () => (locationMessage = 'Location was unavailable. Tap the map to place your home pin.'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+    );
+  }
 
   // Photo selection → crop → staged upload. The picked file opens the cropper;
   // the cropped blob is shown immediately and stashed in the hidden `avatar`
@@ -101,6 +145,37 @@
       <span class="label">Phone</span>
       <input type="tel" name="phone" value={p.phone ?? ''} autocomplete="tel" placeholder="555-0100" />
     </label>
+
+    <fieldset class="field home">
+      <legend class="label">Home address</legend>
+      <input
+        type="text"
+        name="homeAddress"
+        bind:value={homeAddress}
+        autocomplete="street-address"
+        placeholder="Street, city, WA ZIP"
+      />
+      <p class="muted privacy">
+        Visible only to signed-in band members. The roster and map may be saved on their devices for offline use.
+      </p>
+      <input type="hidden" name="homeLatitude" value={homeLatitude ?? ''} />
+      <input type="hidden" name="homeLongitude" value={homeLongitude ?? ''} />
+      <div class="pin-actions">
+        <button type="button" onclick={useCurrentLocation}>Use my current location</button>
+        {#if homeLatitude != null && homeLongitude != null}
+          <button type="button" class="clear-pin" onclick={() => {
+            homeLatitude = null;
+            homeLongitude = null;
+            locationMessage = 'Map pin removed. Save the profile to apply.';
+          }}>Remove pin</button>
+        {/if}
+      </div>
+      <p class="muted privacy">While at home, use your current location—or zoom and tap the map to place the pin.</p>
+      <div class="home-map">
+        <MemberMapCanvas members={homePins} picker onPick={placeHome} />
+      </div>
+      {#if locationMessage}<p class="location-message" aria-live="polite">{locationMessage}</p>{/if}
+    </fieldset>
 
     <label class="field">
       <span class="label">Primary instrument</span>
@@ -295,6 +370,49 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px;
+  }
+
+  .home {
+    gap: 8px;
+  }
+
+  .privacy,
+  .location-message {
+    font-size: 0.76rem;
+  }
+
+  .location-message {
+    color: var(--accent-strong);
+    font-weight: 700;
+  }
+
+  .pin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pin-actions button {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--accent-strong);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--accent-strong);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .pin-actions .clear-pin {
+    border-color: var(--line);
+    color: var(--muted);
+  }
+
+  .home-map {
+    height: 340px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
   }
 
   .tenure {

@@ -13,6 +13,8 @@ export interface GigTime {
 export interface GigLocation {
   name?: string;
   address?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 /** One set within a gig: an ordered list of song slugs. */
@@ -162,8 +164,21 @@ export function normalizeLocation(input: unknown): GigLocation | undefined {
   if (!input || typeof input !== 'object') return undefined;
   const name = String((input as GigLocation).name ?? '').trim();
   const address = String((input as GigLocation).address ?? '').trim();
+  const rawLatitude = (input as GigLocation).latitude;
+  const rawLongitude = (input as GigLocation).longitude;
+  const latitude = Number(rawLatitude);
+  const longitude = Number(rawLongitude);
+  const hasPoint =
+    rawLatitude != null && rawLongitude != null &&
+    String(rawLatitude).trim() !== '' && String(rawLongitude).trim() !== '' &&
+    Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 &&
+    Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
   if (!name && !address) return undefined;
-  return { ...(name ? { name } : {}), ...(address ? { address } : {}) };
+  return {
+    ...(name ? { name } : {}),
+    ...(address ? { address } : {}),
+    ...(hasPoint ? { latitude, longitude } : {}),
+  };
 }
 
 /**

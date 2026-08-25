@@ -120,6 +120,22 @@ test('avatar hash must be a 64-hex content hash', () => {
   assert.equal(effectiveProfileDb(db, 'jo@x').avatarSha, sha);
 });
 
+test('home address and map coordinates round-trip with range validation', () => {
+  const db = freshDb();
+  const p = editProfileDb(
+    db,
+    'jo@x',
+    { homeAddress: '123 Main St, Langley, WA', homeLatitude: 48.0402, homeLongitude: -122.4063 },
+    'jo@x',
+    '2026-06-15T00:00:00.000Z',
+  );
+  assert.equal(p.homeAddress, '123 Main St, Langley, WA');
+  assert.equal(p.homeLatitude, 48.0402);
+  assert.equal(p.homeLongitude, -122.4063);
+  assert.throws(() => editProfileFieldDb(db, edit({ field: 'homeLatitude', value: '91' })), /invalid home latitude/);
+  assert.throws(() => editProfileFieldDb(db, edit({ field: 'homeLongitude', value: '-181' })), /invalid home longitude/);
+});
+
 test('editProfileDb applies a typed patch across fields in one call', () => {
   const db = freshDb();
   const p = editProfileDb(
@@ -280,6 +296,9 @@ test('empty edit history yields an empty (not missing) profile', () => {
     email: 'ghost@x',
     fullName: null,
     phone: null,
+    homeAddress: null,
+    homeLatitude: null,
+    homeLongitude: null,
     primaryInstrument: null,
     instruments: [],
     shirtSize: null,

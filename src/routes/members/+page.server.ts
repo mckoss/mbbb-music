@@ -4,8 +4,10 @@ import { error } from '@sveltejs/kit';
 
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
+import { listGigs } from '$lib/server/gigs';
 import { logEvent } from '$lib/server/activity';
 import { instrumentLabel, tenureLabel } from '$lib/members';
+import { inferGigCoordinates, isMapCoordinate, threeMonthCutoff } from '$lib/member-map';
 
 /** Last word of a display name (lowercased), for the secondary sort. */
 function lastNameOf(name: string): string {
@@ -34,6 +36,9 @@ export function load({ locals }) {
       name,
       instrumentSlug: instSlug,
       instrument: instSlug ? instrumentLabel(instSlug) : null,
+      address: p.homeAddress,
+      latitude: p.homeLatitude,
+      longitude: p.homeLongitude,
       // Cache-buster so an updated profile refreshes the thumbnail.
       avatarRev: p.updatedAt ?? '',
       tenure: tenureLabel(p.joinedDate, p.endDate, today),
@@ -61,5 +66,23 @@ export function load({ locals }) {
   const former = all.filter((m) => m.isFormer).sort(bySeniority);
   const members = [...active, ...former].map(({ joinedDate, lastName, ...m }) => m);
 
-  return { members };
+  const cutoff = threeMonthCutoff();
+  const gigs = listGigs()
+    .filter((gig) => !gig.canceled && gig.date >= cutoff && gig.location)
+    .flatMap((gig) => {
+      const location = gig.location!;
+      const point = isMapCoordinate(location.latitude, location.longitude)
+        ? { latitude: location.latitude!, longitude: location.longitude! }
+        : inferGigCoordinates(location.name ?? null, location.address ?? null);
+      const address = location.address || location.name;
+      if (!point || !address) return [];
+      return [{
+        name: gig.name,
+        date: gig.date,
+        address,
+        ...point,
+      }];
+    });
+
+  return { members, gigs };
 }

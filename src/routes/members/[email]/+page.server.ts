@@ -33,6 +33,7 @@ export function load({ params, locals }) {
       primary: p.primaryInstrument ? instrumentLabel(p.primaryInstrument) : null,
       instruments: p.instruments.map((s) => instrumentLabel(s)).filter(Boolean),
       phone: p.phone,
+      address: p.homeAddress,
       alternateEmail: p.alternateEmail,
       shirtSize: p.shirtSize,
       joined: monthYear(p.joinedDate),

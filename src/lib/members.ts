@@ -65,6 +65,9 @@ export const SHIRT_SIZES: ShirtSize[] = ['S', 'S/M', 'M', 'L', 'XL', 'XXL'];
 export const PROFILE_FIELDS = [
   'fullName',
   'phone',
+  'homeAddress',
+  'homeLatitude',
+  'homeLongitude',
   'primaryInstrument',
   'instruments',
   'shirtSize',
@@ -84,6 +87,9 @@ export interface MemberProfile {
   email: string;
   fullName: string | null;
   phone: string | null;
+  homeAddress: string | null;
+  homeLatitude: number | null;
+  homeLongitude: number | null;
   primaryInstrument: string | null; // instrument slug
   instruments: string[]; // additional instrument slugs
   shirtSize: ShirtSize | null;
@@ -99,6 +105,9 @@ export interface MemberProfile {
 export type ProfilePatch = Partial<{
   fullName: string | null;
   phone: string | null;
+  homeAddress: string | null;
+  homeLatitude: number | null;
+  homeLongitude: number | null;
   primaryInstrument: string | null;
   instruments: string[] | null;
   shirtSize: ShirtSize | null;
@@ -195,7 +204,18 @@ export function validateProfileValue(field: ProfileField, value: string | null):
   switch (field) {
     case 'fullName':
     case 'phone':
+    case 'homeAddress':
       return v;
+    case 'homeLatitude': {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < -90 || n > 90) throw new Error('invalid home latitude');
+      return String(n);
+    }
+    case 'homeLongitude': {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < -180 || n > 180) throw new Error('invalid home longitude');
+      return String(n);
+    }
     case 'alternateEmail': {
       const e = v.toLowerCase();
       if (!EMAIL_RE.test(e)) throw new Error('invalid alternate email');

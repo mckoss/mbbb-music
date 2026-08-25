@@ -1,5 +1,7 @@
 <script lang="ts">
   import { INSTRUMENT_CHOICES, instrumentLabel } from '$lib/members';
+  import { isMapCoordinate, type MemberLocation } from '$lib/member-map';
+  import MemberMap from '$lib/components/MemberMap.svelte';
 
   let { data } = $props();
 
@@ -7,6 +9,18 @@
 
   const active = $derived(data.members.filter((m) => !m.isFormer));
   const former = $derived(data.members.filter((m) => m.isFormer));
+  const mappedMembers = $derived(
+    active.flatMap((member): MemberLocation[] =>
+      member.address && isMapCoordinate(member.latitude, member.longitude)
+        ? [{
+            name: member.name,
+            address: member.address,
+            latitude: member.latitude!,
+            longitude: member.longitude!,
+            instrumentSlug: member.instrumentSlug,
+          }]
+        : [])
+  );
 
   // A representative glyph per instrument (zero-asset, cross-platform). Brass
   // share the trumpet glyph; reeds/woodwinds and percussion get their own.
@@ -103,6 +117,14 @@
     </div>
   </header>
 
+  <div class="map-section">
+    <MemberMap members={mappedMembers} gigs={data.gigs} />
+    <p class="map-note">
+      Member homes, recent and upcoming gigs. Tap a marker for Google Maps driving directions.
+      The street map is stored on this device for offline use.
+    </p>
+  </div>
+
   {#each sections as sec (sec.slug ?? 'none')}
     <div class="section">
       <h3 class="section-head">
@@ -157,6 +179,18 @@
   .count {
     color: var(--muted);
     font-size: 0.82rem;
+  }
+
+  .map-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .map-note {
+    color: var(--muted);
+    font-size: 0.75rem;
   }
 
   .section-head {

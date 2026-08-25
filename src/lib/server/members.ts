@@ -125,6 +125,9 @@ function emptyProfile(email: string): MemberProfile {
     email,
     fullName: null,
     phone: null,
+    homeAddress: null,
+    homeLatitude: null,
+    homeLongitude: null,
     primaryInstrument: null,
     instruments: [],
     shirtSize: null,
@@ -163,6 +166,15 @@ function applyRow(p: MemberProfile, r: { field: string; value: string | null; ed
       break;
     case 'phone':
       p.phone = r.value;
+      break;
+    case 'homeAddress':
+      p.homeAddress = r.value;
+      break;
+    case 'homeLatitude':
+      p.homeLatitude = r.value == null ? null : Number(r.value);
+      break;
+    case 'homeLongitude':
+      p.homeLongitude = r.value == null ? null : Number(r.value);
       break;
     case 'primaryInstrument':
       p.primaryInstrument = r.value;
@@ -241,6 +253,9 @@ export function lastEditedByDb(db: DatabaseSync): Map<string, string> {
 /** The current stored (normalized) string for one field of an effective profile. */
 function storedValue(p: MemberProfile, field: ProfileField): string | null {
   if (field === 'instruments') return p.instruments.length ? JSON.stringify(p.instruments) : null;
+  if (field === 'homeLatitude' || field === 'homeLongitude') {
+    return p[field] == null ? null : String(p[field]);
+  }
   return (p[field] as string | null) ?? null;
 }
 

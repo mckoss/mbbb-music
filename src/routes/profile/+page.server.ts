@@ -87,10 +87,22 @@ export const actions = {
     if (joinedDate && endDate && endDate < joinedDate) {
       return fail(400, { message: 'End date is before the joined date.' });
     }
+    const homeAddress = str(form, 'homeAddress');
+    const homeLatitude = str(form, 'homeLatitude');
+    const homeLongitude = str(form, 'homeLongitude');
+    if (Boolean(homeLatitude) !== Boolean(homeLongitude)) {
+      return fail(400, { message: 'The home map pin is incomplete. Please place it again.' });
+    }
+    if ((homeLatitude || homeLongitude) && !homeAddress) {
+      return fail(400, { message: 'Enter a home address before saving its map pin.' });
+    }
 
     const patch: ProfilePatch = {
       fullName: str(form, 'fullName'),
       phone: str(form, 'phone'),
+      homeAddress,
+      homeLatitude: homeLatitude == null ? null : Number(homeLatitude),
+      homeLongitude: homeLongitude == null ? null : Number(homeLongitude),
       primaryInstrument: primary,
       instruments: additional,
       shirtSize: shirt as ShirtSize | null,

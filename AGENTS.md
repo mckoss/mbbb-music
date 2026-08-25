@@ -77,12 +77,19 @@ git status --short
 python3 -m http.server 8000 --directory docs   # serve the static prototype
 npm test                                        # Phase 1 sync test suites
 npm run sync:demo                               # sync synthetic fixtures into ./data
+npm run map:update                              # refresh the committed public OSM basemap
 node bin/sync.js --help                         # Phase 1 sync CLI options
 ```
 
 Then visit `http://localhost:8000/` for the prototype. The Phase 1 sync needs
 `npm install` (one dependency, `google-auth-library`); run with `--fixture` to
 exercise it without Google credentials.
+
+The member roster's offline map is generated from public OpenStreetMap vector
+data and committed at `static/maps/member-map.json`. Refresh it only with
+`npm run map:update`; the updater fetches roads, coastlines, and place names but
+never reads member profiles or the gitignored `data/` directory. Keep the visible
+OpenStreetMap attribution when changing the map renderer.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.

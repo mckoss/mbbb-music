@@ -6,6 +6,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 
 import {
   updateGig,
+  getGig,
   deleteGig,
   duplicateGig,
   addSet,
@@ -131,9 +132,18 @@ export const actions = {
     if (form.has('start')) patch.times = parseTimes(form);
     if (form.has('callTime')) patch.callTime = String(form.get('callTime') ?? '');
     if (form.has('locationName') || form.has('locationAddress')) {
+      const latitude = String(form.get('locationLatitude') ?? '').trim();
+      const longitude = String(form.get('locationLongitude') ?? '').trim();
+      const existing = getGig(params.id)?.location;
+      const formHasPoint = form.has('locationLatitude') || form.has('locationLongitude');
       patch.location = {
         name: String(form.get('locationName') ?? ''),
         address: String(form.get('locationAddress') ?? ''),
+        ...(formHasPoint
+          ? (latitude && longitude ? { latitude: Number(latitude), longitude: Number(longitude) } : {})
+          : (existing?.latitude != null && existing?.longitude != null
+              ? { latitude: existing.latitude, longitude: existing.longitude }
+              : {})),
       };
     }
     if (form.has('notes')) patch.notes = String(form.get('notes') ?? '');

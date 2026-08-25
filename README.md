@@ -385,6 +385,16 @@ Two different Google credentials are involved, and they are **not** the same:
 `google.serviceAccount` is for the Drive **sync** only; the `auth` block is the
 web **sign-in** OAuth client.
 
+### Private member map
+
+Approved members can add a home address and place its pin from their profile.
+The authenticated roster combines those homes with recent/upcoming gig venues,
+the Langley Fairgrounds practice site, and the Clinton ferry terminal. Tapping a
+person or gig opens Google Maps directions; the roster itself uses a committed,
+OSM-derived vector basemap and remains usable offline. Exact member addresses
+stay in the gitignored member database and are never part of the public map
+extract. Refresh only the public roads/coastlines with `npm run map:update`.
+
 #### Where to get the credentials
 
 Add an `auth` block to `config.json` as a top-level sibling of `google`:

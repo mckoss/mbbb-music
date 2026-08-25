@@ -1,6 +1,6 @@
 {
   "name": "mbbb-music",
-  "version": "1.49.4",
+  "version": "1.50.0",
   "private": true,
   "description": "Mutiny Bay Brass Band music library tooling. Phase 1: Google Drive asset sync.",
   "type": "module",
@@ -18,6 +18,7 @@
     "origins:backfill": "node bin/backfill-origins.js",
     "library": "node bin/library.js",
     "build-scores": "node bin/build-scores.js",
+    "map:update": "node scripts/update-member-map.mjs",
     "test": "node --import ./test/loader.mjs --test test/*.test.js",
     "test:e2e": "playwright test",
     "dev": "vite dev",
@@ -30,6 +31,7 @@
   "dependencies": {
     "@napi-rs/canvas": "1.0.0",
     "google-auth-library": "9.15.1",
+    "leaflet": "1.9.4",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.0.227",
     "sharp": "0.34.5"
@@ -41,6 +43,7 @@
     "@sveltejs/enhanced-img": "0.10.4",
     "@sveltejs/kit": "2.63.0",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@types/leaflet": "1.9.22",
     "@types/node": "25.9.2",
     "svelte": "5.56.2",
     "svelte-check": "4.6.0",

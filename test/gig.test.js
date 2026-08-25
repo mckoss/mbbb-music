@@ -66,6 +66,10 @@ test('normalizeLocation collapses empty to undefined', () => {
   assert.equal(normalizeLocation({ name: '', address: '' }), undefined);
   assert.deepEqual(normalizeLocation({ name: 'Park', address: '' }), { name: 'Park' });
   assert.deepEqual(normalizeLocation({ address: '1 Main St' }), { address: '1 Main St' });
+  assert.deepEqual(normalizeLocation({ name: 'Park', latitude: 48.1, longitude: -122.5 }), {
+    name: 'Park', latitude: 48.1, longitude: -122.5,
+  });
+  assert.deepEqual(normalizeLocation({ name: 'Park', latitude: 99, longitude: -122.5 }), { name: 'Park' });
 });
 
 test('normalizeSets assigns ids and filters slugs', () => {
