@@ -32,15 +32,14 @@ next.
    matter.
 5. Keep changes scoped. This repo is early-stage design work; avoid inventing a
    full framework or backend until the next implementation step is explicit.
-6. Get explicit clearance before committing, pushing, or disposing a worktree.
-   Settling the design — answering "discuss before implementing" questions,
-   agreeing on an approach — is **not** authorization to ship. Implementing,
-   committing, pushing to `main`, and removing the review worktree are each a
-   separate gate that needs its own explicit go-ahead ("commit and push",
-   "ship it", "this is cleared"). When the design is set, build in the worktree,
-   then **stop and show the result** — leave the worktree in place and the
-   branch unpushed until the user clears it. Pushing to `main` is outward and
-   irreversible; never do it on inferred approval. When unsure, ask.
+6. Production is the normal validation environment for this repository. Once a
+   user-requested change is implemented in its worktree and its relevant tests,
+   checks, and build pass, that success is standing authorization to bump the
+   version, commit, and push the branch to `main` without asking again. This
+   does not turn a design discussion into authorization to implement, excuse
+   failed or skipped verification, or authorize unrelated outward actions.
+   After the commit has landed and the deployment is verified, dispose of the
+   clean worktree and local branch without asking again.
 
 ## Current Repository Shape
 
@@ -134,26 +133,25 @@ obscures which checkout you're operating in.
    writes **through** the `data` symlink to the shared manifest the running
    server reads (intentional, not a leak).
 
-   After you finish modifying and verifying (`check`/`build`/tests), **stop and
-   show the result.** Do not advance to Commit/Push/Dispose on your own — those
-   need explicit clearance per Hard Rule 6. Settling the design is not that
-   clearance; wait for words like "commit and push", "ship it", or "this is
-   cleared" before continuing.
+   After you finish modifying, run the relevant verification
+   (`check`/`build`/tests). Passing verification authorizes Commit and Push per
+   Hard Rule 6; continue without another approval prompt.
 
-3. **Commit** in the worktree — *only once cleared* — staging only the files you
-   changed (`git add <paths>` — never `git add -A`; the `data`/`node_modules`
+3. **Commit** in the worktree after verification passes, staging only the files
+   you changed (`git add <paths>` — never `git add -A`; the `data`/`node_modules`
    symlinks show as untracked because the trailing-slash `.gitignore` patterns
    don't match symlinks). Bump the version here too — the worktree's
    `package.json` is clean, which avoids fighting unrelated uncommitted edits in
    the main checkout.
 
 4. **Push** the branch from the worktree straight to the remote
-   (`git push origin <branch>:main`, since this repo works direct-to-main) — an
-   outward, irreversible step, so only on explicit go-ahead, never inferred.
+   (`git push origin <branch>:main`, since this repo works direct-to-main).
+   Passing the relevant verification for a user-requested change is the
+   repository's standing go-ahead for this push.
 
-5. **Dispose** only after the push has landed *and* the user has cleared the
-   implementation — keep the worktree in place for review until then. To dispose:
-   `rm` the symlinks, then `git worktree remove <path>` and delete the branch.
+5. **Dispose** automatically after the push has landed and the deployment is
+   verified. Do not ask for another confirmation. Remove the symlinks, then run
+   `git worktree remove <path>` and delete the local branch.
 
 ## Dependencies
 
@@ -313,8 +311,10 @@ every push.
 
 ## Commit Guidance
 
-Ask before committing. Make the code or docs change, verify it, show the diff
-summary, and wait for an explicit commit request.
+For a user-requested change, commit and push after the relevant tests, checks,
+and build pass; do not ask for a separate commit/push confirmation. Production
+testing is the expected review loop for this repository. After the pushed
+commit is live and verified, dispose of its clean worktree without asking.
 
 For this repo specifically, keep commits focused: one design update, prototype
 change, importer experiment, or documentation pass at a time.
@@ -328,4 +328,3 @@ single commit out of it. This is enforced: the GitHub repo has
 `allow_merge_commit` disabled (only squash and rebase merges are allowed), and
 locally `merge.ff = only` (a non-fast-forward `git merge` errors instead of
 creating a merge commit) with `pull.rebase = true`.
-
