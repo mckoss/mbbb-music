@@ -120,7 +120,7 @@
   <div class="map-section">
     <MemberMap members={mappedMembers} gigs={data.gigs} />
     <p class="map-note">
-      Member homes, recent and upcoming gigs. Tap a marker for Google Maps driving directions.
+      Member homes, recent and upcoming gigs. Tap a dot or data block for Google Maps driving directions.
       The street map is stored on this device for offline use.
     </p>
   </div>

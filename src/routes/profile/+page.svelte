@@ -16,14 +16,28 @@
   let homeAddress = $state('');
   let homeLatitude = $state<number | null>(null);
   let homeLongitude = $state<number | null>(null);
+  let originalHomeAddress = $state('');
+  let originalHomeLatitude = $state<number | null>(null);
+  let originalHomeLongitude = $state<number | null>(null);
+  let homePinEdited = $state(false);
   let loadedProfile = $state('');
   let locationMessage = $state('');
   $effect(() => {
     if (loadedProfile === p.email) return;
+    const submitted = form as (typeof form & {
+      homeAddress?: string;
+      homeLatitude?: number | null;
+      homeLongitude?: number | null;
+      homePinEdited?: boolean;
+    });
     loadedProfile = p.email;
-    homeAddress = p.homeAddress ?? '';
-    homeLatitude = p.homeLatitude;
-    homeLongitude = p.homeLongitude;
+    homeAddress = submitted?.homeAddress ?? p.homeAddress ?? '';
+    homeLatitude = submitted?.homeLatitude ?? p.homeLatitude;
+    homeLongitude = submitted?.homeLongitude ?? p.homeLongitude;
+    originalHomeAddress = p.homeAddress ?? '';
+    originalHomeLatitude = p.homeLatitude;
+    originalHomeLongitude = p.homeLongitude;
+    homePinEdited = submitted?.homePinEdited ?? false;
   });
   const homePins = $derived<MemberLocation[]>(
     homeLatitude == null || homeLongitude == null
@@ -40,7 +54,22 @@
   function placeHome(latitude: number, longitude: number): void {
     homeLatitude = Number(latitude.toFixed(6));
     homeLongitude = Number(longitude.toFixed(6));
+    homePinEdited = true;
     locationMessage = 'Map pin placed. Save the profile to share it with the band.';
+  }
+
+  function editHomeAddress(value: string): void {
+    homeAddress = value;
+    if (homePinEdited) return;
+    if (value.trim() === originalHomeAddress.trim()) {
+      homeLatitude = originalHomeLatitude;
+      homeLongitude = originalHomeLongitude;
+      locationMessage = '';
+    } else {
+      homeLatitude = null;
+      homeLongitude = null;
+      locationMessage = 'The new address will be located once when you save.';
+    }
   }
 
   function useCurrentLocation(): void {
@@ -151,7 +180,8 @@
       <input
         type="text"
         name="homeAddress"
-        bind:value={homeAddress}
+        value={homeAddress}
+        oninput={(event) => editHomeAddress(event.currentTarget.value)}
         autocomplete="street-address"
         placeholder="Street, city, WA ZIP"
       />
@@ -160,17 +190,19 @@
       </p>
       <input type="hidden" name="homeLatitude" value={homeLatitude ?? ''} />
       <input type="hidden" name="homeLongitude" value={homeLongitude ?? ''} />
+      <input type="hidden" name="homePinEdited" value={homePinEdited ? '1' : '0'} />
       <div class="pin-actions">
         <button type="button" onclick={useCurrentLocation}>Use my current location</button>
         {#if homeLatitude != null && homeLongitude != null}
           <button type="button" class="clear-pin" onclick={() => {
             homeLatitude = null;
             homeLongitude = null;
+            homePinEdited = true;
             locationMessage = 'Map pin removed. Save the profile to apply.';
           }}>Remove pin</button>
         {/if}
       </div>
-      <p class="muted privacy">While at home, use your current location—or zoom and tap the map to place the pin.</p>
+      <p class="muted privacy">A changed address is sent once to OpenStreetMap for location. You can instead use your current location—or zoom and tap the map to place the pin yourself.</p>
       <div class="home-map">
         <MemberMapCanvas members={homePins} picker onPick={placeHome} />
       </div>

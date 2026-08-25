@@ -7,6 +7,12 @@ import { photoOf, listUsers } from '$lib/server/users';
 import { saveAvatar, loadAvatar, MAX_AVATAR_BYTES } from '$lib/server/avatars';
 import { INSTRUMENT_CHOICES, SHIRT_SIZES, tenureLabel, type ProfilePatch, type ShirtSize } from '$lib/members';
 import { clientVersionFromForm } from '$lib/client-version';
+import {
+  AddressNotFoundError,
+  GeocodingUnavailableError,
+  geocodeHomeAddress,
+  shouldGeocodeHomeAddress,
+} from '$lib/server/geocoding';
 
 function requireUser(locals: App.Locals) {
   if (!locals.user?.role) throw error(403, 'Sign in required.');
@@ -61,6 +67,7 @@ export const actions = {
     const form = await request.formData();
     locals.clientVersion = clientVersionFromForm(form, locals.clientVersion);
     const target = resolveTarget(me, String(form.get('email') ?? ''));
+    const existing = getProfile(target);
 
     // Avatar: an upload sets it; the "remove" toggle clears it (falling back to
     // the Google photo / Gravatar / initials chain). Otherwise leave it as-is.
@@ -104,9 +111,41 @@ export const actions = {
       if ((homeLatitude || homeLongitude) && !homeAddress) {
         return fail(400, { message: 'Enter a home address before saving its map pin.' });
       }
+      const pinEdited = String(form.get('homePinEdited') ?? '') === '1';
+      const failedHome = (status: number, message: string) => fail(status, {
+        message,
+        homeAddress: homeAddress ?? '',
+        homeLatitude: homeLatitude == null ? null : Number(homeLatitude),
+        homeLongitude: homeLongitude == null ? null : Number(homeLongitude),
+        homePinEdited: pinEdited,
+      });
       homePatch.homeAddress = homeAddress;
-      homePatch.homeLatitude = homeLatitude == null ? null : Number(homeLatitude);
-      homePatch.homeLongitude = homeLongitude == null ? null : Number(homeLongitude);
+      if (!homeAddress) {
+        homePatch.homeLatitude = null;
+        homePatch.homeLongitude = null;
+      } else if (shouldGeocodeHomeAddress({
+        address: homeAddress,
+        addressChanged: homeAddress !== existing.homeAddress,
+        hasPin: Boolean(homeLatitude && homeLongitude),
+        pinEdited,
+      })) {
+        try {
+          const point = await geocodeHomeAddress(homeAddress);
+          homePatch.homeLatitude = point.latitude;
+          homePatch.homeLongitude = point.longitude;
+        } catch (lookupError) {
+          if (lookupError instanceof AddressNotFoundError) {
+            return failedHome(400, 'We could not locate that address on the member map. Add a city, state, or ZIP—or tap the map to place the pin.');
+          }
+          if (lookupError instanceof GeocodingUnavailableError) {
+            return failedHome(503, 'Address lookup is temporarily unavailable. Please save again in a moment, or tap the map to place the pin.');
+          }
+          throw lookupError;
+        }
+      } else {
+        homePatch.homeLatitude = homeLatitude == null ? null : Number(homeLatitude);
+        homePatch.homeLongitude = homeLongitude == null ? null : Number(homeLongitude);
+      }
     }
 
     const patch: ProfilePatch = {
