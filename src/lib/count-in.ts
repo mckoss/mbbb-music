@@ -4,9 +4,19 @@
 // practice recording itself.
 
 export const COUNT_IN_LEAD_SECONDS = 0.12;
+// HTML media does not become audible at the instant play() is requested on an
+// iPad. Ask the already-primed MP3 to start slightly before the musical target;
+// its normal startup latency then lands the audible first beat on the count.
+export const MEDIA_START_ANTICIPATION_SECONDS = 0.25;
 
 const SAMPLE_RATE = 22_050;
 const CLICK_SECONDS = 0.09;
+
+/** Media-clock time at which to request MP3 playback for the target beat. */
+export function songPlayTime(startBeat: number, beatSeconds: number): number {
+  const musicalTarget = startBeat * beatSeconds;
+  return COUNT_IN_LEAD_SECONDS + Math.max(0, musicalTarget - MEDIA_START_ANTICIPATION_SECONDS);
+}
 
 function ascii(view: DataView, offset: number, value: string) {
   for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));

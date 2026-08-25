@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildCountInWav, COUNT_IN_LEAD_SECONDS } from '../src/lib/count-in.ts';
+import {
+  buildCountInWav,
+  COUNT_IN_LEAD_SECONDS,
+  MEDIA_START_ANTICIPATION_SECONDS,
+  songPlayTime,
+} from '../src/lib/count-in.ts';
 
 function text(view, offset, length) {
   return String.fromCharCode(...new Uint8Array(view.buffer, offset, length));
@@ -55,4 +60,14 @@ test('buildCountInWav places every click on its beat and accents the last one', 
 test('buildCountInWav rejects invalid count shapes', () => {
   assert.throws(() => buildCountInWav(0, 1), RangeError);
   assert.throws(() => buildCountInWav(4, 0), RangeError);
+});
+
+test('songPlayTime anticipates HTML media startup without moving the count grid', () => {
+  assert.equal(MEDIA_START_ANTICIPATION_SECONDS, 0.25);
+  assert.equal(songPlayTime(4, 0.5), COUNT_IN_LEAD_SECONDS + 1.75);
+  assert.equal(songPlayTime(3, 0.5), COUNT_IN_LEAD_SECONDS + 1.25);
+});
+
+test('songPlayTime never requests playback before the count track starts', () => {
+  assert.equal(songPlayTime(0.25, 0.5), COUNT_IN_LEAD_SECONDS);
 });

@@ -3,7 +3,7 @@
   import { page } from '$app/state';
 
   import { audio, playSha, playFromTop, prime, toggle, restart, seek, ensureLoaded } from '$lib/audio';
-  import { buildCountInWav, COUNT_IN_LEAD_SECONDS } from '$lib/count-in';
+  import { buildCountInWav, COUNT_IN_LEAD_SECONDS, songPlayTime } from '$lib/count-in';
   import { formatTime } from '$lib/format';
   import type { Catalog, TuneTempo } from '$lib/types';
 
@@ -124,6 +124,7 @@
     const nBeats = countBeats;
     const beatSec = period;
     const startBeat = nBeats - pickup;
+    const playAt = songPlayTime(startBeat, beatSec);
     const a = prepareCountAudio(nBeats, beatSec);
     if (!a) {
       onDownbeat();
@@ -149,7 +150,10 @@
     tickInterval = setInterval(() => {
       if (token !== countToken) return;
       const elapsed = a.currentTime - COUNT_IN_LEAD_SECONDS;
-      if (!songStarted && (a.ended || elapsed >= startBeat * beatSec)) {
+      // Request the MP3 shortly before the musical target. On iPad the media
+      // startup delay consumes that lead, while the click track stays exactly
+      // on its original beat grid.
+      if (!songStarted && (a.ended || a.currentTime >= playAt)) {
         songStarted = true;
         onDownbeat();
       }
