@@ -13,6 +13,7 @@
     layoutMemberMapLabels,
     mapLabelLeaderEnd,
   } from '$lib/member-map-label-layout';
+  import { instrumentHasImage, instrumentImageSrc } from '$lib/members';
   import type * as Leaflet from 'leaflet';
 
   type Point = [number, number];
@@ -39,6 +40,10 @@
     interactive = true,
     compact = false,
     picker = false,
+    pickEnabled = picker,
+    focusLocations = false,
+    highlightMembers = false,
+    highlightLocations = false,
     onPick,
   }: {
     members: MemberLocation[];
@@ -46,6 +51,10 @@
     interactive?: boolean;
     compact?: boolean;
     picker?: boolean;
+    pickEnabled?: boolean;
+    focusLocations?: boolean;
+    highlightMembers?: boolean;
+    highlightLocations?: boolean;
     onPick?: (latitude: number, longitude: number) => void;
   } = $props();
 
@@ -74,10 +83,15 @@
     address: string;
     latitude: number;
     longitude: number;
+    instrumentSlug?: string | null;
   }
 
   function blockHtml(item: DisplayItem): string {
-    const icon = item.kind === 'gig' ? '♫' : item.kind === 'practice' ? '🏫' : item.kind === 'ferry' ? '⛴' : '';
+    const instrumentSlug = item.instrumentSlug ?? null;
+    const instrument = instrumentHasImage(instrumentSlug)
+      ? `<img class="map-instrument-icon" src="${instrumentImageSrc(instrumentSlug)}" alt="">`
+      : '♪';
+    const icon = item.kind === 'gig' ? '♫' : item.kind === 'practice' ? '🏫' : item.kind === 'ferry' ? '⛴' : instrument;
     return `<div class="map-datablock ${item.kind}">
       <span class="map-block-icon ${item.kind}" aria-hidden="true">${icon}</span>
       <span class="map-block-copy"><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.detail)}</span></span>
@@ -101,6 +115,7 @@
         address: member.address,
         latitude: member.latitude,
         longitude: member.longitude,
+        instrumentSlug: member.instrumentSlug,
       })),
       ...gigs.map((gig, index) => ({
         id: `gig:${index}:${gig.name}:${gig.date}`,
@@ -126,7 +141,7 @@
       const diameter = picker ? 13 : 11;
       const dot = leaflet!.marker([item.latitude, item.longitude], {
         icon: leaflet!.divIcon({
-          className: 'map-location-dot',
+          className: `map-location-dot ${item.kind}${(highlightLocations && (item.kind === 'member' || item.kind === 'gig')) || (highlightMembers && item.kind === 'member') ? ' highlighted' : ''}`,
           html: '<span class="map-location-dot-inner"></span>',
           iconSize: [diameter, diameter],
           iconAnchor: [diameter / 2, diameter / 2],
@@ -287,9 +302,14 @@
 
       // Every roster map opens on South Whidbey. Regional member/gig records do
       // not pull the compact preview or expanded map toward Seattle/Tacoma.
-      const fitted = fitMemberBounds([]);
-      const initialBounds = L.latLngBounds([fitted.south, fitted.west], [fitted.north, fitted.east]);
-      map.fitBounds(initialBounds, { padding: compact ? [8, 8] : [24, 24], maxZoom: 13 });
+      const focusLocation = members[0] ?? gigs[0];
+      if (focusLocations && focusLocation && members.length + gigs.length === 1) {
+        map.setView([focusLocation.latitude, focusLocation.longitude], 13);
+      } else {
+        const fitted = fitMemberBounds(focusLocations ? [...members, ...gigs] : []);
+        const initialBounds = L.latLngBounds([fitted.south, fitted.west], [fitted.north, fitted.east]);
+        map.fitBounds(initialBounds, { padding: compact ? [8, 8] : [24, 24], maxZoom: 13 });
+      }
       map.setMinZoom(map.getZoom());
       drawMembers();
       const updateDetail = () => {
@@ -312,7 +332,9 @@
       map.on('zoomend moveend resize', drawMembers);
 
       if (picker && onPick) {
-        map.on('click', (event: Leaflet.LeafletMouseEvent) => onPick(event.latlng.lat, event.latlng.lng));
+        map.on('click', (event: Leaflet.LeafletMouseEvent) => {
+          if (pickEnabled) onPick(event.latlng.lat, event.latlng.lng);
+        });
       }
     }).catch((error) => {
       console.error('Member map failed to initialize', error);
@@ -330,7 +352,7 @@
 </script>
 
 <div class="map-shell">
-  <div class:compact class="map" bind:this={container} aria-label="Member home map"></div>
+  <div class:compact class:pick-enabled={pickEnabled} class="map" bind:this={container} aria-label="Member home map"></div>
   {#if loadError}<p class="map-error">The offline map could not be loaded.</p>{/if}
 </div>
 
@@ -366,6 +388,12 @@
     min-height: 190px;
   }
 
+  .map.pick-enabled {
+    cursor: crosshair;
+    outline: 3px solid rgba(122, 49, 82, 0.42);
+    outline-offset: -3px;
+  }
+
   :global(.map-datablock-host) {
     background: transparent;
     border: 0;
@@ -379,6 +407,7 @@
   }
 
   :global(.map-location-dot-inner) {
+    --pin-rgb: 36 33 36;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
@@ -387,6 +416,31 @@
     border-radius: 50%;
     background: #242124;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38);
+  }
+
+  :global(.map-location-dot.member .map-location-dot-inner) {
+    --pin-rgb: 122 49 82;
+    background: #7a3152;
+  }
+
+  :global(.map-location-dot.highlighted .map-location-dot-inner) {
+    animation: location-pin-pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes location-pin-pulse {
+    0%, 100% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38), 0 0 0 0 rgb(var(--pin-rgb) / 0.68);
+    }
+    50% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38), 0 0 0 8px rgb(var(--pin-rgb) / 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.map-location-dot.highlighted .map-location-dot-inner) {
+      animation: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38), 0 0 0 4px rgb(var(--pin-rgb) / 0.32);
+    }
   }
 
   :global(.map-datablock) {
@@ -431,14 +485,11 @@
     background: #242124;
   }
 
-  :global(.map-block-icon.member::before) {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #fffdf7;
-    box-shadow: 0 9px 0 3px #fffdf7;
-    transform: translateY(-4px);
+  :global(.map-instrument-icon) {
+    width: 25px;
+    height: 25px;
+    object-fit: contain;
+    filter: drop-shadow(0 1px 1px rgba(31, 20, 25, 0.35));
   }
 
   :global(.map-block-copy) {
@@ -479,11 +530,9 @@
     font-size: 0.85rem;
   }
 
-  :global(.map.compact .map-block-icon.member::before) {
-    width: 6px;
-    height: 6px;
-    box-shadow: 0 7px 0 2px #fffdf7;
-    transform: translateY(-3px);
+  :global(.map.compact .map-instrument-icon) {
+    width: 20px;
+    height: 20px;
   }
 
   :global(.map.compact .map-block-copy strong) {

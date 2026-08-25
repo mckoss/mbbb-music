@@ -20,6 +20,7 @@
   let originalHomeLatitude = $state<number | null>(null);
   let originalHomeLongitude = $state<number | null>(null);
   let homePinEdited = $state(false);
+  let mapPinEditing = $state(false);
   let loadedProfile = $state('');
   let locationMessage = $state('');
   $effect(() => {
@@ -38,6 +39,7 @@
     originalHomeLatitude = p.homeLatitude;
     originalHomeLongitude = p.homeLongitude;
     homePinEdited = submitted?.homePinEdited ?? false;
+    mapPinEditing = false;
   });
   const homePins = $derived<MemberLocation[]>(
     homeLatitude == null || homeLongitude == null
@@ -55,6 +57,7 @@
     homeLatitude = Number(latitude.toFixed(6));
     homeLongitude = Number(longitude.toFixed(6));
     homePinEdited = true;
+    mapPinEditing = false;
     locationMessage = 'Map pin placed. Save the profile to share it with the band.';
   }
 
@@ -193,18 +196,30 @@
       <input type="hidden" name="homePinEdited" value={homePinEdited ? '1' : '0'} />
       <div class="pin-actions">
         <button type="button" onclick={useCurrentLocation}>Use my current location</button>
+        {#if mapPinEditing}
+          <button type="button" class="clear-pin" onclick={() => {
+            mapPinEditing = false;
+            locationMessage = 'Map placement canceled.';
+          }}>Cancel map placement</button>
+        {:else}
+          <button type="button" onclick={() => {
+            mapPinEditing = true;
+            locationMessage = 'Pin placement is active. Tap the map once to choose the new location.';
+          }}>{homeLatitude == null || homeLongitude == null ? 'Place pin on map' : 'Move pin on map'}</button>
+        {/if}
         {#if homeLatitude != null && homeLongitude != null}
           <button type="button" class="clear-pin" onclick={() => {
             homeLatitude = null;
             homeLongitude = null;
             homePinEdited = true;
+            mapPinEditing = false;
             locationMessage = 'Map pin removed. Save the profile to apply.';
           }}>Remove pin</button>
         {/if}
       </div>
-      <p class="muted privacy">A changed address is sent once to OpenStreetMap for location. You can instead use your current location—or zoom and tap the map to place the pin yourself.</p>
+      <p class="muted privacy">A changed address is sent once to OpenStreetMap for location. You can instead use your current location—or choose Place/Move pin, then zoom and tap the map.</p>
       <div class="home-map">
-        <MemberMapCanvas members={homePins} picker onPick={placeHome} />
+        <MemberMapCanvas members={homePins} picker pickEnabled={mapPinEditing} highlightMembers onPick={placeHome} />
       </div>
       {#if locationMessage}<p class="location-message" aria-live="polite">{locationMessage}</p>{/if}
     </fieldset>

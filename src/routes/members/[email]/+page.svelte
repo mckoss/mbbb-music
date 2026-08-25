@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { directionsUrl } from '$lib/member-map';
+  import MemberMapCanvas from '$lib/components/MemberMapCanvas.svelte';
+  import { directionsUrl, isMapCoordinate, type MemberLocation } from '$lib/member-map';
 
   let { data } = $props();
   const m = $derived(data.member);
@@ -7,6 +8,17 @@
     `/members/${encodeURIComponent(m.email)}/avatar?v=${encodeURIComponent(m.avatarRev)}`
   );
   const alsoPlays = $derived(m.instruments.filter((i: string) => i !== m.primary));
+  const homeLocation = $derived<MemberLocation[]>(
+    m.address && isMapCoordinate(m.latitude, m.longitude)
+      ? [{
+          name: m.name,
+          address: m.address,
+          latitude: m.latitude!,
+          longitude: m.longitude!,
+          instrumentSlug: m.instrumentSlug,
+        }]
+      : []
+  );
 </script>
 
 <section class="member">
@@ -61,6 +73,12 @@
         <dd>{m.left}</dd>
       {/if}
     </dl>
+
+    {#if homeLocation.length}
+      <div class="home-map">
+        <MemberMapCanvas members={homeLocation} focusLocations highlightMembers />
+      </div>
+    {/if}
 
     {#if data.canEdit}
       <a class="edit" href={data.isSelf ? '/profile' : `/profile?email=${encodeURIComponent(m.email)}`}>
@@ -160,6 +178,14 @@
 
   .empty {
     color: var(--muted);
+  }
+
+  .home-map {
+    width: 100%;
+    height: 320px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
   }
 
   .edit {

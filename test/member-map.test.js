@@ -30,6 +30,21 @@ test('gig map fallbacks cover local and regional venues without geocoding', () =
   assert.equal(inferGigCoordinates('Mystery venue', 'Somewhere'), null);
 });
 
+test('named Freeland venues use their own coordinates before the town fallback', () => {
+  assert.deepEqual(inferGigCoordinates('Hierophant Meadery', '5586 Double Bluff Rd, Freeland, WA'), {
+    latitude: 48.00831,
+    longitude: -122.50722,
+  });
+  assert.deepEqual(inferGigCoordinates('Freeland Library', '5495 Harbor Ave, Freeland, WA'), {
+    latitude: 48.01173,
+    longitude: -122.52389,
+  });
+  assert.notDeepEqual(
+    inferGigCoordinates('Hierophant Meadery', 'Freeland, WA'),
+    inferGigCoordinates('Freeland Library', 'Freeland, WA'),
+  );
+});
+
 test('gig map dates are MMM-dd and the recent window is three calendar months', () => {
   assert.equal(shortGigDate('2026-08-05'), 'Aug-05');
   assert.equal(shortGigDate('bad'), 'bad');

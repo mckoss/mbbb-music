@@ -11,7 +11,7 @@ test('compact map is dots-only and expanded datablocks avoid every point', async
   await expect(preview.locator('.map-datablock')).toHaveCount(0);
   const compactDots = preview.locator('.map-location-dot');
   await expect.poll(() => compactDots.count()).toBeGreaterThanOrEqual(2);
-  await expect(compactDots.first().locator('.map-location-dot-inner')).toHaveCSS('background-color', 'rgb(36, 33, 36)');
+  await expect(preview.locator('.map-location-dot:not(.member)').first().locator('.map-location-dot-inner')).toHaveCSS('background-color', 'rgb(36, 33, 36)');
 
   await preview.click();
   const dialog = page.getByRole('dialog', { name: 'Band member home map' });
@@ -29,4 +29,27 @@ test('compact map is dots-only and expanded datablocks avoid every point', async
     for (let j = i + 1; j < blockRects.length; j++) expect(overlaps(blockRects[i] as DOMRect, blockRects[j] as DOMRect)).toBe(false);
     for (const dot of dotRects) expect(overlaps(blockRects[i] as DOMRect, dot as DOMRect)).toBe(false);
   }
+});
+
+test('profile map requires an explicit placement action and highlights the chosen home', async ({ page }) => {
+  await page.goto('/profile');
+  const map = page.locator('.home-map .map');
+  await expect(map).toBeVisible();
+  await expect(map).toHaveClass(/leaflet-container/);
+
+  const latitude = page.locator('input[name="homeLatitude"]');
+  const longitude = page.locator('input[name="homeLongitude"]');
+  await map.click({ position: { x: 100, y: 100 } });
+  await expect(latitude).toHaveValue('');
+  await expect(longitude).toHaveValue('');
+
+  await page.getByRole('button', { name: 'Place pin on map' }).click();
+  await expect(map).toHaveClass(/pick-enabled/);
+  await map.click({ position: { x: 120, y: 120 } });
+  await expect(latitude).not.toHaveValue('');
+  await expect(longitude).not.toHaveValue('');
+  const pin = page.locator('.home-map .map-location-dot.member.highlighted .map-location-dot-inner');
+  await expect(pin).toBeVisible();
+  await expect(pin).toHaveCSS('background-color', 'rgb(122, 49, 82)');
+  await expect(map).not.toHaveClass(/pick-enabled/);
 });

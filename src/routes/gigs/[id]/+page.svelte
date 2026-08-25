@@ -37,7 +37,7 @@
   import PracticePlayer from '$lib/components/PracticePlayer.svelte';
   import OfflineGigButton from '$lib/components/OfflineGigButton.svelte';
   import MemberMapCanvas from '$lib/components/MemberMapCanvas.svelte';
-  import type { MemberLocation } from '$lib/member-map';
+  import { inferGigCoordinates, isMapCoordinate, type GigMapLocation } from '$lib/member-map';
 
   const gig = $derived(page.data.gig as Gig);
   const catalog = $derived(page.data.catalog as Catalog);
@@ -144,17 +144,31 @@
     locationLatitude = gig.location?.latitude ?? null;
     locationLongitude = gig.location?.longitude ?? null;
   });
-  const gigLocationPin = $derived<MemberLocation[]>(
+  const gigLocationPin = $derived<GigMapLocation[]>(
     locationLatitude == null || locationLongitude == null
       ? []
       : [{
           name: gig.location?.name || gig.name,
+          date: gig.date,
           address: gig.location?.address ?? '',
           latitude: locationLatitude,
           longitude: locationLongitude,
-          instrumentSlug: null,
         }]
   );
+  const displayGigLocation = $derived.by((): GigMapLocation[] => {
+    const location = gig.location;
+    if (!location) return [];
+    const point = isMapCoordinate(location.latitude, location.longitude)
+      ? { latitude: location.latitude!, longitude: location.longitude! }
+      : inferGigCoordinates(location.name ?? null, location.address ?? null);
+    if (!point) return [];
+    return [{
+      name: location.name || gig.name,
+      date: gig.date,
+      address: location.address || location.name || gig.name,
+      ...point,
+    }];
+  });
   function placeGig(latitude: number, longitude: number): void {
     locationLatitude = Number(latitude.toFixed(6));
     locationLongitude = Number(longitude.toFixed(6));
@@ -693,7 +707,7 @@
         <input type="hidden" name="locationLongitude" value={locationLongitude ?? ''} />
         <p class="hint">Zoom and tap the map at the venue so it appears precisely on the member car-pool map.</p>
         <div class="location-map">
-          <MemberMapCanvas members={gigLocationPin} picker onPick={placeGig} />
+          <MemberMapCanvas members={[]} gigs={gigLocationPin} picker onPick={placeGig} />
         </div>
         {#if locationLatitude != null && locationLongitude != null}
           <button type="button" class="ghost-btn clear-location" onclick={() => {
@@ -746,55 +760,62 @@
     </form>
   {:else}
     <!-- Read-only info. -->
-    <div class="info">
-      <p class="when">{formatGigDate(gig.date)}</p>
-      {#if gig.callTime}
-        <p class="call-time">Call time {formatGigTime(gig.callTime)}</p>
-      {/if}
-      {#if gig.times?.length}
-        <ul class="time-list">
-          {#each gig.times as t, i (i)}
-            <li>{formatGigTimeRange(t)}</li>
-          {/each}
-        </ul>
-      {/if}
-      {#if gig.location}
-        <p class="loc">
-          {#if gig.location.name}<strong>{gig.location.name}</strong>{/if}
-          {#if gig.location.address}
-            <span class="addr">{gig.location.address}</span>
-            <a class="maps" href={mapsUrl(gig.location.address)} target="_blank" rel="noopener">
-              Open in Google Maps ↗
-            </a>
+    <div class="info" class:has-map={displayGigLocation.length > 0}>
+      <div class="info-copy">
+        <p class="when">{formatGigDate(gig.date)}</p>
+        {#if gig.callTime}
+          <p class="call-time">Call time {formatGigTime(gig.callTime)}</p>
+        {/if}
+        {#if gig.times?.length}
+          <ul class="time-list">
+            {#each gig.times as t, i (i)}
+              <li>{formatGigTimeRange(t)}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if gig.location}
+          <p class="loc">
+            {#if gig.location.name}<strong>{gig.location.name}</strong>{/if}
+            {#if gig.location.address}
+              <span class="addr">{gig.location.address}</span>
+              <a class="maps" href={mapsUrl(gig.location.address)} target="_blank" rel="noopener">
+                Open in Google Maps ↗
+              </a>
+            {/if}
+          </p>
+        {/if}
+        {#if gig.notes}<p class="notes">{gig.notes}</p>{/if}
+        {#if gig.publicNotes}
+          <p class="public-notes"><span class="tag public">Public</span> {gig.publicNotes}</p>
+        {/if}
+        {#if gig.eventUrl}
+          <p class="event-url">
+            <a href={gig.eventUrl} target="_blank" rel="noopener">{urlHost(gig.eventUrl)} ↗</a>
+            <span class="event-url-label">event page</span>
+          </p>
+        {/if}
+        {#if isValidDate(gig.date)}
+          <div class="add-cal">
+            <span class="add-cal-label">Add to my calendar:</span>
+            <a class="cal-btn" href={googleCalUrl} target="_blank" rel="noopener">Google Calendar</a>
+            <button type="button" class="cal-btn" onclick={downloadGigIcs}>
+              Apple / Outlook (.ics)
+            </button>
+          </div>
+        {/if}
+        <p class="public-link">
+          {#if gig.hidden}
+            <span class="tag private">Hidden</span> Not listed publicly.
+          {:else}
+            Listed on the <a href="/shows">public shows page</a>.
           {/if}
         </p>
-      {/if}
-      {#if gig.notes}<p class="notes">{gig.notes}</p>{/if}
-      {#if gig.publicNotes}
-        <p class="public-notes"><span class="tag public">Public</span> {gig.publicNotes}</p>
-      {/if}
-      {#if gig.eventUrl}
-        <p class="event-url">
-          <a href={gig.eventUrl} target="_blank" rel="noopener">{urlHost(gig.eventUrl)} ↗</a>
-          <span class="event-url-label">event page</span>
-        </p>
-      {/if}
-      {#if isValidDate(gig.date)}
-        <div class="add-cal">
-          <span class="add-cal-label">Add to my calendar:</span>
-          <a class="cal-btn" href={googleCalUrl} target="_blank" rel="noopener">Google Calendar</a>
-          <button type="button" class="cal-btn" onclick={downloadGigIcs}>
-            Apple / Outlook (.ics)
-          </button>
+      </div>
+      {#if displayGigLocation.length}
+        <div class="gig-map">
+          <MemberMapCanvas members={[]} gigs={displayGigLocation} compact focusLocations highlightLocations />
         </div>
       {/if}
-      <p class="public-link">
-        {#if gig.hidden}
-          <span class="tag private">Hidden</span> Not listed publicly.
-        {:else}
-          Listed on the <a href="/shows">public shows page</a>.
-        {/if}
-      </p>
     </div>
   {/if}
 
@@ -1280,9 +1301,37 @@
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 16px 20px;
+    display: grid;
+    gap: 16px;
+  }
+
+  .info.has-map {
+    grid-template-columns: minmax(0, 1fr) 190px;
+  }
+
+  .info-copy {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .gig-map {
+    width: 190px;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+  }
+
+  @media (max-width: 680px) {
+    .info.has-map {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .gig-map {
+      width: min(100%, 320px);
+    }
   }
 
   .when {

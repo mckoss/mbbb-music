@@ -33,5 +33,26 @@ test.describe('gig list', () => {
     // Band-only detail the public page never shows is visible here.
     await expect(page.locator('.call-time')).toHaveText('Call time 10:30 AM');
     await expect(page.getByText('Pay: $150')).toBeVisible();
+
+    const info = page.locator('.info');
+    const copy = info.locator('.info-copy');
+    const map = info.locator('.gig-map');
+    await expect(map).toBeVisible();
+    await expect(map.locator('.map-location-dot.gig.highlighted')).toBeVisible();
+
+    const wideCopy = await copy.boundingBox();
+    const wideMap = await map.boundingBox();
+    expect(wideCopy).not.toBeNull();
+    expect(wideMap).not.toBeNull();
+    expect(wideMap!.x).toBeGreaterThan(wideCopy!.x + wideCopy!.width);
+    expect(Math.abs(wideMap!.width - wideMap!.height)).toBeLessThan(2);
+
+    await page.setViewportSize({ width: 600, height: 900 });
+    const narrowCopy = await copy.boundingBox();
+    const narrowMap = await map.boundingBox();
+    expect(narrowCopy).not.toBeNull();
+    expect(narrowMap).not.toBeNull();
+    expect(narrowMap!.y).toBeGreaterThanOrEqual(narrowCopy!.y + narrowCopy!.height);
+    expect(Math.abs(narrowMap!.width - narrowMap!.height)).toBeLessThan(2);
   });
 });

@@ -86,6 +86,10 @@ export function directionsUrl(address: string): string {
 const PLACE_CENTERS: Array<{ matches: string[]; latitude: number; longitude: number }> = [
   { matches: ['whidbey island fairground', 'island county fairground'], latitude: 48.0301, longitude: -122.4029 },
   { matches: ['clinton ferry', 'ferrydock road'], latitude: 47.975, longitude: -122.3531 },
+  // Named Freeland venues must precede the town fallback. Otherwise every gig
+  // whose address ends in "Freeland" lands on the same town-center pin.
+  { matches: ['hierophant meadery', '5586 double bluff'], latitude: 48.00831, longitude: -122.50722 },
+  { matches: ['freeland library', 'freeland public library', '5495 harbor'], latitude: 48.01173, longitude: -122.52389 },
   { matches: ['greenbank'], latitude: 48.0986, longitude: -122.5722 },
   { matches: ['freeland'], latitude: 48.0096, longitude: -122.5244 },
   { matches: ['langley'], latitude: 48.04, longitude: -122.4094 },
