@@ -78,6 +78,9 @@ export function isDataRequest(url: URL): boolean {
   // SvelteKit client-side load data, plus the catalog endpoint.
   return url.pathname.endsWith('/__data.json') || url.pathname === '/api/catalog';
 }
+export function isExplicitInvalidation(url: URL): boolean {
+  return [...url.searchParams.keys()].some((k) => k.startsWith('x-sveltekit'));
+}
 export function isAvatarRequest(url: URL): boolean {
   return url.pathname.startsWith('/members/') && url.pathname.endsWith('/avatar');
 }
@@ -308,6 +311,36 @@ export async function networkOnly(
   }
 }
 
+/**
+ * Data reloads triggered by an explicit SvelteKit invalidation should see the
+ * live server first. Otherwise a successful edit can repaint from the stale
+ * page-data cache, making set-list mutations look like no-ops until a later
+ * background nudge lands. Keep the cached copy as the offline fallback.
+ */
+export async function networkFirst(
+  env: SwEnv,
+  cacheName: string,
+  request: Request,
+  fallback: () => Response,
+): Promise<Response> {
+  const cache = await env.caches.open(cacheName);
+  const key = cacheKey(request);
+  const hit = await cache.match(key);
+
+  if (env.online()) {
+    try {
+      const res = await fetchWithTimeout(env.fetch, request, env.timeoutMs);
+      env.markReachable();
+      if (res.ok) env.waitUntil(cache.put(key, res.clone()));
+      return res;
+    } catch {
+      env.markOffline();
+    }
+  }
+
+  return hit ?? fallback();
+}
+
 /** Last-resort: serve from any cache, else a timeout-bounded network fetch. */
 async function cacheAnyFirst(env: SwEnv, request: Request): Promise<Response> {
   const hit = await env.caches.match(request);
@@ -369,6 +402,13 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
     // The profile editor is always fresh — never a cached/stale copy, never a
     // nudge. Editing needs the live server state (and isn't possible offline).
     if (isAlwaysFreshRoute(url)) return networkOnly(env, request, offline);
+
+    // SvelteKit appends x-sveltekit-invalidated after enhanced form actions and
+    // invalidateAll(). That is a deliberate "refresh now", so don't satisfy it
+    // from the stale-while-revalidate cache unless the network is unavailable.
+    if (isDataRequest(url) && isExplicitInvalidation(url)) {
+      return networkFirst(env, pagesCache(env.version), request, offline);
+    }
 
     return staleWhileRevalidate(env, pagesCache(env.version), request, {
       notify: isDataRequest(url),

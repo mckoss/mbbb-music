@@ -360,6 +360,26 @@ test('SWR keys ignore SvelteKit transient params so a reload hits the cache', as
   await settle(waited);
 });
 
+test('explicitly invalidated data loads fetch fresh data before cached data', async () => {
+  const { env, waited } = makeEnv({ fetch: okFetch('FRESH') });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put('https://app.test/gigs/a/__data.json', new Response('STALE'));
+
+  const res = await routeGet(env, req('/gigs/a/__data.json?x-sveltekit-invalidated=01'));
+  assert.equal(await res.text(), 'FRESH');
+  await settle(waited);
+  assert.equal(await (await cache.match('https://app.test/gigs/a/__data.json')).text(), 'FRESH');
+});
+
+test('explicitly invalidated data loads fall back to cached data while offline', async () => {
+  const { env } = makeEnv({ online: () => false, fetch: failFetch });
+  const cache = await env.caches.open(pagesCache('test'));
+  await cache.put('https://app.test/gigs/a/__data.json', new Response('CACHED'));
+
+  const res = await routeGet(env, req('/gigs/a/__data.json?x-sveltekit-invalidated=01'));
+  assert.equal(await res.text(), 'CACHED');
+});
+
 test('routeGet serves the profile editor fresh from the network, never cached, no nudge', async () => {
   // The editor must mirror the server. A cached copy (here pretending to be a
   // different member's, or your own) must never be served, and no refresh nudge
