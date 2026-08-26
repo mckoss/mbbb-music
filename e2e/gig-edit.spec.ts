@@ -34,6 +34,16 @@ test('an organizer can rename a set inline', async ({ page }) => {
   await expect(page.locator('.set-title h3')).toHaveText('Opener');
 });
 
+test('offline gig edits show a clear message instead of submitting', async ({ page, context }) => {
+  await page.goto(GIG);
+  await context.setOffline(true);
+
+  await page.locator('.add-set button').click();
+  await expect(page.getByText("You're offline. Gig edits need a connection")).toBeVisible();
+
+  await context.setOffline(false);
+});
+
 test('a partial updateInfo post cannot wipe fields it did not carry', async ({
   page,
   request,

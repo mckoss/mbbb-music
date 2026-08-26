@@ -133,6 +133,42 @@
     if (result.type === 'success') markSelfMutation();
   };
 
+  let online = $state(true);
+  let offlineEditMessage = $state('');
+  $effect(() => {
+    if (!browser) return;
+    const setOnline = () => {
+      online = navigator.onLine;
+      if (online) offlineEditMessage = '';
+    };
+    setOnline();
+    addEventListener('online', setOnline);
+    addEventListener('offline', setOnline);
+    return () => {
+      removeEventListener('online', setOnline);
+      removeEventListener('offline', setOnline);
+    };
+  });
+
+  function offlineEditGuard(node: HTMLElement) {
+    const onSubmit = (event: SubmitEvent) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if ((form.method || 'get').toLowerCase() === 'get') return;
+      if (navigator.onLine) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      online = false;
+      offlineEditMessage = "You're offline. Gig edits need a connection, so reconnect before changing the set list.";
+    };
+    node.addEventListener('submit', onSubmit, { capture: true });
+    return {
+      destroy() {
+        node.removeEventListener('submit', onSubmit, { capture: true });
+      },
+    };
+  }
+
   // --- Info editing ---------------------------------------------------------
   let editing = $state(false);
   let locationLatitude = $state<number | null>(null);
@@ -629,7 +665,7 @@
   </div>
 {/if}
 
-<section class="detail" class:hidden={performing}>
+<section class="detail" class:hidden={performing} use:offlineEditGuard>
   <a class="back" href="/gigs">← All gigs</a>
 
   <header class="head">
@@ -651,6 +687,14 @@
       </div>
     {/if}
   </header>
+
+  {#if offlineEditMessage}
+    <p class="offline-edit" role="status" aria-live="polite">{offlineEditMessage}</p>
+  {:else if canEdit && !online}
+    <p class="offline-edit" role="status" aria-live="polite">
+      You're offline. Gig edits need a connection.
+    </p>
+  {/if}
 
   {#if editing && canEdit}
     <!-- Info editor. Up to a few time slots, plus location + notes. -->
@@ -1270,6 +1314,17 @@
     border-radius: 999px;
     padding: 2px 9px;
     white-space: nowrap;
+  }
+
+  .offline-edit {
+    margin: -8px 0 0;
+    padding: 10px 12px;
+    border: 1px solid #d9a441;
+    border-radius: 8px;
+    background: #fff8e2;
+    color: #6f4b00;
+    font-size: 0.92rem;
+    font-weight: 700;
   }
 
   h3 {
