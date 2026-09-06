@@ -14,6 +14,11 @@
   import { viewHref, viewKind, type ViewKind } from '$lib/view';
   import { youtubeId, youtubeThumb } from '$lib/youtube';
   import { writeFetch } from '$lib/client-version';
+  import TuneFilters from '$lib/components/TuneFilters.svelte';
+  import { defaultStatuses, filterTunes } from '$lib/tune-filters';
+
+  let query = $state('');
+  let show = $state(defaultStatuses());
 
   // Written-key choices a part can be corrected to ('' = the instrument default).
   const KEY_CHOICES = [
@@ -28,6 +33,7 @@
 
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
+  const filtered = $derived(filterTunes(tunes, query, show));
   const instruments = $derived(catalog.instruments ?? []);
 
   // Friendly open URL (no raw sha leak), falling back to the blob for any sha
@@ -184,7 +190,7 @@
 
   // One row per tune; cells aligned to `columns`.
   const rows = $derived(
-    tunes.map((t) => ({
+    filtered.map((t) => ({
       slug: t.slug,
       title: t.title,
       status: t.status,
@@ -508,7 +514,8 @@
         </p>
       </HelpPopup>
     </div>
-    <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
+    <p class="count">{filtered.length} of {tunes.length} songs · {instruments.length} instruments</p>
+    <TuneFilters bind:query bind:show />
 
     <p class="back"><a href="/corrections">View recent metadata edits →</a></p>
     {#if isAdmin}<p class="back"><a href="/library-status/parts">Manage part choices →</a></p>{/if}
@@ -665,7 +672,9 @@
           {/each}
         {/each}
         {#if rows.length === 0}
-          <tr><td class="empty" colspan={columns.length + 1}>No songs in the library yet.</td></tr>
+          <tr><td class="empty" colspan={columns.length + 1}>
+            {tunes.length === 0 ? 'No songs in the library yet.' : 'No songs match the selected filters.'}
+          </td></tr>
         {/if}
       </tbody>
     </table>

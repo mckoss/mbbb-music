@@ -5,7 +5,9 @@
   import { activePdf, partsFor, type ActivePdf } from '$lib/resolve';
   import { scoreSearch } from '$lib/nav';
   import { instrumentDisplay } from '$lib/format';
-  import { ALL_STATUSES, STATUS_DESC, type SongStatus } from '$lib/song-status';
+  import { STATUS_DESC } from '$lib/song-status';
+  import TuneFilters from './TuneFilters.svelte';
+  import { defaultStatuses, filterTunes } from '$lib/tune-filters';
   import { cachedRenderShas } from '$lib/offline';
 
   let { tunes }: { tunes: Tune[] } = $props();
@@ -29,21 +31,8 @@
 
   // Status filter chips. Archived songs are hidden by default; toggle a chip to
   // include/exclude that status. Ephemeral (resets per visit), like the search.
-  let show = $state<Record<SongStatus, boolean>>({
-    Always: true,
-    Active: true,
-    Learning: true,
-    Archive: false,
-    Unfiled: true,
-  });
-
-  const filtered = $derived(
-    tunes.filter(
-      (t) =>
-        show[t.status] &&
-        (!$search.trim() || t.title.toLowerCase().includes($search.trim().toLowerCase()))
-    )
-  );
+  let show = $state(defaultStatuses());
+  const filtered = $derived(filterTunes(tunes, $search, show));
 
   const FORMAT_ORDER = ['letter', 'lyre'] as const;
   const FORMAT_LABEL: Record<string, string> = { letter: 'Letter', lyre: 'Lyre' };
@@ -93,25 +82,7 @@
   <header>
     <h2>Complete Collection</h2>
     <p class="count">{filtered.length} of {tunes.length} titles</p>
-    <input
-      class="search"
-      type="search"
-      placeholder="Search titles…"
-      bind:value={$search}
-      aria-label="Search titles"
-    />
-    <div class="status-filter" role="group" aria-label="Filter by status">
-      {#each ALL_STATUSES as s (s)}
-        <button
-          type="button"
-          class="chip"
-          class:on={show[s]}
-          title={STATUS_DESC[s]}
-          aria-pressed={show[s]}
-          onclick={() => (show[s] = !show[s])}
-        >{s}</button>
-      {/each}
-    </div>
+    <TuneFilters bind:query={$search} bind:show />
   </header>
 
   <ul class="rows">
@@ -166,40 +137,6 @@
   .count {
     color: var(--muted);
     font-size: 0.82rem;
-  }
-
-  .search {
-    width: 100%;
-    min-height: 44px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 0 12px;
-    background: var(--paper);
-    color: var(--ink);
-  }
-
-  .status-filter {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-  }
-
-  .chip {
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 4px 12px;
-    font-size: 0.76rem;
-    font-weight: 600;
-    background: var(--paper);
-    color: var(--muted);
-    cursor: pointer;
-  }
-
-  .chip.on {
-    background: var(--accent);
-    border-color: var(--accent-strong);
-    color: #fffdf7;
   }
 
   .rows {
