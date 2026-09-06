@@ -1,5 +1,30 @@
 # MBBB Music
 
+### Shared charts and player part choices
+
+Charts labelled by role (Melody, Harmony, Backbeat, Solo, Bass, or numbered
+parts) and written transposition appear in candidate instrument buckets. The
+Part dropdown preserves the role, transposition, and clef. An unspecified clef
+is labelled explicitly; players should check notation and range. Shared charts
+remain one stored asset, with standardized role-based download filenames.
+
+Score and gig practice/performance views remember the selected chart per
+account, song, instrument, and format on that device. A hidden or unavailable
+choice falls back to an available chart.
+
+Admins can open **Library Status → Manage part choices** to hide a chart for
+one instrument or all instruments, restore hidden choices, or assign an
+instrument to an unresolved chart. Hiding affects player choices and newly
+generated packets; it does not delete files. Visibility changes are corrections
+with history and survive Drive syncs. Existing downloaded offline packets remain
+snapshots until refreshed.
+
+Shared-part detection and newly recognized instrument aliases also apply when
+reading an existing manifest, so deployment does not require a re-import.
+`npm run sync` refreshes the local stored metadata from Drive; production's
+**Sync from Drive** button refreshes its own library. Human corrections take
+precedence over automatic classification.
+
 The Mutiny Bay Brass Band music library and distribution app.
 
 The goal is to turn the band's sheet-music collection into a searchable,

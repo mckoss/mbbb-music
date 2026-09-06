@@ -16,6 +16,10 @@ export interface SessionUser {
 }
 
 export interface CatalogPart {
+  role?: string | null;
+  clef?: string | null;
+  shared?: boolean;
+  hiddenGlobally?: boolean;
   sha256: string;
   driveFileId?: string; // canonical Drive file id, for targeting metadata corrections
   folderId?: string; // song-folder Drive id, for folder-level song reassignment
@@ -102,6 +106,8 @@ export interface Tune {
   files: CatalogAsset[];
   unreachable: UnreachableItem[];
   masked: MaskedItem[]; // manual scores/parts hidden by a generated replacement
+  hiddenParts?: CatalogPart[]; // reversible admin exclusions from player choices
+  unclassified?: CatalogAsset[]; // shared charts whose notation needs review
 }
 
 export interface Instrument {

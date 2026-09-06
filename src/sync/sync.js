@@ -383,6 +383,8 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     key: meta.key,
     partNumber: meta.partNumber,
     partNumbers: meta.partNumbers,
+    role: meta.role,
+    clef: meta.clef,
     syncedAt: timestamp,
   });
 }

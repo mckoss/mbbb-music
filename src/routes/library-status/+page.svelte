@@ -511,6 +511,7 @@
     <p class="count">{tunes.length} songs · {instruments.length} instruments</p>
 
     <p class="back"><a href="/corrections">View recent metadata edits →</a></p>
+    {#if isAdmin}<p class="back"><a href="/library-status/parts">Manage part choices →</a></p>{/if}
 
     <ul class="legend">
       {#each legend as l (l.key)}

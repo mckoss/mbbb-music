@@ -11,6 +11,8 @@
   import { track } from '$lib/track';
   import PracticePlayer from './PracticePlayer.svelte';
   import PdfPager from './PdfPager.svelte';
+  import { partChoices } from '$lib/stores';
+  import { preferenceKey } from '$lib/part-preferences';
 
   // The overlay is driven entirely by the URL: it's open when ?view=score, and
   // shows the PDF for ?song / ?instrument / ?format / ?part (each falling back to
@@ -54,13 +56,15 @@
   // score(s), and notes. The chosen one is addressed by sha (?part); absent or
   // stale, fall back to the first (a part, else a real score).
   const docs = $derived(open && tune ? viewableDocs(tune, instrument, format) : []);
-  const current = $derived(docs.find((d) => d.sha === partSha) ?? docs[0] ?? null);
+  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format) : []);
+  const choiceKey = $derived(preferenceKey(page.data.user?.email ?? '', tune?.slug ?? '', instrument, format));
+  const savedPart = $derived(parts.some((p) => p.sha256 === $partChoices[choiceKey]) ? $partChoices[choiceKey] : null);
+  const current = $derived(docs.find((d) => d.sha === partSha) ?? docs.find((d) => d.sha === savedPart) ?? docs[0] ?? null);
   const title = $derived(tune?.title ?? '');
 
   // The Part picker offers the instrument's parts only — "which part of my
   // instrument". The full-band score and notes are still viewable, but reached
   // through the Files menu, so this dropdown stays focused and uncluttered.
-  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format) : []);
   const currentIsPart = $derived(current ? parts.some((p) => p.sha256 === current.sha) : false);
   // If a non-part doc (full score / notes) is being viewed via the Files menu,
   // surface it as a leading option so the picker still reflects what's on screen
@@ -164,6 +168,9 @@
   }
 
   function setPart(value: string) {
+    if (parts.some((part) => part.sha256 === value)) {
+      partChoices.update((choices) => ({ ...choices, [choiceKey]: value }));
+    }
     const p = new URLSearchParams(page.url.search);
     if (value === '') p.delete('part');
     else p.set('part', value);

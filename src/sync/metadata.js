@@ -7,6 +7,7 @@
 
 import { slugify, slugifyStem } from './slugify.js';
 import { detectInstrument, detectKey, detectPartNumbers } from './instruments.js';
+import { sharedPartMetadata } from './shared-parts.js';
 
 /**
  * Strip a known leading song prefix from a filename stem so instrument/key
@@ -45,10 +46,10 @@ export function detectAssetMetadata({ originalName, songTitle }) {
   const descriptor = stripSongPrefix(stemSlug, songSlug).replace(/-/g, ' ');
 
   const inst = detectInstrument(descriptor) ?? detectInstrument(originalName);
-  // Part numbers are only meaningful for a known instrument ("Trumpet 2"); a
-  // trailing number with no instrument ("MDL Bass Line 5") is not a part. A
-  // combined chart carries several ("Trumpet 1 & 2" → [1,2]).
+  // Numbers belong to known instruments or shared charts with a transposition;
+  // an unexplained suffix ("MDL Bass Line 5") isn't a part assignment.
   const nums = inst ? detectPartNumbers(originalName) : [];
+  const shared = sharedPartMetadata(descriptor);
   return {
     songTitle,
     songTitleSlug: songSlug,
@@ -57,5 +58,11 @@ export function detectAssetMetadata({ originalName, songTitle }) {
     key: detectKey(originalName),
     partNumber: nums[0] ?? null,
     partNumbers: nums.length > 1 ? nums : null,
+    ...(shared ? {
+      role: shared.role,
+      clef: shared.clef,
+      key: shared.key || detectKey(originalName),
+      ...(!inst ? { partNumber: shared.partNumber, partNumbers: shared.partNumbers ?? null } : {}),
+    } : {}),
   };
 }

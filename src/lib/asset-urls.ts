@@ -20,6 +20,9 @@ import { stripCopyOf } from './format.js';
 // the player-facing catalog (src/lib/types) and the richer server catalog
 // (src/sync/catalog, which omits e.g. `status`) satisfy them without a cast.
 interface PartLike {
+  shared?: boolean;
+  role?: string | null;
+  clef?: string | null;
   sha256: string;
   instrumentSlug: string;
   key: string | null;
@@ -73,7 +76,9 @@ function partToken(p: PartLike): string {
 
 /** Instrument-part PDF name: `<instrument>[-<key>][-part<n>][-lyre]`. */
 function partName(p: PartLike): string {
-  const bits = [p.instrumentSlug || 'part'];
+  const bits = [p.shared ? 'shared' : p.instrumentSlug || 'part'];
+  if (p.role) bits.push(slugify(p.role));
+  if (p.clef) bits.push(`${p.clef}-clef`);
   if (p.key) bits.push(slugify(p.key));
   const pt = partToken(p);
   if (pt) bits.push(pt);
@@ -86,7 +91,9 @@ function partName(p: PartLike): string {
  *  its format. Combined with the song prefix in {@link addTune} this yields
  *  `<song>-<instrument>[-<key>][-part<n>]-<format>.pdf`. */
 function partDownloadName(p: PartLike): string {
-  const bits = [p.instrumentSlug || 'part'];
+  const bits = [p.shared ? 'shared' : p.instrumentSlug || 'part'];
+  if (p.role) bits.push(slugify(p.role));
+  if (p.clef) bits.push(`${p.clef}-clef`);
   if (p.key) bits.push(slugify(p.key));
   const pt = partToken(p);
   if (pt) bits.push(pt);
@@ -143,7 +150,12 @@ function addTune(idx: AssetIndex, t: TuneLike): void {
   const song = songSeg(t);
 
   // PDFs (parts, full scores, notes) all live under /score/<song>/.
-  for (const p of t.parts) place(idx, `score/${song}`, partName(p), 'pdf', p.sha256, `${song}-${partDownloadName(p)}`);
+  const shared = new Set<string>();
+  for (const p of t.parts) {
+    if (p.shared && shared.has(p.sha256)) continue;
+    if (p.shared) shared.add(p.sha256);
+    place(idx, `score/${song}`, partName(p), 'pdf', p.sha256, `${song}-${partDownloadName(p)}`);
+  }
   for (const s of t.scores) place(idx, `score/${song}`, stem(s, 'full-score'), 'pdf', s.sha256, `${song}-${stem(s, 'full-score')}`);
   for (const n of t.notes) place(idx, `score/${song}`, `notes-${stem(n, 'notes')}`, 'pdf', n.sha256, `${song}-notes-${stem(n, 'notes')}`);
 

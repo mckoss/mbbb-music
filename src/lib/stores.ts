@@ -1,5 +1,6 @@
 import { writable, type Writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { readPartPreferences } from './part-preferences.js';
 
 export type PrintFormat = 'letter' | 'lyre';
 
@@ -38,6 +39,16 @@ export const printFormat = persistedCookie<PrintFormat>('mbbb_format', 'letter')
 
 // Free-text filter for the collection list.
 export const search = writable<string>('');
+
+function initialPartChoices(): Record<string, string> {
+  try { return browser ? readPartPreferences(window.localStorage) : {}; }
+  catch { return {}; }
+}
+export const partChoices = writable<Record<string, string>>(initialPartChoices());
+if (browser) partChoices.subscribe((choices) => {
+  try { window.localStorage.setItem('mbbb_part_choices', JSON.stringify(choices)); }
+  catch { /* Storage blocked/full: the selection still works for this visit. */ }
+});
 
 // (The selected song, the open score view, instrument and format are all held
 // in the URL — ?song / ?view=score / ?instrument / ?format — not stores, so they

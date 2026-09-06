@@ -84,11 +84,24 @@ function foldForMatch(s) {
  */
 export function detectInstrument(text) {
   const haystack = foldForMatch(text);
+  const aliases = [
+    [/\bmello\b/, 'mellophone'],
+    [/\bbone(?:s)?\b/, 'trombone'],
+    [/\bbearitone\b/, 'euphonium'],
+    [/\bnet\s*\d+\b/, 'clarinet'],
+    [/\btenors\b(?!\s*drum)/, 'tenor-sax'],
+    [/\b(?:caisse claire|grosses? caisses?|tambours? tenor|cymbales?|tambourine)\b/, 'drums'],
+    [/\b(?:cor en fa|corno in f|waldhorn)\b/, 'french-horn'],
+    [/\bbaryton\b/, 'euphonium'],
+  ];
+  // Specific canonical names precede shorthand (e.g. Saxophone Baryton).
   for (const inst of INSTRUMENTS) {
     if (inst.match.some((needle) => haystack.includes(foldForMatch(needle)))) {
       return inst;
     }
   }
+  const alias = aliases.find(([pattern]) => pattern.test(haystack));
+  if (alias) return INSTRUMENTS.find((i) => i.slug === alias[1]) ?? null;
   return null;
 }
 
@@ -150,6 +163,8 @@ const KEY_PATTERNS = [
  */
 export function detectKey(text) {
   const haystack = String(text ?? '').replace(/_/g, ' ');
+  if (/\b(?:en\s+)?sib\b/i.test(haystack)) return 'bflat';
+  if (/\b(?:en\s+)?mib\b/i.test(haystack)) return 'eflat';
   for (const { slug, re } of KEY_PATTERNS) {
     if (re.test(haystack)) return slug;
   }
@@ -194,8 +209,8 @@ export function detectPartNumber(text) {
 
 // One number, or a run of them joined by a separator (`&`, `and`, `,`, `+`, `-`,
 // `–`, `to`, with optional spaces/underscores) — a combined part like "1 & 2".
-const PART_RUN = '\\d{1,2}(?:[\\s_]*(?:&|and|\\+|,|-|–|to)[\\s_]*\\d{1,2})*';
-const PART_EXPLICIT = new RegExp(`\\bpart[\\s_-]*(${PART_RUN})`, 'i');
+const PART_RUN = '\\d{1,2}(?:[\\s_]*(?:&|and|\\+|,|/|_|-|–|to)[\\s_]*\\d{1,2})*';
+const PART_EXPLICIT = new RegExp(`(?:^|[\\s_-])part[\\s_-]*(${PART_RUN})`, 'i');
 const PART_TRAILING = new RegExp(`(?:^|[\\s_-])(${PART_RUN})\\s*$`, 'i');
 
 /**
@@ -211,7 +226,7 @@ const PART_TRAILING = new RegExp(`(?:^|[\\s_-])(${PART_RUN})\\s*$`, 'i');
  * @returns {number[]}
  */
 export function detectPartNumbers(text) {
-  const s = String(text ?? '').replace(/\.[^.]+$/, '');
+  const s = String(text ?? '').replace(/\.[^.]+$/, '').replace(/[\s_-]*\([^)]*\)\s*$/, '');
   const group = (s.match(PART_EXPLICIT) || s.match(PART_TRAILING))?.[1];
   if (!group) return [];
   const nums = (group.match(/\d{1,2}/g) || []).map(Number).filter((n) => Number.isInteger(n) && n >= 1);

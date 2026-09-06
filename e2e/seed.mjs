@@ -10,16 +10,19 @@
 // SQLite's "attempt to write a readonly database" (SQLITE_READONLY_DBMOVED: the
 // file's inode moved). Sequencing the wipe ahead of the server in one shell
 // command removes that race entirely — nothing deletes the dir after boot.
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 /** The isolated data dir the e2e app runs against (passed to the app as MBBB_DATA_DIR). */
-export const E2E_DATA_DIR = resolve(here, '.data');
+export const E2E_DATA_DIR = resolve(tmpdir(), `mbbb-music-e2e-${createHash('sha256').update(here).digest('hex').slice(0, 12)}`);
 
-export function seedDataDir() {
+export async function seedDataDir() {
   // A clean slate each run, so a prior run's mutations (RSVPs, edits) can't leak
   // in. gigs.ts reads gigs.json fresh per request, so seeding just that file is
   // enough; the sqlite stores (members/rsvps/activity) are created lazily on
@@ -27,10 +30,23 @@ export function seedDataDir() {
   rmSync(E2E_DATA_DIR, { recursive: true, force: true });
   mkdirSync(E2E_DATA_DIR, { recursive: true });
   cpSync(resolve(here, 'fixtures/gigs.json'), resolve(E2E_DATA_DIR, 'gigs.json'));
+  const files = {};
+  mkdirSync(resolve(E2E_DATA_DIR, 'cas'));
+  for (const role of ['Melody', 'Harmony']) {
+    const pdf = await PDFDocument.create();
+    pdf.addPage().drawText(`Synthetic ${role} chart`);
+    const bytes = await pdf.save();
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    writeFileSync(resolve(E2E_DATA_DIR, 'cas', sha256), bytes);
+    const id = `shared-${role.toLowerCase()}`;
+    files[id] = { driveFileId: id, sha256, status: 'synced', assetType: 'pdf', originalName: `Example-${role}-Bb-treble_clef.pdf`,
+      originalFolder: 'Example', songTitle: 'Example', songTitleSlug: 'example', sourceFolderLabel: 'fixture' };
+  }
+  writeFileSync(resolve(E2E_DATA_DIR, 'manifest.json'), JSON.stringify({ files }));
 }
 
 // Seed only when run directly (`node e2e/seed.mjs`), not when the Playwright
 // config imports this module for the E2E_DATA_DIR constant.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  seedDataDir();
+  await seedDataDir();
 }

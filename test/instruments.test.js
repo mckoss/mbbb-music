@@ -69,7 +69,7 @@ test("MuseScore's foreign-language instrument names are detected", () => {
 test('bare French "Baryton" is NOT pulled into bari sax', () => {
   // French "Baryton" alone usually means the baritone horn, not the bari sax, so
   // only the qualified "Saxophone Baryton" maps to bari sax. Bare "Baryton" is
-  // left for an admin to resolve rather than guessed wrong.
-  assert.equal(slugOf('Song - Baryton'), null);
+  // normalized to baritone horn / euphonium.
+  assert.equal(slugOf('Song - Baryton'), 'euphonium');
   assert.equal(slugOf('Song - Saxophone Baryton'), 'bari-sax');
 });

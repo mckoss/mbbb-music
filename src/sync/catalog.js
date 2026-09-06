@@ -13,6 +13,8 @@
 import { slugify, slugifyStem } from './slugify.js';
 import { DEFAULT_KEY_BY_SLUG, detectPartNumbers, instrumentLabel } from './instruments.js';
 import { isJunkName, NATIVE_PDF_EXPORT } from './classify.js';
+import { sharedPartMetadata, compatibleInstruments } from './shared-parts.js';
+import { detectAssetMetadata } from './metadata.js';
 
 /**
  * Effective asset type for routing, tolerant of older manifests. Native Google
@@ -78,10 +80,16 @@ export function applyCorrections(manifest, overlay) {
       if (fpatch) {
         if (fpatch.songSlug) reassign(e, fpatch.songSlug);
         if (fpatch.instrumentSlug != null) {
+          e.instrumentAssigned = true;
           e.instrumentSlug = fpatch.instrumentSlug || null;
           e.instrument = instrumentLabel(fpatch.instrumentSlug) ?? e.instrument;
         }
         if ('key' in fpatch) e.key = fpatch.key || null;
+        if ('hidden' in fpatch) e.hidden = fpatch.hidden === 'true';
+        if ('hiddenInstruments' in fpatch) {
+          try { e.hiddenInstruments = JSON.parse(fpatch.hiddenInstruments || '[]'); }
+          catch { e.hiddenInstruments = []; }
+        }
         if ('partNumber' in fpatch) {
           const n = Number.parseInt(String(fpatch.partNumber), 10);
           e.partNumber = Number.isInteger(n) && n >= 1 ? n : null;
@@ -419,7 +427,10 @@ function dedupeAudio(audio, pri) {
  */
 function dedupeParts(parts, pri) {
   const bySha = new Map();
-  for (const p of parts) if (!bySha.has(p.sha256)) bySha.set(p.sha256, p);
+  for (const p of parts) {
+    const key = `${p.sha256}:${p.instrumentSlug}`;
+    if (!bySha.has(key)) bySha.set(key, p);
+  }
   const out = [...bySha.values()].sort(
     (a, b) =>
       comparePart(a, b) ||
@@ -435,6 +446,7 @@ function dedupeParts(parts, pri) {
 /**
  * @typedef {Object} CatalogPart
  * @property {string} sha256
+ * @property {string} [driveFileId]
  * @property {string} instrumentSlug
  * @property {string|null} instrument
  * @property {string|null} key           Effective key (explicit or instrument default).
@@ -444,6 +456,7 @@ function dedupeParts(parts, pri) {
  *
  * @typedef {Object} CatalogAsset
  * @property {string} sha256
+ * @property {string} [driveFileId]
  * @property {string|null} originalName
  * @property {string|null} source         Canonical source label this copy came from.
  * @property {string} [assetType]         Present for images/other files, to label/route them.
@@ -453,6 +466,8 @@ function dedupeParts(parts, pri) {
  * @property {string} title
  * @property {string|null} lastModified
  * @property {CatalogPart[]} parts        Per-instrument PDF parts.
+ * @property {CatalogPart[]} hiddenParts  Admin-hidden instrument associations.
+ * @property {CatalogAsset[]} unclassified Shared charts needing notation review.
  * @property {CatalogAsset[]} scores      Instrument-less true PDFs (full/band scores).
  * @property {CatalogAsset[]} notes       Google Docs/Sheets exported to PDF — viewable
  *                                        notes/chord sheets, never a printable score.
@@ -673,6 +688,13 @@ const MASKED_WHEN_GENERATED = ['parts', 'scores'];
  * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], sources: string[], uniqueCount:number, liveCount:number }}
  */
 export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = [], generatedSourceLabels = []) {
+  // Fill newly recognized names in old manifests; an explicit human correction
+  // (including clearing an instrument) always wins.
+  manifest = { ...manifest, files: Object.fromEntries(Object.entries(manifest.files || {}).map(([id, e]) => {
+    if (e.instrumentSlug || e.instrumentAssigned || effectiveAssetType(e) !== 'pdf') return [id, e];
+    const meta = detectAssetMetadata({ originalName: e.originalName, songTitle: e.songTitle });
+    return [id, meta.instrumentSlug ? { ...e, instrumentSlug: meta.instrumentSlug, instrument: meta.instrument } : e];
+  })) };
   const pri = sourcePriority(sourceLabels, manifest);
   const { canonical, liveCount } = canonicalByContent(manifest, pri);
   const loose = new Set(looseSourceLabels || []);
@@ -709,7 +731,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
     if (!song) {
-      song = { slug, title, lastModified: null, parts: [], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [], masked: [] };
+      song = { slug, title, lastModified: null, parts: [], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [], masked: [], hiddenParts: [], unclassified: [] };
       bySong.set(slug, song);
     }
     return song;
@@ -735,24 +757,36 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       ...(isGenerated ? { generated: true } : {}),
     };
     const at = effectiveAssetType(e);
-    if (at === 'pdf' && e.instrumentSlug) {
+    // Derive shared descriptors at read time too, so existing manifests benefit
+    // immediately on deployment without requiring a Drive refresh.
+    const detectedShared = at === 'pdf' ? sharedPartMetadata(e.originalName, song.title) : null;
+    const shared = detectedShared ? { ...detectedShared, key: e.key || detectedShared.key } : null;
+    const candidates = e.instrumentSlug ? [e.instrumentSlug] : e.instrumentAssigned ? [] : compatibleInstruments(shared);
+    if (at === 'pdf' && candidates.length) {
       const partNums = effectivePartNumbers(e);
-      song.parts.push({
-        ...asset,
-        instrument: e.instrument || null,
-        instrumentSlug: e.instrumentSlug,
-        key: effectiveKey(e),
-        partNumber: partNums[0] ?? null,
-        // A combined chart carries several ("1 & 2"); omit for single parts so the
-        // common case stays clean and renders from partNumber.
-        ...(partNums.length > 1 ? { partNumbers: partNums } : {}),
-        // Generated parts share Letter/Lyre page geometry, so classify them from
-        // the filename token rather than the (identical) page shape.
-        format: formatOf(e, { fromName: isGenerated }),
-        _mtime: e.modifiedTime || '', // transient, used for version dedup
-      });
+      for (const candidate of candidates) {
+        const part = {
+          ...asset,
+          instrument: instrumentLabel(candidate),
+          instrumentSlug: candidate,
+          key: e.instrumentSlug ? effectiveKey(e) : shared.key,
+          role: e.role || shared?.role || null,
+          clef: e.clef || shared?.clef || null,
+          shared: !e.instrumentSlug,
+          partNumber: partNums[0] ?? null,
+          // Combined charts carry all numbers; single parts stay compact.
+          ...(partNums.length > 1 ? { partNumbers: partNums } : {}),
+          format: formatOf(e, { fromName: isGenerated }),
+          _mtime: e.modifiedTime || '',
+        };
+        if (e.hidden || e.hiddenInstruments?.includes(candidate)) {
+          song.hiddenParts.push({ ...part, hiddenGlobally: !!e.hidden });
+        } else song.parts.push(part);
+      }
     } else if (at === 'pdf') {
-      song.scores.push(asset);
+      // A role-labelled chart with unresolved notation is not a full-band score.
+      if (shared) song.unclassified.push(asset);
+      else song.scores.push(asset);
     } else if (at === 'notes') {
       // A Google Doc exported to PDF — viewable (rendered like any PDF) and
       // downloadable, but kept out of the score column and never the default.
@@ -838,7 +872,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   // can still surface them as a clickable secondary row for comparison. The
   // MuseScore master, audio, notes, and images are untouched.
   for (const song of bySong.values()) {
-    const hasGenerated = song.parts.some((p) => p.generated) || song.scores.some((s) => s.generated);
+    const hasGenerated = [...song.parts, ...song.hiddenParts].some((p) => p.generated) || song.scores.some((s) => s.generated);
     if (!hasGenerated) continue;
     for (const bucket of MASKED_WHEN_GENERATED) {
       const kept = [];
@@ -865,7 +899,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const instLabels = new Map();
   for (const t of tunes) {
-    for (const p of t.parts) {
+    for (const p of [...t.parts, ...t.hiddenParts]) {
       if (!instLabels.has(p.instrumentSlug)) instLabels.set(p.instrumentSlug, p.instrument || p.instrumentSlug);
     }
     // Instruments that appear only via an unreachable part still get a column.
@@ -901,7 +935,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
  */
 export function partDownloadName(songSlug, part) {
   return (
-    ['mbbb', songSlug, part.instrumentSlug, part.key, part.partNumber ? `part${part.partNumber}` : null]
+    ['mbbb', songSlug, part.shared ? 'shared' : part.instrumentSlug, part.role ? slugify(part.role) : null, part.clef ? `${part.clef}-clef` : null, part.key, part.partNumber ? `part${part.partNumber}` : null]
       .filter(Boolean)
       .join('-') + '.pdf'
   );

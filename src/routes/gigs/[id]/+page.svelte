@@ -22,6 +22,8 @@
   import type { Catalog, Tune } from '$lib/types';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
   import { activePdfs, activeScore, activeScoreForRun, partsForFormat } from '$lib/resolve';
+  import { partChoices } from '$lib/stores';
+  import { preferenceKey } from '$lib/part-preferences';
   import { instrumentDisplay, partOptionLabel, partShortLabel } from '$lib/format';
   import { ASSIGNABLE_STATUSES } from '$lib/song-status';
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
@@ -508,8 +510,9 @@
       label: partShortLabel(part, performParts)
     }))
   );
+  const performChoiceKey = $derived(preferenceKey(page.data.user?.email ?? '', performTune?.slug ?? '', instrument, format));
   const performScore = $derived(
-    performTune ? activeScoreForRun(performTune, instrument, format, performPartSha, performPart) : null
+    performTune ? activeScoreForRun(performTune, instrument, format, $partChoices[performChoiceKey] ?? performPartSha, performPart) : null
   );
   const performing = $derived(Boolean(performSet && performSongs.length > 0));
 
@@ -525,6 +528,7 @@
   // PracticePlayer component, fed the current song's tune.
 
   function setPerformPart(sha: string) {
+    if (performParts.some((p) => p.sha256 === sha)) partChoices.update((choices) => ({ ...choices, [performChoiceKey]: sha }));
     performPartSha = sha || null;
     performPart = performParts.find((p) => p.sha256 === sha)?.partNumber ?? null;
   }

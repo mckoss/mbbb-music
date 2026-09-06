@@ -62,7 +62,8 @@ export function partNumberText(part: CatalogPart): string {
 export function partLabel(part: CatalogPart): string {
   const base = instrumentDisplay(part.instrument ?? part.instrumentSlug, part.key);
   const pt = partNumberText(part);
-  return pt ? `${base} ${pt}` : base;
+  const label = pt ? `${base} ${pt}` : base;
+  return part.role ? `${label} — ${partShortBase(part)}` : label;
 }
 
 /** The print format as a clean word, used to tell two otherwise-identical parts
@@ -113,6 +114,11 @@ export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): str
  * there's no part number), dropping the instrument name. */
 function partShortBase(part: CatalogPart): string {
   const pt = partNumberText(part);
+  if (part.role) {
+    const role = `${part.role}${pt ? ` ${pt}` : ''}`;
+    const notation = [keyLabel(part.key), part.clef ? `${part.clef} clef` : part.shared ? 'clef unspecified' : ''].filter(Boolean).join(', ');
+    return notation ? `${role} (${notation})` : role;
+  }
   if (pt) return `Part ${pt}`;
   const k = keyLabel(part.key);
   return k ? `Part (${k})` : 'Part';

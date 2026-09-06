@@ -108,6 +108,9 @@ export const actions = {
     if (scope !== 'file' && scope !== 'song' && scope !== 'folder') return fail(400, { message: 'bad scope' });
     if (!targetId) return fail(400, { message: 'missing target' });
     if (!CORRECTABLE_FIELDS[scope].includes(field)) return fail(400, { message: `field "${field}" not editable` });
+    // Visibility changes use the dedicated admin action with current-state
+    // merging; this generic correction endpoint must not bypass its checks.
+    if (field === 'hidden' || field === 'hiddenInstruments') return fail(400, { message: 'Use Manage parts to change visibility' });
     // Identity/grouping changes (slug rename, song reassignment) are privileged.
     if (isPrivileged(scope, field) && !PRIVILEGED_ROLES.has(user.role)) {
       throw error(403, 'This change is limited to admins and organizers');
