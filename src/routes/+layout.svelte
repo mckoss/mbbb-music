@@ -5,6 +5,7 @@
   import { base } from '$app/paths';
   import { goto, invalidateAll, afterNavigate } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
+  import { resolveInstrument } from '$lib/instrument-choice';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
   import { warmCorePages } from '$lib/offline';
@@ -48,23 +49,22 @@
 
   const instruments = $derived(data.catalog.instruments ?? []);
 
-  // Instrument/format live in the cookie-backed stores but can be overridden by
-  // the URL (shareable links). Mirror any URL value into the store on navigation.
+  // The instrument has three inputs — the URL (a shareable link), the
+  // cookie-backed store (the member's saved choice), and the catalog (what the
+  // library has parts for) — reconciled in ONE step by resolveInstrument. Two
+  // effects used to split that job, and for a URL naming an instrument the
+  // catalog lacks they overwrote each other without end, crashing the page's
+  // reactivity. The resolver is idempotent, so this settles after one write.
   $effect(() => {
-    const ui = page.url.searchParams.get('instrument');
-    if (ui && ui !== $instrumentSlug) instrumentSlug.set(ui);
-    const uf = page.url.searchParams.get('format');
-    if ((uf === 'letter' || uf === 'lyre') && uf !== $printFormat) printFormat.set(uf);
+    const next = resolveInstrument(page.url.searchParams.get('instrument'), $instrumentSlug, instruments);
+    if (next !== $instrumentSlug) instrumentSlug.set(next);
   });
 
-  // Default the global instrument to the first one once the catalog is known.
-  // A saved (cookie-restored) choice is kept as long as it still exists in the
-  // catalog; an empty or stale value falls back to the first instrument.
+  // Format has no such catalog to disagree with — the two values are the whole
+  // vocabulary — so mirroring the URL into the store is all it needs.
   $effect(() => {
-    if (instruments.length === 0) return;
-    if (!instruments.some((i) => i.slug === $instrumentSlug)) {
-      instrumentSlug.set(instruments[0].slug);
-    }
+    const uf = page.url.searchParams.get('format');
+    if ((uf === 'letter' || uf === 'lyre') && uf !== $printFormat) printFormat.set(uf);
   });
 
   // A selector change updates the store (persists to cookie) and reflects into

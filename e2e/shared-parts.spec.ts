@@ -8,17 +8,22 @@ import { test, expect } from '@playwright/test';
 test.describe.configure({ mode: 'serial' });
 
 /**
- * Wait for the client to hydrate before driving a control.
+ * Wait for the score overlay to hydrate before driving one of its controls.
  *
  * `selectOption` sets the native <select> and dispatches `change`; if Svelte
- * hasn't attached its handler yet the event lands on nothing, the choice is never
- * recorded, and the assertion that it was remembered fails — intermittently, and
- * only under the load of a full parallel run. The part-choices store writes itself
- * to localStorage as soon as its module runs, so a non-null key is proof the
- * client bundle is live.
+ * hasn't attached that component's handler yet the event lands on nothing, the
+ * choice is never recorded, and the assertion that it was remembered fails —
+ * intermittently, and only under the load of a full parallel run.
+ *
+ * The score <img> is the signal to wait on because it cannot exist before
+ * hydration: the server renders no page image, and PdfPager only adds one after
+ * the client fetches /render/<sha>/info. (A weaker guard — the part-choices store
+ * having written to localStorage — proves only that the shared stores module ran,
+ * which happens well before this component's handlers attach, and still flaked
+ * about one run in three.)
  */
 async function hydrated(page: import('@playwright/test').Page) {
-  await page.waitForFunction(() => localStorage.getItem('mbbb_part_choices') !== null);
+  await expect(page.locator('.pager img')).toBeVisible({ timeout: 20_000 });
 }
 
 test('shared roles, remembered choices, and reversible admin exclusions', async ({ page }) => {
@@ -48,7 +53,13 @@ test('shared roles, remembered choices, and reversible admin exclusions', async 
   await page.getByRole('combobox', { name: 'Instrument', exact: true }).selectOption('clarinet');
   await expect(picker.locator('option')).toHaveCount(2);
 
+  // Returning to a page the service worker has cached serves the STALE copy first
+  // and revalidates behind it (see sw-core: navigations are stale-while-revalidate),
+  // so this arrives showing the part as it was before the hide above. The first
+  // visit didn't need this because use:enhance's invalidation fetches fresh. One
+  // reload picks up what that revalidation just cached.
   await page.goto('/library-status/parts');
+  await page.reload();
   await page.getByRole('combobox', { name: 'Filter by instrument', exact: true }).selectOption('trumpet');
   await harmony.getByRole('button', { name: 'Restore for this instrument' }).click();
   await expect(harmony.getByRole('button', { name: 'Hide for this instrument', exact: true })).toBeVisible();
