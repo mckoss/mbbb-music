@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildCatalog, applyCorrections } from '../src/sync/catalog.js';
 import { sharedPartMetadata, compatibleInstruments } from '../src/sync/shared-parts.js';
 import { detectInstrument, detectPartNumbers } from '../src/sync/instruments.js';
-import { partsForFormat, activePdfs, activeScoreForRun } from '../src/lib/resolve.ts';
+import { partsForFormat, activePdf, activePdfs, activeScoreForRun, viewableDocs } from '../src/lib/resolve.ts';
 import { partShortLabel } from '../src/lib/format.ts';
 import { buildAssetIndex } from '../src/lib/asset-urls.ts';
 import { readPartPreferences, preferenceKey } from '../src/lib/part-preferences.ts';
@@ -85,4 +85,67 @@ test('remembered choices separate account, tune, instrument and format and toler
   assert.notEqual(key, preferenceKey('another-member', 'example', 'trumpet', 'letter'));
   assert.deepEqual(readPartPreferences({ getItem: () => JSON.stringify({ [key]: 'melody', invalid: 2 }) }), { [key]: 'melody' });
   assert.deepEqual(readPartPreferences({ getItem() { throw Error('blocked'); } }), {});
+});
+
+test('a whole-band chart the importer cannot place stays readable by players', () => {
+  // "<song>-parts.pdf" trips the shared-chart role word "parts" but names no
+  // transposition, so it lands in `unclassified`. That bucket is a review flag for
+  // admins — it must never be the reason a song shows the band nothing.
+  const m = { files: { band: entry('band', 'Example-parts.pdf') } };
+  const t = tune(m);
+  assert.equal(t.parts.length, 0);
+  assert.equal(t.scores.length, 0);
+  assert.deepEqual(t.unclassified.map((a) => a.sha256), ['band']);
+
+  const docs = viewableDocs(t, 'trumpet', 'letter');
+  assert.deepEqual(docs.map((d) => d.sha), ['band']);
+  // It's the only music the song has, so it's also what a packet and a gig run get.
+  assert.equal(activePdf(t, 'trumpet', 'letter')?.sha, 'band');
+  // And it keeps a real, named download URL rather than a bare /blob/<sha>.
+  assert.equal(buildAssetIndex({ tunes: [t] }).bySha.get('band'), 'score/example/example-parts.pdf');
+});
+
+test('a band chart outranks a full score for a player with no part', () => {
+  const m = { files: {
+    full: entry('full', 'Example-score.pdf'),
+    band: entry('band', 'Example-parts.pdf'),
+  } };
+  const t = tune(m);
+  const docs = viewableDocs(t, 'trumpet', 'letter');
+  // A score is a conductor's document; the compilation holds a part this player can
+  // actually read, so it opens first. The score stays one pick away.
+  assert.deepEqual(docs.map((d) => d.sha), ['band', 'full']);
+  assert.equal(activePdf(t, 'trumpet', 'letter')?.sha, 'band');
+});
+
+test('a player with a part of their own still gets it first', () => {
+  const m = { files: {
+    band: entry('band', 'Example-parts.pdf'),
+    full: entry('full', 'Example-score.pdf'),
+    tpt: entry('tpt', 'Example-Trumpet.pdf'),
+  } };
+  const t = tune(m);
+  const docs = viewableDocs(t, 'trumpet', 'letter');
+  assert.equal(docs[0].sha, 'tpt');
+  assert.equal(docs[0].kind, 'part');
+  assert.equal(activePdf(t, 'trumpet', 'letter')?.sha, 'tpt');
+});
+
+test('admin start-page corrections ride along with the chart', () => {
+  const m = { files: { band: entry('band', 'Example-parts.pdf') } };
+  const overlay = { file: { band: { partPages: '{"trumpet":2,"tuba":0,"flute":"x"}' } }, song: {}, folder: {} };
+  const t = buildCatalog(applyCorrections(m, overlay)).tunes[0];
+  // Only whole page numbers survive; a zero or a non-number would strand a reader.
+  assert.deepEqual(t.unclassified[0].partPages, { trumpet: 2 });
+  assert.deepEqual(viewableDocs(t, 'trumpet', 'letter')[0].asset?.partPages, { trumpet: 2 });
+  assert.deepEqual(activePdf(t, 'trumpet', 'letter')?.partPages, { trumpet: 2 });
+});
+
+test('a malformed start-page correction is dropped, not thrown', () => {
+  const m = { files: { band: entry('band', 'Example-parts.pdf') } };
+  for (const value of ['not json', '[1,2]', 'null', '']) {
+    const overlay = { file: { band: { partPages: value } }, song: {}, folder: {} };
+    const t = buildCatalog(applyCorrections(m, overlay)).tunes[0];
+    assert.equal(t.unclassified[0].partPages, undefined);
+  }
 });

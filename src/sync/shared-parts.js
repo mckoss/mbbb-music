@@ -8,10 +8,13 @@ export function sharedPartMetadata(name, songTitle = '') {
   let text = fold(name);
   const song = fold(songTitle);
   if (song && text.startsWith(song)) text = text.slice(song.length);
-  const role = text.match(/\b(melody|harmony|backbeat|solo|bass line|bass(?!\s+(?:clef|drum|clarinet))|tenor(?!\s+(?:sax|drum))|parts?)\b/);
+  // "cleff" is a common misspelling in the band's hand-titled charts ("C bass
+  // cleff"); accept it everywhere "clef" is read, or the chart loses its clef and
+  // with it every compatible instrument.
+  const role = text.match(/\b(melody|harmony|backbeat|solo|bass line|bass(?!\s+(?:cleff?|drum|clarinet))|tenor(?!\s+(?:sax|drum))|parts?)\b/);
   if (!role) return null;
   const key = detectKey(name) || (/\bc\b/.test(text) ? 'c' : /\bf\b/.test(text) ? 'f' : null);
-  const clef = /\bbass clef\b/.test(text) ? 'bass' : /\btreble clef\b/.test(text) ? 'treble' : null;
+  const clef = /\bbass cleff?\b/.test(text) ? 'bass' : /\btreble cleff?\b/.test(text) ? 'treble' : null;
   const roleName = role[1].startsWith('part') ? 'Part' : role[1].replace(/\b\w/g, (c) => c.toUpperCase());
   const cleaned = String(name).replace(/[ _-]*(letter|lyre)(?=(\.[^.]*)?$)/i, '');
   const nums = key ? detectPartNumbers(cleaned) : [];

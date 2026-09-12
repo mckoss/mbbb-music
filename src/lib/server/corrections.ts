@@ -32,7 +32,7 @@ export type Scope = 'file' | 'song' | 'folder';
  *            file in that folder to a song.
  */
 export const CORRECTABLE_FIELDS: Record<Scope, readonly string[]> = {
-  file: ['instrumentSlug', 'key', 'partNumber', 'songSlug', 'hidden', 'hiddenInstruments'],
+  file: ['instrumentSlug', 'key', 'partNumber', 'songSlug', 'hidden', 'hiddenInstruments', 'partPages'],
   song: ['displaySlug', 'displayName', 'videoUrl', 'bpm', 'timeSig'],
   folder: ['songSlug'],
 };

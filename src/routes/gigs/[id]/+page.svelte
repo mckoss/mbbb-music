@@ -657,6 +657,9 @@
             title={`${performSlug ? titleOf(performSlug) : ''} — ${performScore.label}`}
             tap={true}
             openHref={openUrl(performScore.sha)}
+            {...performScore.isScore
+              ? { instrument, partPages: performScore.partPages }
+              : {}}
           />
         {/key}
       {:else}

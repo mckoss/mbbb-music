@@ -1,4 +1,4 @@
-import type { Tune, CatalogPart } from './types';
+import type { Tune, CatalogPart, CatalogAsset } from './types';
 import type { PrintFormat } from './stores';
 import { partOptionLabel, partShortLabel, stripCopyOf } from './format.js';
 
@@ -12,6 +12,8 @@ export interface ActivePdf {
   format: PrintFormat;
   isScore: boolean;
   generated?: boolean;
+  /** Admin-corrected start pages, when this resolved to a whole-band chart. */
+  partPages?: Record<string, number>;
 }
 
 /** Parts of a tune matching the given instrument slug. */
@@ -59,7 +61,7 @@ export function activePdf(
       ...(part.generated ? { generated: true } : {}),
     };
   }
-  const score = tune.scores[0];
+  const score = fullBandChart(tune);
   if (score) {
     return {
       sha: score.sha256,
@@ -69,9 +71,21 @@ export function activePdf(
       partNumber: null,
       format: printFormat,
       isScore: true,
+      ...(score.partPages ? { partPages: score.partPages } : {}),
     };
   }
   return null;
+}
+
+/**
+ * The chart to fall back on when an instrument has no part of its own: a whole-band
+ * "all parts" compilation if the song has one, else a true full score. The
+ * compilation wins because it holds a playable part for the reader — and the viewer
+ * opens it at that part's own page — where a score is a conductor's document.
+ * Dropping these left some songs with nothing at all to show.
+ */
+function fullBandChart(tune: Tune): CatalogAsset | undefined {
+  return tune.unclassified?.[0] ?? tune.scores[0];
 }
 
 /**
@@ -98,7 +112,7 @@ export function activePdfs(
       ...(part.generated ? { generated: true } : {}),
     }));
   }
-  const score = tune.scores[0];
+  const score = fullBandChart(tune);
   if (!score) return [];
   return [
     {
@@ -109,6 +123,7 @@ export function activePdfs(
       partNumber: null,
       format: printFormat,
       isScore: true,
+      ...(score.partPages ? { partPages: score.partPages } : {}),
     },
   ];
 }
@@ -119,6 +134,9 @@ export interface ViewableDoc {
   sha: string;
   label: string;
   kind: DocKind;
+  /** The asset behind the doc, when the viewer needs more than a sha (e.g. a
+   *  whole-band chart's admin-corrected start pages). */
+  asset?: CatalogAsset;
 }
 
 /** A filename trimmed to a short human label: drop "Copy of", the extension, underscores. */
@@ -147,10 +165,10 @@ export function viewableDocs(
 ): ViewableDoc[] {
   const out: ViewableDoc[] = [];
   const seen = new Set<string>();
-  const push = (sha: string, label: string, kind: DocKind) => {
+  const push = (sha: string, label: string, kind: DocKind, asset?: CatalogAsset) => {
     if (seen.has(sha)) return;
     seen.add(sha);
-    out.push({ sha, label, kind });
+    out.push({ sha, label, kind, ...(asset ? { asset } : {}) });
   };
 
   // The instrument and format are chosen by their own dropdowns, so the Document
@@ -159,9 +177,21 @@ export function viewableDocs(
   const parts = partsForFormat(tune, instrumentSlug, printFormat);
   for (const p of parts) push(p.sha256, partShortLabel(p, parts), 'part');
 
+  // Charts the importer couldn't pin to an instrument — typically a whole-band
+  // "all parts" PDF holding every player's part back to back. For someone with no
+  // part of their own these outrank a full score: a score is a conductor's
+  // document, every instrument stacked on one system, while a parts compilation
+  // contains an actual playable part — and the viewer can open it straight at the
+  // reader's own page. (`unclassified` is a review flag for admins; it was never a
+  // reason to hide music from the band.)
+  const unclassified = tune.unclassified ?? [];
+  for (const u of unclassified) {
+    push(u.sha256, cleanDocName(u.originalName) || 'Band chart', 'score', u);
+  }
+
   const scores = tune.scores ?? [];
   for (const s of scores) {
-    push(s.sha256, scores.length === 1 ? 'Full score' : `Full score — ${cleanDocName(s.originalName) || 'untitled'}`, 'score');
+    push(s.sha256, scores.length === 1 ? 'Full score' : `Full score — ${cleanDocName(s.originalName) || 'untitled'}`, 'score', s);
   }
 
   const notes = tune.notes ?? [];

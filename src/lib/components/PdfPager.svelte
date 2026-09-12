@@ -2,6 +2,13 @@
   import { browser } from '$app/environment';
   import { RENDER_REV } from '$lib/render-rev';
 
+  // One part's opening page inside a whole-band chart, as served by
+  // /render/<sha>/info (derived from the PDF's own printed part labels).
+  interface PartPage {
+    page: number;
+    label: string;
+  }
+
   // Pages a score one image at a time. The server rasterizes each PDF page to
   // lossless WebP (see /render/[sha]); here we just show an <img> and page
   // through them. An <img> composites reliably on iOS Safari (the music-stand
@@ -12,6 +19,9 @@
     title = '',
     openHref,
     pageBadge = false,
+    instrument = '',
+    partPages,
+    partStart = $bindable(null),
   }: {
     sha: string;
     tap?: boolean;
@@ -21,6 +31,21 @@
     // mode). Used by the standalone viewer so a player can read off a page number
     // to print from the gig page.
     pageBadge?: boolean;
+    // The player's instrument. When this document is a whole-band chart that names
+    // its parts, open on the page where this instrument's part starts instead of
+    // page 1 — nobody should have to thumb through 17 pages on a music stand.
+    instrument?: string;
+    // Admin-corrected start pages for this chart ({ slug: 1-based page }); they
+    // beat whatever the PDF's own part labels say.
+    partPages?: Record<string, number>;
+    // Reports the resolved start page (and the part label found there) so the
+    // caller can say where it jumped; null when this chart has no index. Bound
+    // rather than a callback prop on purpose: a callback is re-created on every
+    // parent render, and reading one inside the tracked effect below made that
+    // effect depend on the function's identity — calling it re-rendered the
+    // parent, which handed back a new function, which re-ran the effect
+    // (effect_update_depth_exceeded).
+    partStart?: { page: number; label: string } | null;
   } = $props();
 
   // Friendly URL for the "Open the PDF" fallback; defaults to the raw blob if a
@@ -29,6 +54,12 @@
 
   let pageNum = $state(1);
   let numPages = $state(0);
+  let partIndex = $state<PartPage[]>([]);
+  let partStarts = $state<Record<string, number>>({});
+  // The (sha, instrument) the current jump was computed for, so switching
+  // instruments on a shared whole-band chart re-aims the viewer while ordinary
+  // reactive ticks — and the reader's own paging — are left alone.
+  let startedFor = '';
   let loading = $state(true);
   let err = $state<string | null>(null);
   // Distinguishes "this chart isn't saved for offline use" (the common case
@@ -42,6 +73,21 @@
 
   const pageUrl = (n: number) => `/render/${sha}/${n}.webp?r=${RENDER_REV}`;
   const src = $derived(numPages > 0 ? pageUrl(pageNum) : '');
+
+  /**
+   * Where this instrument's part starts in a whole-band chart: the admin
+   * correction if there is one, else what the server resolved from the chart's own
+   * part labels. Null when the chart has no index (a single part, a conductor
+   * score) or doesn't cover this instrument.
+   */
+  function resolveStart(slug: string, total: number) {
+    if (!slug) return null;
+    const page = partPages?.[slug] ?? partStarts[slug] ?? null;
+    // A stale override (or an index from a re-rendered chart) must never strand
+    // the reader past the end of the document.
+    if (page == null || page < 1 || page > total) return null;
+    return { page, label: partIndex.find((e) => e.page === page)?.label ?? '' };
+  }
 
   // Load the page count whenever the score changes; reset to page 1.
   $effect(() => {
@@ -61,9 +107,19 @@
         // offline state rather than a render error.
         if (res.status === 504) throw new Error('offline');
         if (!res.ok) throw new Error(`info ${res.status}`);
-        const { pages } = (await res.json()) as { pages: number };
+        const { pages, parts, starts } = (await res.json()) as {
+          pages: number;
+          parts?: PartPage[];
+          starts?: Record<string, number>;
+        };
         if (myGen !== gen) return;
+        partIndex = parts ?? [];
+        partStarts = starts ?? {};
         numPages = pages;
+        // Jump before the first <img> is requested, so the reader never sees page
+        // 1 flash past on the way to their part. `numPages` gates `src`, so no
+        // page has been fetched yet at this point.
+        applyStart(pages);
       } catch (e) {
         if (myGen === gen) {
           offline = e instanceof Error && e.message === 'offline';
@@ -76,6 +132,24 @@
         }
       }
     })();
+  });
+
+  /** Aim the viewer at this instrument's part and report where it landed. */
+  function applyStart(total: number) {
+    startedFor = `${sha}|${instrument}`;
+    const start = resolveStart(instrument, total);
+    if (start) pageNum = start.page;
+    partStart = start;
+  }
+
+  // Re-aim when the instrument (or an admin's correction) changes while the same
+  // whole-band chart stays on screen — switching from Trumpet to Trombone on an
+  // "all parts" PDF must move to the trombone's page, not sit where it was.
+  $effect(() => {
+    const key = `${sha}|${instrument}`;
+    void partPages;
+    if (!browser || numPages < 1 || key === startedFor) return;
+    applyStart(numPages);
   });
 
   // Warm the next page so a forward tap is instant.

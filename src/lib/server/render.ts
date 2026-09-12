@@ -74,6 +74,15 @@ class NodeCanvasFactory {
 const nodeRequire = createRequire(import.meta.url);
 const STANDARD_FONTS = resolve(dirname(nodeRequire.resolve('pdfjs-dist/package.json')), 'standard_fonts') + '/';
 
+/**
+ * Open a CAS-stored PDF as a PDF.js document, or null when the hash isn't a
+ * renderable score. Shared with part-pages so both read the PDF the same way —
+ * same font data, same engine settings. The caller MUST destroy the task.
+ */
+export async function openScorePdf(sha: string) {
+  return isRenderable(getAsset(sha)) ? openDoc(sha) : null;
+}
+
 /** Open a CAS-stored PDF as a PDF.js document. Caller must destroy the task. */
 async function openDoc(sha: string) {
   // The legacy build is transpiled for broad engine support and is the variant

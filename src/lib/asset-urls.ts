@@ -42,6 +42,7 @@ interface TuneLike {
   displaySlug?: string;
   parts: PartLike[];
   scores: AssetLike[];
+  unclassified?: AssetLike[];
   notes: AssetLike[];
   audio: AssetLike[];
   musescore: AssetLike[];
@@ -157,6 +158,10 @@ function addTune(idx: AssetIndex, t: TuneLike): void {
     place(idx, `score/${song}`, partName(p), 'pdf', p.sha256, `${song}-${partDownloadName(p)}`);
   }
   for (const s of t.scores) place(idx, `score/${song}`, stem(s, 'full-score'), 'pdf', s.sha256, `${song}-${stem(s, 'full-score')}`);
+  // Whole-band charts the importer couldn't pin to an instrument are still real,
+  // downloadable music — without a path here they'd fall back to a bare /blob/<sha>
+  // URL with no filename, which is how they went missing from the viewer.
+  for (const u of t.unclassified ?? []) place(idx, `score/${song}`, stem(u, 'band-chart'), 'pdf', u.sha256, `${song}-${stem(u, 'band-chart')}`);
   for (const n of t.notes) place(idx, `score/${song}`, `notes-${stem(n, 'notes')}`, 'pdf', n.sha256, `${song}-notes-${stem(n, 'notes')}`);
 
   // MuseScore source.

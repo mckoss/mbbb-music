@@ -17,6 +17,13 @@
     ...(showHidden ? (t.hiddenParts ?? []).map((p) => ({ tune: t, part: p, hidden: true })) : []),
   ]).filter((r) => !instrument || r.part.instrumentSlug === instrument));
   const unresolved = $derived(catalog.tunes.filter((t) => !song || t.slug === song).flatMap((t) => (t.unclassified ?? []).map((part) => ({ tune: t, part }))));
+  // Charts that hold the whole band in one PDF — full scores and the unassigned
+  // "all parts" files. Each can carry per-instrument start pages so a player opens
+  // on their own part instead of paging to find it.
+  const wholeBand = $derived(catalog.tunes.filter((t) => !song || t.slug === song).flatMap((t) => [
+    ...t.scores.map((part) => ({ tune: t, part })),
+    ...(t.unclassified ?? []).map((part) => ({ tune: t, part })),
+  ]));
 </script>
 
 <svelte:head><title>Manage parts — MBBB Music</title></svelte:head>
@@ -40,6 +47,20 @@
             <label>Instrument<select name="instrument" required><option value="">Choose instrument</option>{#each INSTRUMENT_CHOICES as i}<option value={i.slug}>{i.label}</option>{/each}</select></label>
             <button>Assign instrument</button>
           </form>
+          <p class="hint">Players can still read this chart — it shows in the viewer below the full scores. If it holds the whole band, set <a href={`/library-status/parts/${row.part.sha256}`}>start pages</a> instead of assigning one instrument.</p>
+        </article>
+      {/each}
+    </details>
+  {/if}
+  {#if wholeBand.length}
+    <details><summary>{wholeBand.length} whole-band charts</summary>
+      <p class="hint">A chart holding every part in one PDF opens at the reader's own part. Check or correct where each instrument lands.</p>
+      {#each wholeBand as row (row.tune.slug + row.part.sha256)}
+        <article class="band">
+          <div><strong>{row.tune.title}</strong>
+            <p>{row.part.originalName || 'Untitled chart'}</p>
+          </div>
+          <a class="action" href={`/library-status/parts/${row.part.sha256}`}>Start pages</a>
         </article>
       {/each}
     </details>
@@ -80,5 +101,8 @@
   select, button { min-height: 44px; padding: 8px 12px; }
   article { padding: 16px; border: 1px solid var(--line, #ccc); border-radius: 8px; margin: 12px 0; }
   article.hidden { border-style: dashed; background: var(--paper, #f5f3ed); }
+  article.band { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; }
+  .hint { color: var(--muted, #6b6a63); font-size: 0.9rem; }
+  .action { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line, #ccc); border-radius: 8px; text-decoration: none; }
   a { overflow-wrap: anywhere; }
 </style>

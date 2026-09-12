@@ -84,6 +84,18 @@
     [instLabel, current?.label, format === 'lyre' ? 'Lyre' : 'Letter'].filter(Boolean).join(' · ')
   );
 
+  // Where the pager jumped inside a whole-band chart, reported by PdfPager once it
+  // has read the chart's part index. Null for an ordinary single-instrument part.
+  let partStart = $state<{ page: number; label: string } | null>(null);
+  // Naming the label the chart itself prints ("Bb melody") is what makes the jump
+  // trustworthy: the player can check it against the page in front of them, and
+  // page away if the arrangement wants them somewhere else.
+  const startNote = $derived(
+    partStart
+      ? `Opened at page ${partStart.page}${partStart.label ? ` — ${partStart.label}` : ''}`
+      : ''
+  );
+
   // Record the view when the overlay opens or switches mode — each mode is its
   // own kind of use (plain view / practice / performance). Server-side dedup
   // collapses repeats; the local key avoids re-firing on unrelated reactive ticks.
@@ -122,6 +134,11 @@
     if (current && current.kind === 'part') out.push({ sha: current.sha, label: 'This part (PDF)' });
     tune.scores.forEach((s, i) =>
       out.push({ sha: s.sha256, label: `Full score${tune!.scores.length > 1 ? ` ${i + 1}` : ''} (PDF)` })
+    );
+    // Whole-band charts the importer couldn't pin to an instrument. Named from the
+    // source file, since that's all we know about them.
+    (tune.unclassified ?? []).forEach((u) =>
+      out.push({ sha: u.sha256, label: `${u.originalName ? stripCopyOf(u.originalName) : 'Band chart'} (PDF)` })
     );
     if (tune.musescore[0]) out.push({ sha: tune.musescore[0].sha256, label: 'MuseScore' });
     tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName, a.museScore)} (MP3)` }));
@@ -234,12 +251,21 @@
            always wins a tap, on a solid pill so it stays visible over a white
            score page. -->
       <button class="back floating-back" onclick={() => setMode('score')} aria-label="Back to Score view" title="Back to Score view">←</button>
+      {#if startNote}
+        <!-- Perform keeps no permanent chrome, so the jump announces itself once
+             and fades: enough to confirm the viewer landed on the right part
+             ("Opened at page 2 — Bb melody") without leaving anything over the
+             music for the rest of the tune. -->
+        {#key partStart}
+          <p class="start-note" role="status">{instLabel} · {startNote}</p>
+        {/key}
+      {/if}
     {:else}
       <header class="bar">
         <button class="back" onclick={close} aria-label="Back to Collection" title="Back to Collection">←</button>
         <div class="info">
           <h2>{title}</h2>
-          <p class="sub">{caption}</p>
+          <p class="sub">{caption}{startNote ? ` · ${startNote}` : ''}</p>
         </div>
         <!-- Launch the two immersive states. Not a toggle — you step into one and
              the back arrow returns to the Collection. -->
@@ -325,7 +351,15 @@
 
     <div class="stage">
       {#if current}
-        <PdfPager sha={current.sha} title={`${title} — ${current.label}`} tap={immersive} openHref={openUrl(current.sha)} />
+        <PdfPager
+          sha={current.sha}
+          title={`${title} — ${current.label}`}
+          tap={immersive}
+          openHref={openUrl(current.sha)}
+          instrument={currentIsPart ? '' : instrument}
+          partPages={current.asset?.partPages}
+          bind:partStart
+        />
       {:else}
         <div class="no-chart">
           <p>No chart for “{title}” in this instrument / format.</p>
@@ -404,6 +438,52 @@
 
   .ghost:hover {
     background: rgba(255, 253, 247, 0.12);
+  }
+
+  /* Perform's transient "you are here" note: top-centre, clear of the back arrow
+     and above the tap zones, gone after a few seconds. `pointer-events: none` so
+     it can never swallow a page tap while it's visible. */
+  .start-note {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    pointer-events: none;
+    max-width: min(90%, 520px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(32, 33, 36, 0.92);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    color: #fffdf7;
+    font-size: 0.9rem;
+    text-align: center;
+    animation: start-note-fade 4.5s ease-out forwards;
+  }
+
+  @keyframes start-note-fade {
+    0%,
+    72% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Honour a reduced-motion preference by simply not showing the animated note;
+     the Score view caption still carries the same text. */
+  @media (prefers-reduced-motion: reduce) {
+    .start-note {
+      animation: none;
+      opacity: 0;
+    }
+  }
+
+  @media print {
+    .start-note {
+      display: none;
+    }
   }
 
   /* Back arrow — the single, consistent "step out" affordance, top-left on every

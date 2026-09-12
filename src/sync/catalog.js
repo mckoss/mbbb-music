@@ -29,6 +29,26 @@ function effectiveAssetType(e) {
 }
 
 /**
+ * Parse a `partPages` correction: a JSON object of instrument slug → 1-based page
+ * inside a whole-band chart. Anything malformed is dropped rather than thrown —
+ * a bad overlay row must never take the catalog down.
+ *
+ * @param {string|null|undefined} value
+ * @returns {Record<string, number>}
+ */
+function parsePartPages(value) {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, page]) => Number.isInteger(page) && page >= 1)
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Apply manifest-affecting corrections, returning a NEW manifest whose entries
  * carry the corrected fields. Applied BEFORE buildCatalog so grouping, dedup, and
  * instrument columns reflect them; the machine-owned manifest on disk is never
@@ -90,6 +110,9 @@ export function applyCorrections(manifest, overlay) {
           try { e.hiddenInstruments = JSON.parse(fpatch.hiddenInstruments || '[]'); }
           catch { e.hiddenInstruments = []; }
         }
+        // Admin-corrected start pages inside a whole-band chart, overriding what
+        // the PDF's own part labels say: { instrumentSlug: 1-based page }.
+        if ('partPages' in fpatch) e.partPages = parsePartPages(fpatch.partPages);
         if ('partNumber' in fpatch) {
           const n = Number.parseInt(String(fpatch.partNumber), 10);
           e.partNumber = Number.isInteger(n) && n >= 1 ? n : null;
@@ -460,6 +483,8 @@ function dedupeParts(parts, pri) {
  * @property {string|null} originalName
  * @property {string|null} source         Canonical source label this copy came from.
  * @property {string} [assetType]         Present for images/other files, to label/route them.
+ * @property {Record<string, number>} [partPages] Admin-set start pages inside a
+ *                                        whole-band chart ({ instrumentSlug: page }).
  *
  * @typedef {Object} Tune
  * @property {string} slug
@@ -755,6 +780,9 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       // Carry the generated flag so the masking pass can keep these and drop the
       // manual copies; a truthy value also lets the UI badge a standardized score.
       ...(isGenerated ? { generated: true } : {}),
+      // Admin-set start pages for a whole-band chart, overriding the PDF's own
+      // part labels. Omitted when empty so the common asset stays lean.
+      ...(e.partPages && Object.keys(e.partPages).length ? { partPages: e.partPages } : {}),
     };
     const at = effectiveAssetType(e);
     // Derive shared descriptors at read time too, so existing manifests benefit

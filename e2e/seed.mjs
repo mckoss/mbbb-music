@@ -42,6 +42,35 @@ export async function seedDataDir() {
     files[id] = { driveFileId: id, sha256, status: 'synced', assetType: 'pdf', originalName: `Example-${role}-Bb-treble_clef.pdf`,
       originalFolder: 'Example', songTitle: 'Example', songTitleSlug: 'example', sourceFolderLabel: 'fixture' };
   }
+  // A whole-band chart: one PDF holding several players' parts back to back, with
+  // the part name printed in the left margin above each opening system — the shape
+  // the band's real arrangements have. Page 3 is a continuation, carrying only a
+  // measure number, so the index must not treat it as a new part.
+  {
+    const pdf = await PDFDocument.create();
+    // pdf-lib measures y from the BOTTOM; the part label sits ~139pt down a
+    // 792pt page, which is where an engraver puts it.
+    const label = (text) => {
+      const page = pdf.addPage([612, 792]);
+      page.drawText('Band Chart', { x: 233, y: 792 - 48, size: 18 });
+      page.drawText(text, { x: 32, y: 792 - 139, size: 12 });
+    };
+    // Parts are named for instruments the fixture catalog already knows (they come
+    // from the shared B♭ charts above), so the spec exercises the page index rather
+    // than the separate matter of an instrument missing from the catalog.
+    label('Clarinet');
+    label('Trumpet');
+    const cont = pdf.addPage([612, 792]);
+    cont.drawText('12', { x: 24, y: 792 - 26, size: 10 });
+    label('Euphonium');
+    const bytes = await pdf.save();
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    writeFileSync(resolve(E2E_DATA_DIR, 'cas', sha256), bytes);
+    files['band-chart'] = { driveFileId: 'band-chart', sha256, status: 'synced', assetType: 'pdf',
+      originalName: 'Band-Chart-parts.pdf', originalFolder: 'Band Chart',
+      songTitle: 'Band Chart', songTitleSlug: 'band-chart', sourceFolderLabel: 'fixture' };
+  }
+
   writeFileSync(resolve(E2E_DATA_DIR, 'manifest.json'), JSON.stringify({ files }));
 }
 

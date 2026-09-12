@@ -48,6 +48,9 @@ export interface CatalogAsset {
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
   museScore?: boolean; // set on audio: the app-generated full-band "MuseScore Audio" mix
   modifiedTime?: string | null; // Drive last-modified ISO time
+  // Admin-corrected start pages inside a whole-band chart ({ slug: 1-based page }),
+  // overriding the part labels read from the PDF itself.
+  partPages?: Record<string, number>;
 }
 
 // A manually-created score/part hidden by an app-generated replacement. Kept off
