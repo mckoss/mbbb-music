@@ -11,6 +11,7 @@
   import { warmCorePages } from '$lib/offline';
   import { consumeSelfMutation } from '$lib/self-update';
   import { startActivitySync } from '$lib/track';
+  import { trackAnalyticsPage } from '$lib/analytics';
   import { setClientVersion, stampWriteForm } from '$lib/client-version';
   import type { Catalog, SessionUser } from '$lib/types';
 
@@ -212,7 +213,10 @@
       // Offline or fetch failed — leave the offer hidden.
     }
   }
-  afterNavigate(() => void checkVersion());
+  afterNavigate(({ to }) => {
+    if (to?.url) trackAnalyticsPage(to.url);
+    void checkVersion();
+  });
 
   // Hand off to the new build. The reload MUST run under the new worker, not the
   // old one: navigations are served stale-while-revalidate from a version-scoped
