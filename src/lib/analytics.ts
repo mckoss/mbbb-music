@@ -29,8 +29,11 @@ export function trackAnalyticsPage(url: URL): void {
   } catch {
     // No external referrer.
   }
-  const dataLayer = ((window as Window & { dataLayer?: unknown[][] }).dataLayer ??= []);
-  const gtag = (...args: unknown[]) => dataLayer.push(args);
+  const dataLayer = ((window as Window & { dataLayer?: unknown[] }).dataLayer ??= []);
+  // gtag commands use Arguments objects; arrays have a different data-layer meaning.
+  function gtag(..._args: unknown[]): void {
+    dataLayer.push(arguments);
+  }
   if (!initialized) {
     // Set safe URL values before the tag loads or creates its session event.
     gtag('js', new Date());
