@@ -56,7 +56,10 @@
     avatarRev: string;
     isFormer: boolean;
     status: RsvpStatus | null;
+    sheetConflict?: string;
   }
+  // Which roster row's Gig Sheet Conflict explanation is open (by email).
+  let openConflict = $state<string | null>(null);
   interface RsvpData {
     yes: Attendee[];
     maybe: Attendee[];
@@ -681,6 +684,7 @@
       <h2 class:canceled={gig.canceled}>
         {gig.name}
         {#if gig.canceled}<span class="cancel-badge">Canceled</span>{/if}
+        {#if gig.importedFrom === 'gig-sheet'}<span class="import-badge">Imported from Gig sheet</span>{/if}
       </h2>
     </div>
     {#if canEdit}
@@ -882,6 +886,12 @@
       </span>
       <img class="att-avatar" src={avatarUrl(a)} alt="" loading="lazy" />
       <span class="att-name">{a.name}</span>
+      {#if a.sheetConflict}
+        <!-- Tappable as well as hoverable: tablets have no hover. -->
+        <button type="button" class="sheet-conflict" title={a.sheetConflict} aria-expanded={openConflict === a.email}
+          onclick={() => (openConflict = openConflict === a.email ? null : a.email)}>⚠ Gig Sheet Conflict</button>
+        {#if openConflict === a.email}<span class="conflict-why" role="note">{a.sheetConflict}</span>{/if}
+      {/if}
       {#if canEdit}
         <form class="att-edit" method="POST" action="?/rsvp" use:enhance={selfEdit}>
           <input type="hidden" name="email" value={a.email} />
@@ -1305,6 +1315,21 @@
     text-decoration: line-through;
     text-decoration-thickness: 2px;
     color: var(--muted);
+  }
+
+  .import-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #2f5d62;
+    background: #eaf1f1;
+    border: 1px solid #b9d3d3;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    margin-left: 6px;
+    white-space: nowrap;
   }
 
   .cancel-badge {
@@ -1816,6 +1841,29 @@
   }
 
   /* Editor's per-row reply changer, pushed to the right. */
+  .conflict-why {
+    flex-basis: 100%;
+    font-size: 0.78rem;
+    color: #4a3a16;
+    background: #fff7e6;
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+
+  .sheet-conflict {
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #8a5200;
+    background: #fff7e6;
+    border: 1px solid #f0c674;
+    border-radius: 999px;
+    padding: 2px 8px;
+    min-height: 28px;
+    cursor: help;
+    white-space: nowrap;
+  }
+
   .att-edit {
     margin-left: auto;
   }
