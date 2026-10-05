@@ -424,16 +424,28 @@ async function tokenFor(sa: Required<ServiceAccount>, scope: string): Promise<st
   return token;
 }
 
-/** Sheets API read: the tab named by gid (or the first tab) as display strings. */
-async function readViaSheetsApi(ref: { spreadsheetId: string; gid: number | null }, sa: Required<ServiceAccount>): Promise<string[][]> {
+/** Which spreadsheet tab to read: by gid (from the link), else by title, else the first. */
+interface TabRef {
+  spreadsheetId: string;
+  gid: number | null;
+  title?: string;
+}
+
+/** Sheets API read of one tab as display strings. */
+async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Promise<string[][]> {
   const token = await tokenFor(sa, SHEETS_SCOPE);
   const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ref.spreadsheetId)}`;
   const meta = (await sheetsGet(`${base}?fields=sheets.properties(sheetId,title)`, token, sa.client_email)) as {
     sheets?: { properties?: { sheetId?: number; title?: string } }[];
   };
   const tabs = (meta.sheets ?? []).map((s) => s.properties ?? {});
-  const tab = ref.gid === null ? tabs[0] : tabs.find((t) => t.sheetId === ref.gid);
-  if (!tab?.title) throw new Error(`The sheet has no tab with gid=${ref.gid}.`);
+  const tab =
+    ref.gid !== null
+      ? tabs.find((t) => t.sheetId === ref.gid)
+      : ref.title
+        ? tabs.find((t) => t.title?.trim().toLowerCase() === ref.title!.toLowerCase())
+        : tabs[0];
+  if (!tab?.title) throw new Error(`The sheet has no tab ${ref.gid !== null ? `with gid=${ref.gid}` : `named "${ref.title}"`}.`);
 
   const range = encodeURIComponent(`'${tab.title.replace(/'/g, "''")}'`);
   const values = (await sheetsGet(
@@ -449,11 +461,15 @@ async function readViaSheetsApi(ref: { spreadsheetId: string; gid: number | null
  * same Drive read-only scope the music sync already uses. Covers a Cloud
  * project where the Sheets API was never enabled.
  */
-async function readViaCsvExport(ref: { spreadsheetId: string; gid: number | null }, sa: Required<ServiceAccount>): Promise<string[][]> {
+async function readViaCsvExport(ref: TabRef, sa: Required<ServiceAccount>): Promise<string[][]> {
   const token = await tokenFor(sa, DRIVE_SCOPE);
+  const doc = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(ref.spreadsheetId)}`;
   const url =
-    `https://docs.google.com/spreadsheets/d/${encodeURIComponent(ref.spreadsheetId)}/export?format=csv` +
-    (ref.gid === null ? '' : `&gid=${ref.gid}`);
+    ref.gid !== null
+      ? `${doc}/export?format=csv&gid=${ref.gid}`
+      : ref.title
+        ? `${doc}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(ref.title)}`
+        : `${doc}/export?format=csv`;
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   const type = res.headers.get('content-type') ?? '';
   if (!res.ok || type.includes('text/html')) {
@@ -462,10 +478,18 @@ async function readViaCsvExport(ref: { spreadsheetId: string; gid: number | null
   return parseCsv(await res.text());
 }
 
-/** Read one tab of a spreadsheet as a grid of display strings. */
-export async function fetchSheetGrid(sheetUrl: string, serviceAccount: ServiceAccount | undefined): Promise<string[][]> {
-  const ref = parseSheetUrl(sheetUrl);
-  if (!ref) throw new Error('The saved Gig sheet link is not a Google Sheets link.');
+/**
+ * Read one tab of a spreadsheet as a grid of display strings: the tab in the
+ * link's #gid=, or — when the link has none — the tab titled `tabTitle`.
+ */
+export async function fetchSheetGrid(
+  sheetUrl: string,
+  serviceAccount: ServiceAccount | undefined,
+  tabTitle?: string
+): Promise<string[][]> {
+  const parsed = parseSheetUrl(sheetUrl);
+  if (!parsed) throw new Error('The saved sheet link is not a Google Sheets link.');
+  const ref: TabRef = { ...parsed, ...(tabTitle ? { title: tabTitle } : {}) };
   if (!serviceAccount?.client_email || !serviceAccount.private_key) {
     throw new Error('No Google service account is configured (config.json google.serviceAccount).');
   }

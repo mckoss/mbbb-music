@@ -273,7 +273,10 @@
           <ul class="links">
             {#each lastRun.unmatched as p (p.key)}
               <li>
-                <form method="POST" action="?/linkPlayer" use:enhance={() => async ({ update }) => update({ reset: false })}>
+                <form method="POST" action="?/linkPlayer" use:enhance={() => async ({ update }) => {
+                  sheetOpen = true; // keep the panel open through the reload
+                  await update({ reset: false });
+                }}>
                   <input type="hidden" name="key" value={p.key} />
                   <span class="who">
                     {p.name}{p.instrument ? ` (${p.instrument})` : ''}
