@@ -98,6 +98,10 @@ on `/gigs`. The sheet link, column→gig links, player→member links and the la
 report live in the gitignored `data/gig-sheet.json` — never commit the sheet id.
 It only ever adds gigs (and marks canceled ones); website-entered RSVPs always
 win and disagreements show a "Gig Sheet Conflict" flag on the gig roster.
+The admin-only **Sync Contacts** button on `/members`
+(`src/lib/server/contacts-sheet.ts`) reads the same spreadsheet's "Contacts"
+tab and fills only never-edited member-profile fields; contacts without an
+account are listed for an admin to add explicitly.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.

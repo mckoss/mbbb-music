@@ -1,8 +1,9 @@
 // The band roster: every approved member with their photo, name, and instrument.
 // All-members-visible (the auth hook already requires an approved role here).
-import { error } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 
-import { listUsers } from '$lib/server/users';
+import { listUsers, roleOf, setRole } from '$lib/server/users';
+import { readContactsState, runContactsSync, setContactsUrl } from '$lib/server/contacts-sheet';
 import { getProfile } from '$lib/server/members';
 import { listGigs } from '$lib/server/gigs';
 import { logEvent } from '$lib/server/activity';
@@ -84,5 +85,38 @@ export function load({ locals }) {
       }];
     });
 
-  return { members, gigs };
+  // Admins drive the Contacts-sheet import from here.
+  const contactsSheet =
+    locals.user.role === 'admin'
+      ? (({ url, lastRun }) => ({ url: url ?? '', lastRun: lastRun ?? null }))(readContactsState())
+      : null;
+
+  return { members, gigs, contactsSheet };
 }
+
+function requireAdmin(locals: App.Locals) {
+  if (locals.user?.role !== 'admin') throw error(403, 'Admins only');
+}
+
+export const actions = {
+  // Save the optional Contacts link, then run the import now.
+  syncContacts: async ({ locals, request }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    if (form.has('url') && !setContactsUrl(String(form.get('url') ?? ''))) {
+      return fail(400, { contactsError: 'That is not a Google Sheets link.' });
+    }
+    return { contactsReport: await runContactsSync() };
+  },
+
+  // Grant member access to a contact from the sheet who has no account yet.
+  // Their profile fills in on the next Sync Contacts.
+  addMember: async ({ locals, request }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    const email = String(form.get('email') ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400, { contactsError: 'Invalid email.' });
+    if (!roleOf(email)) setRole(email, 'member', locals.user!.email);
+    return { addedMember: email };
+  },
+};
