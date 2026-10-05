@@ -239,7 +239,7 @@ export function runContactsSync(): Promise<ContactsReport> {
     try {
       const source = contactsSource(state, readGigSheetState().url);
       if (!source) throw new Error('No sheet link yet. Save the Gig sheet link on the Gigs page, or a Contacts link here.');
-      const grid = await fetchSheetGrid(source.url, loadConfig().google?.serviceAccount, source.tab);
+      const { grid } = await fetchSheetGrid(source.url, loadConfig().google?.serviceAccount, source.tab);
       const members: ContactMember[] = listUsers().map((u) => {
         const p = getProfile(u.email);
         return {

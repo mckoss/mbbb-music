@@ -96,7 +96,8 @@ The Gig-sheet import (`src/lib/server/gig-sheet.ts`, parsing in
 (server `init` hook) and on demand from the admin-only **Sync Gig Sheet** button
 on `/gigs`. The sheet link, column→gig links, player→member links and the last
 report live in the gitignored `data/gig-sheet.json` — never commit the sheet id.
-It only ever adds gigs (and marks canceled ones); website-entered RSVPs always
+It only ever adds gigs and marks them canceled (CANCELLED text or a red title);
+website-entered RSVPs always
 win and disagreements show a "Gig Sheet Conflict" flag on the gig roster.
 The admin-only **Sync Contacts** button on `/members`
 (`src/lib/server/contacts-sheet.ts`) reads the same spreadsheet's "Contacts"

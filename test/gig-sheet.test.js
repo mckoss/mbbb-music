@@ -15,6 +15,8 @@ import {
   readAnswer,
   parseSheetUrl,
   parseCsv,
+  classifyColor,
+  headerColor,
 } from '../src/lib/gig-sheet.ts';
 import {
   applyGigSheet,
@@ -150,9 +152,10 @@ function fakeStores(initialGigs = []) {
   };
 }
 
-function run(stores, state, g = grid()) {
+function run(stores, state, g = grid(), colors = null) {
   return applyGigSheet({
     grid: g,
+    colors,
     today: TODAY,
     state,
     gigs: stores.gigStore,
@@ -163,7 +166,7 @@ function run(stores, state, g = grid()) {
   });
 }
 
-const emptyState = () => ({ links: {}, players: {}, applied: {}, sheet: {} });
+const emptyState = () => ({ links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {} });
 const status = (s, gig, email) => s.rsvps.get(`${gig.id}|${email}`)?.status ?? null;
 const byDate = (s, date) => s.gigs.find((g) => g.date === date);
 
@@ -295,7 +298,7 @@ test('parseCsv handles quotes, doubled quotes and newlines in cells', () => {
 test('state file round-trips the sheet link and player links (temp dir only)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mbbb-gig-sheet-'));
   try {
-    assert.deepEqual(readState(dir), { links: {}, players: {}, applied: {}, sheet: {} });
+    assert.deepEqual(readState(dir), { links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {} });
     assert.equal(setSheetUrl('not a sheet', dir), false);
     const url = `https://docs.google.com/spreadsheets/d/${'B'.repeat(44)}/edit#gid=7`;
     assert.equal(setSheetUrl(url, dir), true);
@@ -308,4 +311,89 @@ test('state file round-trips the sheet link and player links (temp dir only)', a
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('classifyColor reads hue families and ignores neutrals', () => {
+  assert.equal(classifyColor({ red: 1 }), 'red'); // pure red
+  assert.equal(classifyColor({ red: 0.957, green: 0.8, blue: 0.8 }), 'red'); // "light red 3" fill
+  assert.equal(classifyColor({ red: 0.851, green: 0.918, blue: 0.827 }), 'green'); // "light green 3"
+  assert.equal(classifyColor({ green: 1 }), 'green');
+  assert.equal(classifyColor({ red: 0.29, green: 0.525, blue: 0.91 }), 'blue');
+  assert.equal(classifyColor({ red: 1, green: 1 }), 'other'); // yellow
+  assert.equal(classifyColor({ red: 1, green: 1, blue: 1 }), null); // white
+  assert.equal(classifyColor({}), null); // black (all channels omitted)
+  assert.equal(classifyColor({ red: 0.6, green: 0.6, blue: 0.62 }), null); // grey
+  assert.equal(classifyColor(undefined), null);
+  // A colored fill wins over text color; plain fill falls back to the text.
+  assert.equal(headerColor({ green: 1 }, { red: 1 }), 'green');
+  assert.equal(headerColor({ red: 1, green: 1, blue: 1 }, { red: 0.8 }), 'red');
+});
+
+// Colors for the header row of grid(): Oct 3 green, Nov 20 red, Feb 14 blue.
+function colorsFor(g, byCol) {
+  return g.map((row, r) => row.map((_, c) => (r === 0 ? byCol[c] ?? null : null)));
+}
+
+test('a red header cancels the gig; colors can be absent', () => {
+  const s = fakeStores();
+  const state = emptyState();
+  const g = grid();
+  const r = run(s, state, g, colorsFor(g, { 2: 'green', 4: 'red', 6: 'blue' }));
+  assert.equal(r.colorsRead, true);
+  assert.equal(byDate(s, '2026-11-20').canceled, true); // red
+  assert.equal(byDate(s, '2026-10-03').canceled, undefined); // green
+  assert.equal(byDate(s, '2027-02-14').canceled, undefined); // blue means nothing
+  assert.equal(byDate(s, '2026-10-31').canceled, true); // CANCELLED text
+  assert.deepEqual(r.canceled.map((x) => x.date).sort(), ['2026-10-31', '2026-11-20']);
+  assert.equal(status(s, byDate(s, '2026-11-20'), 'alex@example.com'), null); // no RSVPs on canceled gigs
+
+  // Without colors (CSV fallback), a plain sync cancels only on the words.
+  const s2 = fakeStores();
+  const r2 = run(s2, emptyState());
+  assert.equal(r2.colorsRead, false);
+  assert.equal(byDate(s2, '2026-11-20').canceled, undefined);
+});
+
+test('a color-only cancellation is undone when the header stops being red', () => {
+  const s = fakeStores();
+  const state = emptyState();
+  const g = grid();
+  run(s, state, g, colorsFor(g, { 4: 'red' }));
+  const fair = byDate(s, '2026-11-20');
+  assert.equal(fair.canceled, true);
+
+  // "No quorum" → "we're going after all": the header turns blue.
+  const r = run(s, state, g, colorsFor(g, { 4: 'blue' }));
+  assert.equal(fair.canceled, false);
+  assert.deepEqual(r.uncanceled.map((x) => x.gigId), [fair.id]);
+  assert.equal(status(s, fair, 'alex@example.com'), 'yes'); // RSVPs now flow
+  assert.equal(state.canceledBySheet[fair.id], undefined);
+
+  // Text cancellations stay one-way.
+  const party = byDate(s, '2026-10-31');
+  const g2 = grid();
+  g2[0][3] = 'Oct 31 Private Costume Party';
+  run(s, state, g2, colorsFor(g2, {}));
+  assert.equal(party.canceled, true);
+});
+
+test("an admin's un-cancel of a red gig is respected", () => {
+  const s = fakeStores();
+  const state = emptyState();
+  const g = grid();
+  const red = colorsFor(g, { 4: 'red' });
+  run(s, state, g, red);
+  const fair = byDate(s, '2026-11-20');
+  fair.canceled = false; // an admin un-cancels on the site
+  run(s, state, g, red);
+  assert.equal(fair.canceled, false);
+  assert.equal(state.canceledBySheet[fair.id], 'overridden');
+  run(s, state, g, red);
+  assert.equal(fair.canceled, false);
+
+  // A gig canceled by hand is never un-canceled by the sheet.
+  const walk = byDate(s, '2026-12-06');
+  walk.canceled = true;
+  run(s, state, g, colorsFor(g, { 5: 'green' }));
+  assert.equal(walk.canceled, true);
 });

@@ -7,6 +7,10 @@
 //     the band-only note "Imported from Gig sheet" and the sheet's full header
 //     text. They are public like any other gig, unless the header calls the
 //     event "private".
+//   - A header saying CANCELLED/POSTPONED, or colored red (the band's mark for
+//     a gig that was canceled or didn't make quorum), cancels the gig. A
+//     cancellation the import made only because of the red color is undone
+//     if the color changes; an admin's own un-cancel is respected.
 //   - App gigs are NEVER deleted or edited because of the sheet; the one change
 //     the sheet can make to an existing gig is marking it canceled (never
 //     un-canceling).
@@ -28,7 +32,7 @@ import { JWT } from 'google-auth-library';
 
 import { loadConfig } from '../../sync/config.js';
 import { detectInstrument } from '../../sync/instruments.js';
-import { parseCsv, parseGigSheet, parseSheetUrl, type SheetAnswer, type SheetGig, type SheetPlayer } from '../gig-sheet.js';
+import { headerColor, parseCsv, parseGigSheet, parseSheetUrl, type HeaderColor, type SheetsColor, type SheetAnswer, type SheetGig, type SheetPlayer } from '../gig-sheet.js';
 import type { Gig, GigInput } from '../gig.js';
 import type { RsvpStatus } from '../rsvp.js';
 import { pacificToday } from '../time.js';
@@ -55,6 +59,10 @@ export interface GigSheetReport {
   created: { gigId: string; name: string; date: string }[];
   linked: { gigId: string; name: string; date: string }[];
   canceled: { gigId: string; name: string; date: string }[];
+  /** Gigs the import had canceled for a red header that is no longer red. */
+  uncanceled: { gigId: string; name: string; date: string }[];
+  /** Whether header colors were read (they aren't through the CSV fallback). */
+  colorsRead: boolean;
   /** How many replies were set or changed (the list below is capped). */
   rsvpCount: number;
   rsvps: { gigId: string; gigName: string; email: string; member: string; status: RsvpStatus }[];
@@ -81,11 +89,17 @@ export interface GigSheetState {
   applied: Record<string, Record<string, SheetAnswer>>;
   /** The sheet's current answers for linked players: gig id → email → answer. */
   sheet: Record<string, Record<string, SheetAnswer>>;
+  /**
+   * Gigs this import canceled: 'text' (CANCELLED in the header — one-way),
+   * 'color' (red header — undone if the color changes), or 'overridden' (an
+   * admin un-canceled it since; left alone until the sheet stops saying so).
+   */
+  canceledBySheet: Record<string, 'text' | 'color' | 'overridden'>;
   lastRun?: GigSheetReport;
 }
 
 function emptyState(): GigSheetState {
-  return { links: {}, players: {}, applied: {}, sheet: {} };
+  return { links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {} };
 }
 
 function statePath(dataDir?: string): string {
@@ -101,6 +115,7 @@ export function readState(dataDir?: string): GigSheetState {
       players: parsed.players ?? {},
       applied: parsed.applied ?? {},
       sheet: parsed.sheet ?? {},
+      canceledBySheet: parsed.canceledBySheet ?? {},
       ...(parsed.lastRun ? { lastRun: parsed.lastRun } : {}),
     };
   } catch {
@@ -242,6 +257,8 @@ export interface RsvpStore {
 
 export interface ApplyInput {
   grid: string[][];
+  /** Header-cell colors aligned with `grid`, when the formatting was read. */
+  colors?: HeaderColor[][] | null;
   today: string;
   state: GigSheetState;
   gigs: GigStore;
@@ -257,7 +274,7 @@ export interface ApplyInput {
  */
 export function applyGigSheet(input: ApplyInput): GigSheetReport {
   const { grid, today, state, gigs, rsvps, members, trigger } = input;
-  const parsed = parseGigSheet(grid, today);
+  const parsed = parseGigSheet(grid, today, input.colors);
   const report: GigSheetReport = {
     at: input.now ?? new Date().toISOString(),
     trigger,
@@ -266,6 +283,8 @@ export function applyGigSheet(input: ApplyInput): GigSheetReport {
     created: [],
     linked: [],
     canceled: [],
+    uncanceled: [],
+    colorsRead: Boolean(input.colors),
     rsvpCount: 0,
     rsvps: [],
     conflicts: 0,
@@ -321,7 +340,6 @@ export function applyGigSheet(input: ApplyInput): GigSheetReport {
         // Public like a hand-made gig, unless the sheet calls it private.
         ...(PRIVATE_RE.test(col.header) ? { hidden: true } : {}),
         importedFrom: 'gig-sheet',
-        ...(col.canceled ? { canceled: true } : {}),
       });
       report.created.push({ gigId: gig.id, name: gig.name, date: gig.date });
     }
@@ -329,11 +347,32 @@ export function applyGigSheet(input: ApplyInput): GigSheetReport {
     resolved.push({ col, gig });
   }
 
-  // 2. Canceled on the sheet → canceled here (one-way; never un-cancels).
+  // 2. Canceled on the sheet → canceled here.
   for (const r of resolved) {
-    if (r.col.canceled && !r.gig.canceled) {
-      r.gig = gigs.update(r.gig.id, { canceled: true }) ?? r.gig;
-      report.canceled.push({ gigId: r.gig.id, name: r.gig.name, date: r.gig.date });
+    const id = r.gig.id;
+    const why = r.col.canceled ? 'text' : r.col.color === 'red' ? 'color' : null;
+    const mark = state.canceledBySheet[id];
+    const entry = () => ({ gigId: id, name: r.gig.name, date: r.gig.date });
+    if (why) {
+      if (r.gig.canceled) {
+        // Already canceled (by us or by hand); a stronger reason sticks.
+        if (mark === 'color' && why === 'text') state.canceledBySheet[id] = 'text';
+      } else if (mark && mark !== 'overridden') {
+        // We canceled it and an admin has since un-canceled it: their call.
+        state.canceledBySheet[id] = 'overridden';
+      } else if (!mark) {
+        r.gig = gigs.update(id, { canceled: true }) ?? r.gig;
+        state.canceledBySheet[id] = why;
+        report.canceled.push(entry());
+      }
+    } else if (mark) {
+      // The sheet no longer says canceled. Undo a color-only cancellation of
+      // ours ("no quorum" → "we're going after all"); forget the rest.
+      if (mark === 'color' && r.gig.canceled) {
+        r.gig = gigs.update(id, { canceled: false }) ?? r.gig;
+        report.uncanceled.push(entry());
+      }
+      delete state.canceledBySheet[id];
     }
   }
 
@@ -431,8 +470,25 @@ interface TabRef {
   title?: string;
 }
 
-/** Sheets API read of one tab as display strings. */
-async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Promise<string[][]> {
+/** A tab's cells as display strings, plus header-area colors when available. */
+export interface SheetData {
+  grid: string[][];
+  /** Colors of the first rows' cells (where the header lives); null via CSV. */
+  colors: HeaderColor[][] | null;
+}
+
+type FormatRows = {
+  sheets?: {
+    data?: {
+      rowData?: {
+        values?: { effectiveFormat?: { backgroundColor?: SheetsColor; textFormat?: { foregroundColor?: SheetsColor } } }[];
+      }[];
+    }[];
+  }[];
+};
+
+/** Sheets API read of one tab as display strings (and its header colors). */
+async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Promise<SheetData> {
   const token = await tokenFor(sa, SHEETS_SCOPE);
   const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(ref.spreadsheetId)}`;
   const meta = (await sheetsGet(`${base}?fields=sheets.properties(sheetId,title)`, token, sa.client_email)) as {
@@ -453,7 +509,24 @@ async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Prom
     token,
     sa.client_email
   )) as { values?: unknown[][] };
-  return (values.values ?? []).map((row) => row.map((c) => String(c ?? '')));
+  const grid = (values.values ?? []).map((row) => row.map((c) => String(c ?? '')));
+
+  // Colors are a bonus: if this request fails, the text rules still apply.
+  let colors: HeaderColor[][] | null = null;
+  try {
+    const fmt = (await sheetsGet(
+      `${base}?ranges=${encodeURIComponent(`'${tab.title.replace(/'/g, "''")}'!1:5`)}` +
+        `&fields=${encodeURIComponent('sheets.data.rowData.values.effectiveFormat(backgroundColor,textFormat.foregroundColor)')}`,
+      token,
+      sa.client_email
+    )) as FormatRows;
+    colors = (fmt.sheets?.[0]?.data?.[0]?.rowData ?? []).map((row) =>
+      (row.values ?? []).map((v) => headerColor(v.effectiveFormat?.backgroundColor, v.effectiveFormat?.textFormat?.foregroundColor))
+    );
+  } catch {
+    colors = null;
+  }
+  return { grid, colors };
 }
 
 /**
@@ -461,7 +534,7 @@ async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Prom
  * same Drive read-only scope the music sync already uses. Covers a Cloud
  * project where the Sheets API was never enabled.
  */
-async function readViaCsvExport(ref: TabRef, sa: Required<ServiceAccount>): Promise<string[][]> {
+async function readViaCsvExport(ref: TabRef, sa: Required<ServiceAccount>): Promise<SheetData> {
   const token = await tokenFor(sa, DRIVE_SCOPE);
   const doc = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(ref.spreadsheetId)}`;
   const url =
@@ -475,7 +548,7 @@ async function readViaCsvExport(ref: TabRef, sa: Required<ServiceAccount>): Prom
   if (!res.ok || type.includes('text/html')) {
     throw new Error(`CSV export failed (${res.status}${type.includes('text/html') ? ', got a sign-in page' : ''})`);
   }
-  return parseCsv(await res.text());
+  return { grid: parseCsv(await res.text()), colors: null };
 }
 
 /**
@@ -486,7 +559,7 @@ export async function fetchSheetGrid(
   sheetUrl: string,
   serviceAccount: ServiceAccount | undefined,
   tabTitle?: string
-): Promise<string[][]> {
+): Promise<SheetData> {
   const parsed = parseSheetUrl(sheetUrl);
   if (!parsed) throw new Error('The saved sheet link is not a Google Sheets link.');
   const ref: TabRef = { ...parsed, ...(tabTitle ? { title: tabTitle } : {}) };
@@ -528,7 +601,7 @@ export function runGigSheetSync(trigger: GigSheetReport['trigger']): Promise<Gig
     const state = readState();
     try {
       if (!state.url) throw new Error('No Gig sheet link saved yet. Paste the sheet link on the Gigs page.');
-      const grid = await fetchSheetGrid(state.url, loadConfig().google?.serviceAccount);
+      const { grid, colors } = await fetchSheetGrid(state.url, loadConfig().google?.serviceAccount);
       const members: SheetMember[] = listUsers().map((u) => {
         const p = getProfile(u.email);
         const instruments = [p.primaryInstrument, ...p.instruments].filter((s): s is string => Boolean(s));
@@ -536,6 +609,7 @@ export function runGigSheetSync(trigger: GigSheetReport['trigger']): Promise<Gig
       });
       const report = applyGigSheet({
         grid,
+        colors,
         today: pacificToday(),
         state,
         trigger,
@@ -559,6 +633,8 @@ export function runGigSheetSync(trigger: GigSheetReport['trigger']): Promise<Gig
         created: [],
         linked: [],
         canceled: [],
+        uncanceled: [],
+        colorsRead: false,
         rsvpCount: 0,
         rsvps: [],
         conflicts: 0,

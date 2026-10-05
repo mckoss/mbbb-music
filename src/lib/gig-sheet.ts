@@ -32,6 +32,57 @@ export interface SheetGig {
   times: GigTime[];
   /** The header says CANCELLED/CANCELED or POSTPONED. */
   canceled: boolean;
+  /**
+   * The header cell's color, when the sheet's formatting was read. The band
+   * colors gig titles red when a gig was canceled or didn't happen (no
+   * quorum) and green when it's on; other colors carry no meaning we rely on.
+   */
+  color: HeaderColor;
+}
+
+/** The color family of a header cell (fill or text), or null for none/neutral. */
+export type HeaderColor = 'red' | 'green' | 'blue' | 'other' | null;
+
+/** A Sheets API color: 0–1 channels, absent channels meaning 0. */
+export interface SheetsColor {
+  red?: number;
+  green?: number;
+  blue?: number;
+}
+
+/**
+ * Classify a Sheets color by hue. White, black and greys (low saturation) are
+ * "no color"; light tints such as the stock "light red 3" fill still count.
+ */
+export function classifyColor(c: SheetsColor | null | undefined): HeaderColor {
+  if (!c) return null;
+  const r = c.red ?? 0;
+  const g = c.green ?? 0;
+  const b = c.blue ?? 0;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d < 0.06 || l > 0.97 || l < 0.08) return null;
+  const sat = d / (1 - Math.abs(2 * l - 1));
+  if (sat < 0.2) return null;
+  let hue: number;
+  if (max === r) hue = 60 * (((g - b) / d) % 6);
+  else if (max === g) hue = 60 * ((b - r) / d + 2);
+  else hue = 60 * ((r - g) / d + 4);
+  if (hue < 0) hue += 360;
+  if (hue < 20 || hue >= 330) return 'red';
+  if (hue >= 75 && hue < 170) return 'green';
+  if (hue >= 190 && hue < 260) return 'blue';
+  return 'other';
+}
+
+/**
+ * A header cell's color from its fill and text colors: a colored fill wins,
+ * else colored text (black text on white is null).
+ */
+export function headerColor(background: SheetsColor | null | undefined, text: SheetsColor | null | undefined): HeaderColor {
+  return classifyColor(background) ?? classifyColor(text);
 }
 
 /** One player row: who, what they play, and their answer per gig column. */
@@ -257,7 +308,7 @@ function cell(row: string[] | undefined, i: number): string {
  * first dated header, the player-name column sits just left of it and, when
  * there's room, the instrument column left of that.
  */
-export function parseGigSheet(grid: string[][], today: string): ParsedSheet {
+export function parseGigSheet(grid: string[][], today: string, colors?: HeaderColor[][] | null): ParsedSheet {
   const headerRow = grid.findIndex((row) => row.some((c) => readHeaderDate(String(c ?? ''))));
   if (headerRow < 0) return { gigs: [], players: [], undated: [] };
   const header = grid[headerRow];
@@ -300,6 +351,7 @@ export function parseGigSheet(grid: string[][], today: string): ParsedSheet {
       name: cleanGigName(h, dateText),
       times: readHeaderTimes(sansDate),
       canceled: CANCELED_RE.test(h),
+      color: colors?.[headerRow]?.[c] ?? null,
     });
   });
 

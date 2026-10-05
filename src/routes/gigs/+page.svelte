@@ -29,6 +29,8 @@
     created: { gigId: string; name: string; date: string }[];
     linked: { gigId: string; name: string; date: string }[];
     canceled: { gigId: string; name: string; date: string }[];
+    uncanceled?: { gigId: string; name: string; date: string }[];
+    colorsRead?: boolean;
     rsvpCount: number;
     rsvps: { gigId: string; gigName: string; member: string; status: RsvpStatus }[];
     conflicts: number;
@@ -57,6 +59,7 @@
     ];
     if (r.conflicts) bits.push(`${r.conflicts} conflict${r.conflicts === 1 ? '' : 's'}`);
     if (r.canceled.length) bits.push(`${r.canceled.length} canceled`);
+    if (r.uncanceled?.length) bits.push(`${r.uncanceled.length} back on`);
     if (r.unmatched.length) bits.push(`${r.unmatched.length} unlinked player${r.unmatched.length === 1 ? '' : 's'}`);
     return bits.join(' · ');
   }
@@ -220,7 +223,7 @@
         </div>
         <p class="hint">
           Runs daily. Sheet gigs missing here are added, marked “Imported from Gig sheet” (public unless the sheet
-          says “private”); gigs are never deleted. Sheet yes/no answers fill in members who haven't replied on the
+          says “private”); gigs are never deleted. A red gig title (or CANCELLED) marks the gig canceled. Sheet yes/no answers fill in members who haven't replied on the
           website; a website reply always wins, and disagreements are flagged “Gig Sheet Conflict” on the gig.
         </p>
       </form>
@@ -245,6 +248,17 @@
               <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)}</li>
             {/each}
           </ul>
+        {/if}
+        {#if lastRun.uncanceled?.length}
+          <h4>Back on (header no longer red)</h4>
+          <ul>
+            {#each lastRun.uncanceled as g (g.gigId)}
+              <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.ok && lastRun.colorsRead === false}
+          <p class="hint">Header colors couldn't be read this time, so only the words CANCELLED/POSTPONED were used.</p>
         {/if}
         {#if lastRun.rsvps.length}
           <h4>RSVPs set ({lastRun.rsvpCount})</h4>
