@@ -36,6 +36,7 @@
     conflicts: number;
     ambiguous: { date: string; header: string }[];
     deleted: number;
+    tombstoned?: { gigId: string; name: string; date: string; header: string }[];
     unmatched: { key: string; name: string; instrument: string; reason: 'none' | 'several' }[];
     undated: string[];
   }
@@ -266,6 +267,27 @@
           <ul>
             {#each lastRun.rsvps as r, i (i)}
               <li>{r.member}: {r.status === 'yes' ? 'Yes' : 'No'} for <a href={`/gigs/${r.gigId}`}>{r.gigName}</a></li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.tombstoned?.length}
+          <h4>Deleted here, still in the sheet</h4>
+          <p class="hint">
+            These gigs were deleted on the site, so the sync skips their sheet columns. Allow a re-import to bring one
+            back on the next sync.
+          </p>
+          <ul class="links">
+            {#each lastRun.tombstoned as t, i (i)}
+              <li>
+                <form method="POST" action="?/allowReimport" use:enhance={() => async ({ update }) => {
+                  sheetOpen = true;
+                  await update({ reset: false });
+                }}>
+                  <input type="hidden" name="gigId" value={t.gigId} />
+                  <span class="who">{formatGigDate(t.date)}: {t.name}</span>
+                  <button type="submit" class="small">Allow re-import</button>
+                </form>
+              </li>
             {/each}
           </ul>
         {/if}

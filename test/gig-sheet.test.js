@@ -26,6 +26,9 @@ import {
   setSheetUrl,
   linkPlayer,
   sheetConflict,
+  tombstoneGig,
+  liftTombstone,
+  RED_CANCEL_NOTE,
   GIG_SHEET_IMPORTER,
 } from '../src/lib/server/gig-sheet.ts';
 import { makeGig } from '../src/lib/gig.ts';
@@ -166,7 +169,7 @@ function run(stores, state, g = grid(), colors = null) {
   });
 }
 
-const emptyState = () => ({ links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {} });
+const emptyState = () => ({ links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {}, tombstones: {} });
 const status = (s, gig, email) => s.rsvps.get(`${gig.id}|${email}`)?.status ?? null;
 const byDate = (s, date) => s.gigs.find((g) => g.date === date);
 
@@ -298,7 +301,7 @@ test('parseCsv handles quotes, doubled quotes and newlines in cells', () => {
 test('state file round-trips the sheet link and player links (temp dir only)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mbbb-gig-sheet-'));
   try {
-    assert.deepEqual(readState(dir), { links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {} });
+    assert.deepEqual(readState(dir), { links: {}, players: {}, applied: {}, sheet: {}, canceledBySheet: {}, tombstones: {} });
     assert.equal(setSheetUrl('not a sheet', dir), false);
     const url = `https://docs.google.com/spreadsheets/d/${'B'.repeat(44)}/edit#gid=7`;
     assert.equal(setSheetUrl(url, dir), true);
@@ -396,4 +399,85 @@ test("an admin's un-cancel of a red gig is respected", () => {
   walk.canceled = true;
   run(s, state, g, colorsFor(g, { 5: 'green' }));
   assert.equal(walk.canceled, true);
+});
+
+test('a red-title cancellation is explained in the notes, and the note goes when it is undone', () => {
+  const s = fakeStores();
+  const state = emptyState();
+  const g = grid();
+  run(s, state, g, colorsFor(g, { 4: 'red' }));
+  const fair = byDate(s, '2026-11-20');
+  assert.equal(fair.canceled, true);
+  assert.ok(fair.notes.startsWith(RED_CANCEL_NOTE));
+  assert.match(fair.notes, /Imported from Gig sheet\./); // the import note is kept
+  // A text cancellation gets no color note.
+  assert.ok(!byDate(s, '2026-10-31').notes.includes(RED_CANCEL_NOTE));
+
+  run(s, state, g, colorsFor(g, { 4: 'green' }));
+  assert.equal(fair.canceled, false);
+  assert.ok(!fair.notes.includes(RED_CANCEL_NOTE));
+  assert.match(fair.notes, /^Imported from Gig sheet\./);
+});
+
+test('a tombstone keeps a deleted gig from coming back, by column or by same-day name', () => {
+  const s = fakeStores();
+  const state = emptyState();
+  run(s, state);
+  const fair = byDate(s, '2026-11-20');
+  const fairKey = Object.keys(state.links).find((k) => state.links[k] === fair.id);
+  // Deleted on the site: the delete action leaves a tombstone, then removes it.
+  state.tombstones[fair.id] = { gigId: fair.id, name: fair.name, date: fair.date, deletedAt: 'x', deletedBy: 'a@example.com', keys: [fairKey] };
+  s.gigs.splice(s.gigs.indexOf(fair), 1);
+  const r = run(s, state);
+  assert.equal(r.created.length, 0);
+  assert.equal(r.deleted, 1);
+  assert.deepEqual(r.tombstoned.map((t) => t.gigId), [fair.id]);
+
+  // Even if the column's key changes (another gig added the same day ahead of
+  // it), the same-day name still matches the tombstone.
+  const g = grid();
+  g.forEach((row, i) => row.splice(4, 0, i === 0 ? 'Nov 20 Morning Market' : ''));
+  const r2 = run(s, emptyStateWith(state), g);
+  assert.ok(!s.gigs.some((x) => x.date === '2026-11-20' && x.name === 'Harvest Fair'));
+  assert.ok(r2.created.some((x) => x.name === 'Morning Market')); // a different gig that day is fine
+
+  // A renamed-then-deleted imported gig is still known by its sheet header.
+  const s4 = fakeStores();
+  const st4 = emptyState();
+  st4.tombstones.yy = { gigId: 'yy', name: 'Fall Fest', date: '2026-11-20', deletedAt: 'x', deletedBy: 'a@example.com', keys: [], header: 'Nov 20 Harvest Fair' };
+  run(s4, st4);
+  assert.equal(byDate(s4, '2026-11-20'), undefined);
+
+  // A hand-made gig deleted before any sync is covered by date + name too.
+  const s3 = fakeStores();
+  const st3 = emptyState();
+  st3.tombstones.zz = { gigId: 'zz', name: 'Lantern Walk', date: '2026-12-06', deletedAt: 'x', deletedBy: 'a@example.com', keys: [] };
+  run(s3, st3);
+  assert.equal(byDate(s3, '2026-12-06'), undefined);
+});
+
+// Same links/tombstones, but forget column links so keys are re-resolved.
+function emptyStateWith(state) {
+  return { ...emptyState(), tombstones: state.tombstones };
+}
+
+test('tombstoneGig and liftTombstone persist through the state file (temp dir only)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mbbb-gig-tomb-'));
+  try {
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'gig-sheet.json'), JSON.stringify({ links: { '2026-11-20#0': 'g1' }, players: {}, applied: { g1: {} } }));
+    tombstoneGig({ id: 'g1', name: 'Harvest Fair', date: '2026-11-20', notes: 'Imported from Gig sheet.\n\nSheet column: Nov 20 Harvest Fair' }, 'Admin@Example.com', dir, '2026-10-05T00:00:00Z');
+    const st = readState(dir);
+    assert.deepEqual(st.tombstones.g1, {
+      gigId: 'g1', name: 'Harvest Fair', date: '2026-11-20', deletedAt: '2026-10-05T00:00:00Z', deletedBy: 'admin@example.com', keys: ['2026-11-20#0'], header: 'Nov 20 Harvest Fair',
+    });
+    assert.equal(st.applied.g1, undefined);
+    assert.equal(liftTombstone('g1', dir), true);
+    const after = readState(dir);
+    assert.deepEqual(after.tombstones, {});
+    assert.deepEqual(after.links, {}); // so the column re-imports as a new gig
+    assert.equal(liftTombstone('g1', dir), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

@@ -5,7 +5,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 
 import { listGigs, createGig } from '$lib/server/gigs';
-import { readState, runGigSheetSync, setSheetUrl, linkPlayer } from '$lib/server/gig-sheet';
+import { readState, runGigSheetSync, setSheetUrl, linkPlayer, liftTombstone } from '$lib/server/gig-sheet';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
 import { canEditGigs, compareByDate } from '$lib/gig';
@@ -51,6 +51,14 @@ export const actions = {
     }
     const report = await runGigSheetSync('manual');
     return { sheetReport: report };
+  },
+
+  // Forget a deleted gig's tombstone so the next sync may import it again.
+  allowReimport: async ({ locals, request }) => {
+    requireAdmin(locals);
+    const form = await request.formData();
+    if (!liftTombstone(String(form.get('gigId') ?? ''))) return fail(404, { sheetError: 'Nothing to restore.' });
+    return { reimport: true };
   },
 
   // Point a sheet player (by key) at a member login, or clear the link.

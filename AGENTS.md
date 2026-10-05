@@ -99,6 +99,8 @@ report live in the gitignored `data/gig-sheet.json` — never commit the sheet i
 It only ever adds gigs and marks them canceled (CANCELLED text or a red title);
 website-entered RSVPs always
 win and disagreements show a "Gig Sheet Conflict" flag on the gig roster.
+Deleting a gig leaves a tombstone in `data/gig-sheet.json` so the sync never
+re-creates it; admins can "Allow re-import" from the sync panel.
 The admin-only **Sync Contacts** button on `/members`
 (`src/lib/server/contacts-sheet.ts`) reads the same spreadsheet's "Contacts"
 tab and fills only never-edited member-profile fields; contacts without an
