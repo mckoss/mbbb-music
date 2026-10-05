@@ -18,7 +18,7 @@ import {
   importSet,
 } from '$lib/server/gigs';
 import { getRsvps, setRsvp } from '$lib/server/rsvps';
-import { readState as readGigSheetState, sheetConflict } from '$lib/server/gig-sheet';
+import { readState as readGigSheetState, sheetConflict, tombstoneGig } from '$lib/server/gig-sheet';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
 import { canEditGigs, type GigInput, type GigTime } from '$lib/gig';
@@ -238,6 +238,9 @@ export const actions = {
 
   deleteGig: async ({ params, locals }) => {
     requireGigEditor(locals);
+    const gig = getGig(params.id);
+    // Leave a tombstone first, so the Gig-sheet sync never re-creates it.
+    if (gig) tombstoneGig(gig, locals.user?.email ?? 'unknown');
     deleteGig(params.id);
     // The client redirects to /gigs after a successful delete.
     return { deleted: true };

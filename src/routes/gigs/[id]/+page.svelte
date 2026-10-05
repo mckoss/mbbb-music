@@ -1271,7 +1271,7 @@
         type="submit"
         class="danger-btn"
         onclick={(e) => {
-          if (!confirm('Delete this gig? This cannot be undone.')) e.preventDefault();
+          if (!confirm('Delete this gig? This cannot be undone. The Gig sheet sync will remember the deletion and won\'t bring it back.')) e.preventDefault();
         }}>Delete gig</button
       >
     </form>
