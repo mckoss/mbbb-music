@@ -12,16 +12,23 @@
 // When OAuth isn't configured the app runs OPEN (a synthetic admin) so local
 // dev/preview keeps working until credentials are added.
 
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 
 import { authConfig, readSession, SESSION_COOKIE } from '$lib/server/auth';
 import { roleOf } from '$lib/server/users';
 import { logEvent, touchSeen } from '$lib/server/activity';
 import { getGig } from '$lib/server/gigs';
+import { startDailyGigSheetSync } from '$lib/server/gig-sheet';
 import { CLIENT_VERSION_HEADER, normalizeClientVersion } from '$lib/client-version';
 import type { SessionUser } from '$lib/types';
 
 let warnedOpen = false;
+
+// Background jobs that live as long as the server: the once-a-day Gig-sheet
+// import (see $lib/server/gig-sheet). Idle until an admin saves a sheet link.
+export const init: ServerInit = () => {
+  startDailyGigSheetSync();
+};
 
 /** A human label if this GET is a PDF download we want to record, else null. */
 function pdfDownloadLabel(path: string, params: URLSearchParams): string | null {

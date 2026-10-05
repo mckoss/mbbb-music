@@ -91,6 +91,14 @@ data and committed at `static/maps/member-map.json`. Refresh it only with
 never reads member profiles or the gitignored `data/` directory. Keep the visible
 OpenStreetMap attribution when changing the map renderer.
 
+The Gig-sheet import (`src/lib/server/gig-sheet.ts`, parsing in
+`src/lib/gig-sheet.ts`) reads the band's availability Google Sheet once a day
+(server `init` hook) and on demand from the admin-only **Sync Gig Sheet** button
+on `/gigs`. The sheet link, column→gig links, player→member links and the last
+report live in the gitignored `data/gig-sheet.json` — never commit the sheet id.
+It only ever adds gigs (and marks canceled ones); website-entered RSVPs always
+win and disagreements show a "Gig Sheet Conflict" flag on the gig roster.
+
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
 

@@ -18,6 +18,7 @@ import {
   importSet,
 } from '$lib/server/gigs';
 import { getRsvps, setRsvp } from '$lib/server/rsvps';
+import { readState as readGigSheetState, sheetConflict } from '$lib/server/gig-sheet';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
 import { canEditGigs, type GigInput, type GigTime } from '$lib/gig';
@@ -35,6 +36,8 @@ interface RosterMember {
   avatarRev: string;
   isFormer: boolean;
   status: RsvpStatus | null;
+  /** Why this website reply disagrees with the Gig sheet, when it does. */
+  sheetConflict?: string;
 }
 
 // Build this gig's attendance roster from the RSVP store, joined to each
@@ -43,7 +46,10 @@ interface RosterMember {
 // organizers the not-yet-replied members in the add-member dropdown.
 export function load({ params, locals }) {
   const me = locals.user?.email ?? null;
-  const statusByEmail = new Map(getRsvps(params.id).map((r) => [r.email, r.status]));
+  const replies = getRsvps(params.id);
+  const statusByEmail = new Map(replies.map((r) => [r.email, r.status]));
+  const replyByEmail = new Map(replies.map((r) => [r.email, r]));
+  const sheetAnswers = readGigSheetState().sheet[params.id] ?? {};
 
   const members: RosterMember[] = listUsers().map((u) => {
     const p = getProfile(u.email);
@@ -55,6 +61,7 @@ export function load({ params, locals }) {
       avatarRev: p.updatedAt ?? '', // cache-buster, matches the roster page
       isFormer: Boolean(p.endDate),
       status: statusByEmail.get(u.email) ?? null,
+      ...((c) => (c ? { sheetConflict: c } : {}))(sheetConflict(replyByEmail.get(u.email), sheetAnswers[u.email])),
     };
   });
 

@@ -13,9 +13,53 @@
   import { listDownloaded } from '$lib/offline';
   import MonthCalendar from '$lib/MonthCalendar.svelte';
   import type { RsvpStatus } from '$lib/rsvp';
+  import { formatPacificDateTime } from '$lib/time';
 
   const gigs = $derived(page.data.gigs as Gig[]);
   const canEdit = $derived(canEditGigs(page.data.user?.role));
+
+  // Gig-sheet import (admins only; null for everyone else). The last run's
+  // report comes back from the load, so it refreshes after every sync.
+  interface SheetReport {
+    at: string;
+    trigger: 'manual' | 'daily';
+    ok: boolean;
+    error?: string;
+    columns: number;
+    created: { gigId: string; name: string; date: string }[];
+    linked: { gigId: string; name: string; date: string }[];
+    canceled: { gigId: string; name: string; date: string }[];
+    rsvpCount: number;
+    rsvps: { gigId: string; gigName: string; member: string; status: RsvpStatus }[];
+    conflicts: number;
+    ambiguous: { date: string; header: string }[];
+    deleted: number;
+    unmatched: { key: string; name: string; instrument: string; reason: 'none' | 'several' }[];
+    undated: string[];
+  }
+  interface GigSheetData {
+    url: string;
+    lastRun: SheetReport | null;
+    links: Record<string, string>;
+    members: { email: string; name: string }[];
+  }
+  const gigSheet = $derived((page.data.gigSheet ?? null) as GigSheetData | null);
+  const sheetError = $derived((page.form?.sheetError ?? null) as string | null);
+  let syncing = $state(false);
+  let sheetOpen = $state(false);
+  const lastRun = $derived(gigSheet?.lastRun ?? null);
+
+  function sheetSummary(r: SheetReport): string {
+    if (!r.ok) return 'Last sync failed';
+    const bits = [
+      `${r.created.length} new gig${r.created.length === 1 ? '' : 's'}`,
+      `${r.rsvpCount} RSVP${r.rsvpCount === 1 ? '' : 's'} set`,
+    ];
+    if (r.conflicts) bits.push(`${r.conflicts} conflict${r.conflicts === 1 ? '' : 's'}`);
+    if (r.canceled.length) bits.push(`${r.canceled.length} canceled`);
+    if (r.unmatched.length) bits.push(`${r.unmatched.length} unlinked player${r.unmatched.length === 1 ? '' : 's'}`);
+    return bits.join(' · ');
+  }
 
   // The signed-in member's own replies, by gig id (from the layout load).
   const myRsvps = $derived((page.data.myRsvps ?? {}) as Record<string, RsvpStatus>);
@@ -116,6 +160,24 @@
       <!-- What the public sees. Opens in its own tab: /shows is a standalone,
            band-branded page with no way back into the app. -->
       <a class="shows-link" href="/shows" target="_blank" rel="noopener">Public shows page ↗</a>
+      {#if gigSheet}
+        <form
+          method="POST"
+          action="?/syncSheet"
+          use:enhance={() => {
+            syncing = true;
+            return async ({ update }) => {
+              await update({ reset: false });
+              syncing = false;
+              sheetOpen = true;
+            };
+          }}
+        >
+          <button type="submit" class="sync" disabled={syncing || !gigSheet.url}
+            title={gigSheet.url ? 'Import new gigs and Yes replies from the Gig sheet' : 'Save the Gig sheet link below first'}
+          >{syncing ? 'Syncing…' : '⟳ Sync Gig Sheet'}</button>
+        </form>
+      {/if}
       {#if canEdit}
         <form method="POST" action="?/create" use:enhance>
           <button type="submit" class="new">+ New gig</button>
@@ -123,6 +185,118 @@
       {/if}
     </div>
   </header>
+
+  {#if gigSheet}
+    <details class="sheet-panel" open={sheetOpen || !gigSheet.url || undefined}>
+      <summary>
+        <strong>Gig sheet sync</strong>
+        {#if lastRun}
+          <span class:bad={!lastRun.ok}>
+            {sheetSummary(lastRun)} · {formatPacificDateTime(lastRun.at)}{lastRun.trigger === 'daily' ? ' (daily)' : ''}
+          </span>
+        {:else}
+          <span>Not run yet. Runs daily once a sheet link is saved.</span>
+        {/if}
+      </summary>
+
+      <form
+        class="sheet-url"
+        method="POST"
+        action="?/syncSheet"
+        use:enhance={() => {
+          syncing = true;
+          return async ({ update }) => {
+            await update({ reset: false });
+            syncing = false;
+            sheetOpen = true;
+          };
+        }}
+      >
+        <label for="sheet-url">Sheet link (include the tab's <code>#gid=</code>)</label>
+        <div class="row">
+          <input id="sheet-url" name="url" type="url" value={gigSheet.url}
+            placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=…" />
+          <button type="submit" class="sync" disabled={syncing}>{syncing ? 'Syncing…' : 'Save & sync'}</button>
+        </div>
+        <p class="hint">
+          Runs daily. Sheet gigs missing here are added, marked “Imported from Gig sheet” (public unless the sheet
+          says “private”); gigs are never deleted. Sheet yes/no answers fill in members who haven't replied on the
+          website; a website reply always wins, and disagreements are flagged “Gig Sheet Conflict” on the gig.
+        </p>
+      </form>
+      {#if sheetError}<p class="bad">{sheetError}</p>{/if}
+
+      {#if lastRun}
+        {#if !lastRun.ok}
+          <p class="bad">{lastRun.error}</p>
+        {/if}
+        {#if lastRun.created.length}
+          <h4>Added</h4>
+          <ul>
+            {#each lastRun.created as g (g.gigId)}
+              <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.canceled.length}
+          <h4>Marked canceled</h4>
+          <ul>
+            {#each lastRun.canceled as g (g.gigId)}
+              <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.rsvps.length}
+          <h4>RSVPs set ({lastRun.rsvpCount})</h4>
+          {#if lastRun.rsvpCount > lastRun.rsvps.length}<p class="hint">Showing the first {lastRun.rsvps.length}.</p>{/if}
+          <ul>
+            {#each lastRun.rsvps as r, i (i)}
+              <li>{r.member}: {r.status === 'yes' ? 'Yes' : 'No'} for <a href={`/gigs/${r.gigId}`}>{r.gigName}</a></li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.ambiguous.length}
+          <h4>Not sure which gig</h4>
+          <p class="hint">These sheet columns match more than one gig on the same day, so they were left alone.</p>
+          <ul>
+            {#each lastRun.ambiguous as a, i (i)}
+              <li>{formatGigDate(a.date)}: {a.header}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.unmatched.length}
+          <h4>Players to link</h4>
+          <p class="hint">
+            These sheet names didn't match exactly one member, so their answers were skipped. Pick who each one is,
+            then sync again.
+          </p>
+          <ul class="links">
+            {#each lastRun.unmatched as p (p.key)}
+              <li>
+                <form method="POST" action="?/linkPlayer" use:enhance={() => async ({ update }) => update({ reset: false })}>
+                  <input type="hidden" name="key" value={p.key} />
+                  <span class="who">
+                    {p.name}{p.instrument ? ` (${p.instrument})` : ''}
+                    {#if p.reason === 'several'}<em>· several members match</em>{/if}
+                  </span>
+                  <select name="email" value={gigSheet.links[p.key] ?? ''}>
+                    <option value="">Not linked</option>
+                    {#each gigSheet.members as m (m.email)}
+                      <option value={m.email}>{m.name}</option>
+                    {/each}
+                  </select>
+                  <button type="submit" class="small">Save</button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.undated.length}
+          <p class="hint">Skipped {lastRun.undated.length} column{lastRun.undated.length === 1 ? '' : 's'} with no readable date.</p>
+        {/if}
+      {/if}
+    </details>
+  {/if}
 
   {#if unconfirmed.length > 0}
     <div class="rsvp-reminder" role="status">
@@ -156,6 +330,7 @@
           <h3 class:canceled={gig.canceled}>
             <span class="title">{gig.name}</span>
             {#if gig.canceled}<span class="cancel-badge">Canceled</span>{/if}
+            {#if gig.importedFrom === 'gig-sheet'}<span class="import-badge" title="Imported from Gig sheet">Imported</span>{/if}
             {#if offlineIds.has(gig.id)}<span class="offline-badge" title="Saved for offline">⤓ Offline</span>{/if}
           </h3>
           <p class="when">{formatGigDate(gig.date)}</p>
@@ -279,6 +454,146 @@
     font-weight: 700;
     font-size: 0.82rem;
     cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .sync {
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 6px;
+    border: 1px solid var(--accent-strong);
+    background: var(--panel);
+    color: var(--accent-strong);
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .sync:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .sheet-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+  }
+
+  .sheet-panel summary {
+    cursor: pointer;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: baseline;
+    min-height: 32px;
+  }
+
+  .sheet-panel summary span {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .sheet-panel h4 {
+    margin: 14px 0 4px;
+    font-size: 0.9rem;
+  }
+
+  .sheet-panel ul {
+    margin: 0;
+    padding-left: 20px;
+  }
+
+  .sheet-panel .bad {
+    color: #b3261e;
+    font-weight: 600;
+  }
+
+  .sheet-url {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sheet-url label {
+    font-weight: 700;
+    font-size: 0.82rem;
+  }
+
+  .sheet-url .row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sheet-url input {
+    flex: 1 1 280px;
+    min-height: 40px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font: inherit;
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin: 2px 0 0;
+  }
+
+  .links {
+    list-style: none;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .links form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .links .who {
+    min-width: 160px;
+  }
+
+  .links select {
+    min-height: 40px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    font: inherit;
+  }
+
+  .small {
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+
+  .import-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #2f5d62;
+    background: #eaf1f1;
+    border: 1px solid #b9d3d3;
+    border-radius: 999px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    margin-left: 6px;
     white-space: nowrap;
   }
 

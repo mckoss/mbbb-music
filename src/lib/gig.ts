@@ -59,6 +59,12 @@ export interface Gig {
   /** A canceled gig stays in the list (struck through) but isn't happening. */
   canceled?: boolean;
   /**
+   * Set when the gig was created by the daily Gig-sheet import (see
+   * src/lib/server/gig-sheet.ts) rather than by hand. Band-only: drives the
+   * "Imported from Gig sheet" badge and never reaches /shows.
+   */
+  importedFrom?: 'gig-sheet';
+  /**
    * Edit counter, bumped on every info change. It is the iCal SEQUENCE: a
    * subscriber's calendar only accepts an update to an event it already has when
    * the sequence goes *up*, so without this a rescheduled gig would silently
@@ -115,6 +121,7 @@ export interface GigInput {
   hidden?: boolean;
   sets?: GigSet[];
   canceled?: boolean;
+  importedFrom?: 'gig-sheet';
 }
 
 /** Gig Packets can be managed by admins and organizers. */
@@ -256,6 +263,7 @@ export function makeGig(input: GigInput): Gig {
     ...(input.hidden ? { hidden: true } : {}),
     sets: sets.length > 0 ? sets : [emptySet()],
     ...(input.canceled ? { canceled: true } : {}),
+    ...(input.importedFrom === 'gig-sheet' ? { importedFrom: 'gig-sheet' as const } : {}),
   };
 }
 
