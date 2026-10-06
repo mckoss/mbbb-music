@@ -899,13 +899,22 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   // song's `masked` list (tagged with its origin bucket), so the File Info page
   // can still surface them as a clickable secondary row for comparison. The
   // MuseScore master, audio, notes, and images are untouched.
+  //
+  // A manual instrument part is masked only when a generated part REPLACES it
+  // (same instrument). One the generated set lacks — e.g. an alto horn part
+  // hand-transposed after the MuseScore build — stays playable; masking it would
+  // leave that instrument with nothing to read.
   for (const song of bySong.values()) {
     const hasGenerated = [...song.parts, ...song.hiddenParts].some((p) => p.generated) || song.scores.some((s) => s.generated);
     if (!hasGenerated) continue;
+    const generatedInstruments = new Set(
+      [...song.parts, ...song.hiddenParts].filter((p) => p.generated).map((p) => p.instrumentSlug),
+    );
     for (const bucket of MASKED_WHEN_GENERATED) {
       const kept = [];
       for (const a of song[bucket]) {
-        if (a.generated) {
+        const unreplacedPart = bucket === 'parts' && !a.shared && !generatedInstruments.has(a.instrumentSlug);
+        if (a.generated || unreplacedPart) {
           kept.push(a);
         } else {
           // eslint-disable-next-line no-unused-vars
