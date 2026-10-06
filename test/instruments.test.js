@@ -73,3 +73,11 @@ test('bare French "Baryton" is NOT pulled into bari sax', () => {
   assert.equal(slugOf('Song - Baryton'), 'euphonium');
   assert.equal(slugOf('Song - Saxophone Baryton'), 'bari-sax');
 });
+
+test('alto horn is detected, not mis-filed as alto sax', () => {
+  assert.equal(slugOf('Hot To Go - Alto Horn in Eb (from Trombone)'), 'alto-horn');
+  assert.equal(slugOf('Alto_Horn'), 'alto-horn');
+  // Glued "AltoHorn" used to fall through to alto sax's bare "alto".
+  assert.equal(slugOf('Hot To Go - AltoHorn'), 'alto-horn');
+  assert.equal(slugOf('Althorn'), 'alto-horn');
+});

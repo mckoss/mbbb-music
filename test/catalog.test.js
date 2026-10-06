@@ -490,6 +490,29 @@ test('images bucket inline, docx/zip bucket as downloads; a song-less file goes 
   assert.equal(extras[0].assetType, 'archive');
 });
 
+test('a manual part for an instrument the generated set lacks is not masked', () => {
+  // The band adds an alto horn part (hand-transposed from trombone) to a song
+  // whose MuseScore build has no alto horn. Masking it would leave alto horn
+  // players with nothing; a manual trombone part, replaced by a generated one,
+  // is still masked.
+  const song = { songTitle: 'Hot To Go', songTitleSlug: 'hot-to-go', status: 'synced', assetType: 'pdf' };
+  const manifest = {
+    files: {
+      h1: { ...song, driveFileId: 'h1', sha256: 'a1', instrument: 'Alto horn', instrumentSlug: 'alto-horn', key: 'eflat',
+        sourceFolderLabel: 'scores', originalFolder: 'Hot To Go', originalName: 'Hot To Go - Alto Horn in Eb (from Trombone).pdf' },
+      t1: { ...song, driveFileId: 't1', sha256: 'a2', instrument: 'Trombone', instrumentSlug: 'trombone',
+        sourceFolderLabel: 'scores', originalFolder: 'Hot To Go', originalName: 'Hot To Go - Trombone.pdf' },
+      g1: { ...song, sha256: 'a3', instrument: 'Trombone', instrumentSlug: 'trombone',
+        sourceFolderLabel: 'generated-scores', originalFolder: 'Hot To Go.parts', originalName: 'Hot To Go-trombone-letter.pdf' },
+    },
+  };
+  const { tunes, instruments } = buildCatalog(manifest, ['generated-scores', 'scores'], [], ['generated-scores']);
+  const tune = tunes.find((t) => t.slug === 'hot-to-go');
+  assert.deepEqual(tune.parts.map((p) => p.originalName).sort(), ['Hot To Go - Alto Horn in Eb (from Trombone).pdf', 'Hot To Go-trombone-letter.pdf']);
+  assert.deepEqual(tune.masked.map((m) => m.originalName), ['Hot To Go - Trombone.pdf']);
+  assert.ok(instruments.some((i) => i.slug === 'alto-horn'), 'alto horn is selectable');
+});
+
 test('app-generated scores mask manual score PDFs for the same song, keeping audio + master', () => {
   const manifest = {
     files: {
