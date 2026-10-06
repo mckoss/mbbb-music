@@ -31,6 +31,9 @@
     canceled: { gigId: string; name: string; date: string }[];
     uncanceled?: { gigId: string; name: string; date: string }[];
     colorsRead?: boolean;
+    source?: 'sheets-api' | 'drive-export';
+    sheetsApiError?: string;
+    colorsError?: string;
     rsvpCount: number;
     rsvps: { gigId: string; gigName: string; member: string; status: RsvpStatus }[];
     conflicts: number;
@@ -258,8 +261,13 @@
             {/each}
           </ul>
         {/if}
-        {#if lastRun.ok && lastRun.colorsRead === false}
-          <p class="hint">Header colors couldn't be read this time, so only the words CANCELLED/POSTPONED were used.</p>
+        {#if lastRun.ok}
+          <p class="hint">
+            Read via {lastRun.source === 'drive-export' ? 'Drive export (Sheets API unavailable)' : 'the Google Sheets API'};
+            {lastRun.colorsRead ? 'title colors read' : 'title colors NOT read, so only CANCELLED/POSTPONED in the text cancels a gig'}.
+            {#if lastRun.colorsError}<br />Colors: {lastRun.colorsError}{/if}
+            {#if lastRun.sheetsApiError}<br />Sheets API: {lastRun.sheetsApiError}{/if}
+          </p>
         {/if}
         {#if lastRun.rsvps.length}
           <h4>RSVPs set ({lastRun.rsvpCount})</h4>

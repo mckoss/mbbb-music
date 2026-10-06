@@ -82,8 +82,12 @@ export interface GigSheetReport {
   canceled: { gigId: string; name: string; date: string }[];
   /** Gigs the import had canceled for a red header that is no longer red. */
   uncanceled: { gigId: string; name: string; date: string }[];
-  /** Whether header colors were read (they aren't through the CSV fallback). */
+  /** Whether header colors were read. */
   colorsRead: boolean;
+  /** How the sheet was read, and why a path or the colors weren't available. */
+  source?: SheetData['source'];
+  sheetsApiError?: string;
+  colorsError?: string;
   /** How many replies were set or changed (the list below is capped). */
   rsvpCount: number;
   rsvps: { gigId: string; gigName: string; email: string; member: string; status: RsvpStatus }[];
@@ -578,15 +582,27 @@ interface TabRef {
 /** A tab's cells as display strings, plus header-area colors when available. */
 export interface SheetData {
   grid: string[][];
-  /** Colors of the first rows' cells (where the header lives); null via CSV. */
+  /** Colors of the first rows' cells (where the header lives), when read. */
   colors: HeaderColor[][] | null;
+  /** How the tab was read: the Sheets API, or Drive's CSV (+ .xlsx colors). */
+  source?: 'sheets-api' | 'drive-export';
+  /** Why the Sheets API wasn't used, when it wasn't. */
+  sheetsApiError?: string;
+  /** Why colors are missing, when they are. */
+  colorsError?: string;
 }
 
 type FormatRows = {
   sheets?: {
     data?: {
       rowData?: {
-        values?: { effectiveFormat?: { backgroundColor?: SheetsColor; textFormat?: { foregroundColor?: SheetsColor } } }[];
+        values?: {
+          effectiveFormat?: {
+            backgroundColor?: SheetsColor;
+            backgroundColorStyle?: { rgbColor?: SheetsColor };
+            textFormat?: { foregroundColor?: SheetsColor; foregroundColorStyle?: { rgbColor?: SheetsColor } };
+          };
+        }[];
       }[];
     }[];
   }[];
@@ -618,20 +634,46 @@ async function readViaSheetsApi(ref: TabRef, sa: Required<ServiceAccount>): Prom
 
   // Colors are a bonus: if this request fails, the text rules still apply.
   let colors: HeaderColor[][] | null = null;
+  let colorsError: string | undefined;
   try {
     const fmt = (await sheetsGet(
       `${base}?ranges=${encodeURIComponent(`'${tab.title.replace(/'/g, "''")}'!1:5`)}` +
-        `&fields=${encodeURIComponent('sheets.data.rowData.values.effectiveFormat(backgroundColor,textFormat.foregroundColor)')}`,
+        `&fields=${encodeURIComponent('sheets.data.rowData.values.effectiveFormat(backgroundColor,backgroundColorStyle,textFormat(foregroundColor,foregroundColorStyle))')}`,
       token,
       sa.client_email
     )) as FormatRows;
     colors = (fmt.sheets?.[0]?.data?.[0]?.rowData ?? []).map((row) =>
-      (row.values ?? []).map((v) => headerColor(v.effectiveFormat?.backgroundColor, v.effectiveFormat?.textFormat?.foregroundColor))
+      (row.values ?? []).map((v) => {
+        const f = v.effectiveFormat;
+        return headerColor(
+          f?.backgroundColorStyle?.rgbColor ?? f?.backgroundColor,
+          f?.textFormat?.foregroundColorStyle?.rgbColor ?? f?.textFormat?.foregroundColor
+        );
+      })
     );
-  } catch {
+  } catch (err) {
     colors = null;
+    colorsError = err instanceof Error ? err.message : String(err);
   }
-  return { grid, colors };
+  return { grid, colors, source: 'sheets-api', ...(colorsError ? { colorsError } : {}) };
+}
+
+/**
+ * Header colors from Drive's .xlsx export of the whole spreadsheet (plain
+ * drive.readonly scope — no Sheets API needed). The right tab is picked by
+ * title, else by matching its top rows against the CSV grid.
+ */
+async function readColorsViaXlsxExport(ref: TabRef, token: string, grid: string[][]): Promise<HeaderColor[][]> {
+  const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(ref.spreadsheetId)}/export?mimeType=${encodeURIComponent(mime)}`,
+    { headers: { authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Drive .xlsx export failed (${res.status})`);
+  const { readXlsxTabs, matchTab } = await import('./xlsx.js');
+  const tab = matchTab(readXlsxTabs(new Uint8Array(await res.arrayBuffer())), grid, ref.gid === null ? ref.title : undefined);
+  if (!tab) throw new Error('Could not find the tab in the .xlsx export');
+  return tab.colors;
 }
 
 /**
@@ -653,7 +695,12 @@ async function readViaCsvExport(ref: TabRef, sa: Required<ServiceAccount>): Prom
   if (!res.ok || type.includes('text/html')) {
     throw new Error(`CSV export failed (${res.status}${type.includes('text/html') ? ', got a sign-in page' : ''})`);
   }
-  return { grid: parseCsv(await res.text()), colors: null };
+  const grid = parseCsv(await res.text());
+  try {
+    return { grid, colors: await readColorsViaXlsxExport(ref, token, grid), source: 'drive-export' };
+  } catch (err) {
+    return { grid, colors: null, source: 'drive-export', colorsError: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /**
@@ -676,7 +723,7 @@ export async function fetchSheetGrid(
     return await readViaSheetsApi(ref, sa);
   } catch (err) {
     try {
-      return await readViaCsvExport(ref, sa);
+      return { ...(await readViaCsvExport(ref, sa)), sheetsApiError: err instanceof Error ? err.message : String(err) };
     } catch (fallback) {
       const why = fallback instanceof Error ? fallback.message : String(fallback);
       throw new Error(`${err instanceof Error ? err.message : String(err)} (Drive CSV fallback also failed: ${why})`);
@@ -706,7 +753,8 @@ export function runGigSheetSync(trigger: GigSheetReport['trigger']): Promise<Gig
     const state = readState();
     try {
       if (!state.url) throw new Error('No Gig sheet link saved yet. Paste the sheet link on the Gigs page.');
-      const { grid, colors } = await fetchSheetGrid(state.url, loadConfig().google?.serviceAccount);
+      const sheet = await fetchSheetGrid(state.url, loadConfig().google?.serviceAccount);
+      const { grid, colors } = sheet;
       const members: SheetMember[] = listUsers().map((u) => {
         const p = getProfile(u.email);
         const instruments = [p.primaryInstrument, ...p.instruments].filter((s): s is string => Boolean(s));
@@ -725,6 +773,9 @@ export function runGigSheetSync(trigger: GigSheetReport['trigger']): Promise<Gig
           set: (id, email, status, by) => void setRsvp(id, email, status, by),
         },
       });
+      if (sheet.source) report.source = sheet.source;
+      if (sheet.sheetsApiError) report.sheetsApiError = sheet.sheetsApiError;
+      if (sheet.colorsError) report.colorsError = sheet.colorsError;
       state.lastRun = report;
       writeState(state);
       return report;
