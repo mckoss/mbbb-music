@@ -106,6 +106,11 @@ The admin-only **Sync Contacts** button on `/members`
 tab and fills only never-edited member-profile fields; contacts without an
 account are listed for an admin to add explicitly.
 
+Every non-dry-run sync writes a history record to the gitignored
+`data/sync-history/` (`src/sync/history.js`, diffing the manifest before vs after
+the run); admins read it at `/admin/sync-history`. Tests pass temp data dirs, so
+their runs never touch the real history.
+
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
 

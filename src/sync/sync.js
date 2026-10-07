@@ -20,6 +20,7 @@ import { detectAssetMetadata } from './metadata.js';
 import { loadManifest, saveManifest, diffManifest, findDuplicates } from './manifest.js';
 import { originsDirFor, recordOrigin, buildOriginRecord } from './origins.js';
 import { pdfPageSizePt } from './pdf-shape.js';
+import { countChanges, diffSyncManifests, historyDirFor, runIdFor, saveSyncRun } from './history.js';
 import { readFile } from 'node:fs/promises';
 
 const noopLogger = { info() {}, warn() {}, error() {} };
@@ -43,18 +44,84 @@ function songTitleFromFolder(file, generatedLabels) {
   return name;
 }
 
+/** Most log lines kept in a history record (a first sync can log thousands). */
+const HISTORY_LOG_LINES = 400;
+
 /**
- * Run an incremental, content-addressable Drive asset sync.
+ * Run an incremental, content-addressable Drive asset sync and, unless it is a
+ * dry run, preserve a history record of it in data/sync-history/ (see
+ * history.js): the summary, warnings, failures, the log, and every file the run
+ * added, removed, or changed. A failed run is recorded too, with whatever it
+ * changed before failing, and the error is rethrown.
  *
  * @param {Object} params
  * @param {{ listFiles: Function, downloadFile: Function }} params.driveClient
  * @param {import('./config.js').SyncConfig} params.config
- * @param {boolean} [params.dryRun]  Plan only; do not fetch blobs or write manifest.
+ * @param {boolean} [params.dryRun]  Plan only; do not fetch blobs, write manifest, or record history.
  * @param {() => Date} [params.now]  Clock injection for deterministic tests.
  * @param {{info:Function,warn:Function,error:Function}} [params.logger]
- * @returns {Promise<object>} A structured report (also suitable as a JSON response).
+ * @param {{ by?: string|null, via?: string }} [params.trigger]  Who/what started the run.
+ * @returns {Promise<object>} A structured report (also suitable as a JSON response);
+ *   a recorded run adds `historyId` and `changes`.
  */
-export async function runSync({ driveClient, config, dryRun = false, now = () => new Date(), logger = noopLogger }) {
+export async function runSync(params) {
+  const { config, dryRun = false, now = () => new Date(), logger = noopLogger, trigger = null } = params;
+  if (dryRun || !config?.dataDir || !config?.manifestPath) return syncOnce(params);
+
+  const startedAt = now().toISOString();
+  const log = [];
+  const capture = (level) => (m) => {
+    log.push({ t: Date.now(), level, msg: String(m) });
+    if (log.length > HISTORY_LOG_LINES) log.splice(0, log.length - HISTORY_LOG_LINES);
+    logger[level]?.(m);
+  };
+  const before = (await loadManifest(config.manifestPath)).files || {};
+
+  let report = null;
+  let failure = null;
+  try {
+    report = await syncOnce({ ...params, logger: { info: capture('info'), warn: capture('warn'), error: capture('error') } });
+  } catch (err) {
+    failure = err;
+  }
+
+  try {
+    const after = (await loadManifest(config.manifestPath)).files || {};
+    const changes = diffSyncManifests(before, after);
+    const finishedAt = now().toISOString();
+    const record = {
+      id: runIdFor(startedAt),
+      startedAt,
+      finishedAt,
+      ok: !failure,
+      error: failure ? String(failure?.message || failure) : null,
+      trigger: { by: trigger?.by ?? null, via: trigger?.via ?? 'cli' },
+      sources: (config.sources || []).map((s) => s.label),
+      summary: report?.summary ?? null,
+      warnings: (report?.warnings ?? []).map((w) => w.message),
+      failed: report?.actions?.failed ?? [],
+      changeCounts: countChanges(changes),
+      changes,
+      log,
+    };
+    await saveSyncRun(historyDirFor(config.dataDir), record);
+    if (report) Object.assign(report, { historyId: record.id, changes });
+  } catch (err) {
+    // History is a record of the run, never a reason to fail it.
+    logger.warn(`Could not record sync history: ${err?.message || err}`);
+  }
+
+  if (failure) throw failure;
+  return report;
+}
+
+/**
+ * One sync pass: list, diff, write the manifest, fetch missing blobs.
+ *
+ * @param {Object} params  See {@link runSync}.
+ * @returns {Promise<object>} The structured report.
+ */
+async function syncOnce({ driveClient, config, dryRun = false, now = () => new Date(), logger = noopLogger }) {
   if (!config?.sources?.length) {
     throw new Error('No Drive source folders configured. Add "sources" to config.json or pass sources.');
   }

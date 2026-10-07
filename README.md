@@ -76,6 +76,13 @@ idempotent refreshes and the end-of-sync report lists any content that appears i
 more than one Drive location. `data/` is gitignored — synced music never enters
 this repo.
 
+Every real (non-dry-run) sync, from the CLI or the web, also preserves a history
+record at `data/sync-history/<run>.json`: who started it, its counts, warnings,
+failures, log, and each file it added, removed, restored, or updated (renamed,
+moved, new content, or reclassified to another song, instrument, or part, with
+the before → after values). Admins browse these at `/admin/sync-history` (linked
+beside **Sync from Drive** on Library Status). The newest 200 runs are kept.
+
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:
 

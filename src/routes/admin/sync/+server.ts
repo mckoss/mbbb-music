@@ -13,7 +13,7 @@ function requireAdmin(locals: App.Locals) {
 
 export function POST({ locals }) {
   requireAdmin(locals);
-  return json(startSync());
+  return json(startSync(locals.user?.email ?? null));
 }
 
 export function GET({ locals }) {

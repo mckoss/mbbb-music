@@ -20,19 +20,21 @@ export interface SyncState {
   lines: SyncLine[];
   summary: Record<string, number> | null;
   error: string | null;
+  /** The preserved history record for the finished run (see /admin/sync-history). */
+  historyId: string | null;
 }
 
 type Event =
   | { type: 'start' }
   | { type: 'line'; line: SyncLine }
-  | { type: 'done'; summary: Record<string, number> }
+  | { type: 'done'; summary: Record<string, number>; historyId: string | null }
   | { type: 'error'; error: string }
   | { type: 'end' }
   | { type: 'state'; state: SyncState };
 
 const MAX_LINES = 400; // bound memory for a big first sync
 
-let state: SyncState = { running: false, startedAt: null, finishedAt: null, lines: [], summary: null, error: null };
+let state: SyncState = { running: false, startedAt: null, finishedAt: null, lines: [], summary: null, error: null, historyId: null };
 const subscribers = new Set<(ev: Event) => void>();
 
 function emit(ev: Event) {
@@ -61,10 +63,13 @@ export function subscribe(cb: (ev: Event) => void): () => void {
   return () => subscribers.delete(cb);
 }
 
-/** Start a sync if one isn't already running. Returns the (possibly running) state. */
-export function startSync(): SyncState {
+/**
+ * Start a sync if one isn't already running. Returns the (possibly running) state.
+ * `by` (the admin's email) is preserved in the run's history record.
+ */
+export function startSync(by: string | null = null): SyncState {
   if (state.running) return state;
-  state = { running: true, startedAt: Date.now(), finishedAt: null, lines: [], summary: null, error: null };
+  state = { running: true, startedAt: Date.now(), finishedAt: null, lines: [], summary: null, error: null, historyId: null };
   emit({ type: 'start' });
 
   (async () => {
@@ -76,11 +81,13 @@ export function startSync(): SyncState {
         error: (m: unknown) => addLine('error', String(m)),
       };
       const driveClient = createGoogleDriveClient(config, { logger });
-      const report = (await runSync({ driveClient, config, logger })) as {
+      const report = (await runSync({ driveClient, config, logger, trigger: { by, via: 'web' } })) as {
         summary: Record<string, number>;
+        historyId?: string;
       };
       state.summary = report.summary;
-      emit({ type: 'done', summary: report.summary });
+      state.historyId = report.historyId ?? null;
+      emit({ type: 'done', summary: report.summary, historyId: state.historyId });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       state.error = msg;

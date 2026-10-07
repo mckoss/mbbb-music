@@ -345,6 +345,7 @@
   let syncLines = $state<SyncLine[]>([]);
   let syncSummary = $state<Record<string, number> | null>(null);
   let syncError = $state<string | null>(null);
+  let syncHistoryId = $state<string | null>(null);
   let es: EventSource | null = null;
 
   function closeEs() {
@@ -359,6 +360,7 @@
     syncLines = [];
     syncSummary = null;
     syncError = null;
+    syncHistoryId = null;
     syncing = true;
     try {
       await writeFetch('/admin/sync', { method: 'POST' });
@@ -378,6 +380,7 @@
         syncLines = ev.state.lines ?? [];
         syncSummary = ev.state.summary ?? null;
         syncError = ev.state.error ?? null;
+        syncHistoryId = ev.state.historyId ?? null;
         if (!ev.state.running && (ev.state.summary || ev.state.error)) closeEs();
       } else if (ev.type === 'line') {
         syncLines = [...syncLines, ev.line];
@@ -385,6 +388,7 @@
         syncing = true;
       } else if (ev.type === 'done') {
         syncSummary = ev.summary;
+        syncHistoryId = ev.historyId ?? null;
       } else if (ev.type === 'error') {
         syncError = ev.error;
       } else if (ev.type === 'end') {
@@ -554,6 +558,7 @@
           {#if recovering}<span class="spinner" aria-hidden="true"></span>{/if}
           {#if !recovering && originsResult}<span class="ok">✓ done</span>{/if}
           {#if !recovering && originsError}<span class="bad">✗ failed</span>{/if}
+          <a class="sync-history-link" href="/admin/sync-history">Sync history</a>
         </div>
 
         {#if originsResult}<p class="sync-result">{originsText(originsResult)}</p>{/if}
@@ -567,8 +572,15 @@
           </div>
         {/if}
 
-        {#if syncSummary}<p class="sync-result">{summaryText(syncSummary)}</p>{/if}
-        {#if syncError}<p class="sync-result bad-text">Sync failed: {syncError}</p>{/if}
+        {#if syncSummary}
+          <p class="sync-result">
+            {summaryText(syncSummary)}
+            <a href={syncHistoryId ? `/admin/sync-history/${syncHistoryId}` : '/admin/sync-history'}>See what changed</a>
+          </p>
+        {/if}
+        {#if syncError}
+          <p class="sync-result bad-text">Sync failed: {syncError} <a href="/admin/sync-history">Sync history</a></p>
+        {/if}
       </div>
     {/if}
   </header>
@@ -969,6 +981,7 @@
 
   .sync-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
   }
@@ -1021,6 +1034,13 @@
     color: #d8413a;
     font-weight: 700;
     font-size: 0.82rem;
+  }
+
+  .sync-history-link {
+    margin-left: auto;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 8px 4px;
   }
 
   .sync-log {
