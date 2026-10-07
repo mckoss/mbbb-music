@@ -62,7 +62,6 @@
     return s || (c.type ?? '');
   }
 
-  const viewable = (c: Change) => c.sha256 && (c.type === 'pdf' || c.type === 'notes');
   const driveUrl = (id: string) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
 </script>
 
@@ -119,11 +118,7 @@
               <div class="file">
                 <span class="song">{c.song ?? '—'}</span>
                 <span class="name">
-                  {#if viewable(c)}
-                    <a href={`/view/${c.sha256}`}>{c.name}</a>
-                  {:else}
-                    {c.name}
-                  {/if}
+                  <a href={`/library-status/files/${encodeURIComponent(c.id)}`} title="How the library handles this file">{c.name}</a>
                 </span>
                 <span class="place">{placement(c)}</span>
                 <a class="drive muted" href={driveUrl(c.id)} target="_blank" rel="noopener">Drive ↗</a>

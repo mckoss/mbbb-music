@@ -31,6 +31,16 @@ interface Loaded {
   catalog: ServerCatalog;
   assets: Map<string, AssetMeta>;
   casDir: string;
+  /** The manifest as synced (machine-derived fields only). */
+  rawManifest: Manifest;
+  /** The manifest with file/folder corrections applied — what the catalog is built from. */
+  manifest: Manifest;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ManifestEntry = Record<string, any>;
+export interface Manifest {
+  files: Record<string, ManifestEntry>;
 }
 
 const EMPTY: Loaded = {
@@ -40,6 +50,8 @@ const EMPTY: Loaded = {
   catalog: { tunes: [], instruments: [], extras: [], sources: [], sourceUrls: {}, uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
   casDir: '',
+  rawManifest: { files: {} },
+  manifest: { files: {} },
 };
 
 let cached: Loaded | null = null;
@@ -70,7 +82,7 @@ function load(): Loaded {
   // Only FILE corrections touch the manifest (and thus grouping). SONG corrections
   // are presentation-only and applied to the tunes below, so the song's derived
   // slug stays its stable identity (gig setlists + status key on it).
-  const manifest = applyCorrections(rawManifest, overlay);
+  const manifest = applyCorrections(rawManifest, overlay) as Manifest;
   const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean; generated?: boolean }[];
   const sourceLabels = sources.map((s) => s.label).filter(Boolean);
   // Sources explicitly marked `foldered: false` aren't organized into per-song
@@ -124,13 +136,22 @@ function load(): Loaded {
     }
   }
 
-  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir };
+  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir, rawManifest, manifest };
   return cached;
 }
 
 /** The player-facing catalog (tunes, instruments). */
 export function getCatalog() {
   return load().catalog;
+}
+
+/**
+ * The manifest behind the catalog: `raw` as synced, `corrected` with human file /
+ * folder corrections applied (what grouping and placement actually used).
+ */
+export function getManifests(): { raw: Manifest; corrected: Manifest } {
+  const l = load();
+  return { raw: l.rawManifest, corrected: l.manifest };
 }
 
 /** Metadata for a content blob, or null when the hash is not in the library. */

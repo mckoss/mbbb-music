@@ -5,12 +5,15 @@
 // places it is reached through a shortcut. Each row is annotated as the "Primary"
 // (the one physical copy the library uses for its content) or points at where the
 // primary lives. So a unique file — or a shortcut to one — is never hidden just
-// because a higher-priority copy exists elsewhere.
+// because a higher-priority copy exists elsewhere. Files the library does not use
+// (never imported, removed from Drive, unreachable, failed) are listed too, tagged
+// with why, so every file the sync has seen can be found here.
 
 import { readFileSync } from 'node:fs';
 
 import { loadConfig } from '../../sync/config.js';
-import { sourcePriority, canonicalByContent, liveAssets } from '../../sync/catalog.js';
+import { sourcePriority, canonicalByContent, isLive } from '../../sync/catalog.js';
+import { isJunkName } from '../../sync/classify.js';
 
 /** One place a file appears in Drive (its real home, or a shortcut to it). */
 interface Appearance {
@@ -20,8 +23,16 @@ interface Appearance {
   viaShortcut?: boolean;
 }
 
+/**
+ * How the library treats a row: the primary copy, a duplicate of it, or a file it
+ * doesn't use — never imported, removed from Drive, an unreadable shortcut, or a
+ * failed / pending download.
+ */
+export type InvState = 'primary' | 'dup' | 'ignored' | 'removed' | 'unreachable' | 'failed' | 'pending';
+
 export interface InvFileRow {
   driveFileId: string;
+  state: InvState;
   /** The name shown at THIS location. */
   name: string;
   sha256: string | null;
@@ -53,10 +64,22 @@ export interface InvSource {
 }
 export interface Inventory {
   sources: InvSource[];
-  totals: { files: number; primaries: number; duplicates: number };
+  totals: { files: number; primaries: number; duplicates: number; unused: number };
 }
 
-const EMPTY: Inventory = { sources: [], totals: { files: 0, primaries: 0, duplicates: 0 } };
+const EMPTY: Inventory = { sources: [], totals: { files: 0, primaries: 0, duplicates: 0, unused: 0 } };
+
+/** The state of a file the library doesn't use, or null for a live asset. */
+function unusedState(e: Entry): InvState | null {
+  const status = String(e.status ?? '');
+  if (status === 'deleted') return 'removed';
+  if (status === 'unreachable') return 'unreachable';
+  if (status.startsWith('ignored')) return 'ignored';
+  if (status === 'error') return 'failed';
+  if (status === 'pending') return 'pending';
+  if (!isLive(e) || isJunkName(e.originalName as string)) return 'ignored';
+  return null;
+}
 
 type Entry = Record<string, unknown>;
 
@@ -103,7 +126,7 @@ function finalize(node: InvNode): { files: number; dups: number } {
   node.folders.sort((a, b) => a.name.localeCompare(b.name));
   node.files.sort((a, b) => a.name.localeCompare(b.name));
   let files = node.files.length;
-  let dups = node.files.filter((f) => !f.isPrimary).length;
+  let dups = node.files.filter((f) => f.state === 'dup').length;
   for (const f of node.folders) {
     const c = finalize(f);
     files += c.files;
@@ -131,8 +154,33 @@ export function fileInventory(): Inventory {
   const roots = new Map<string, InvNode>();
   let primaries = 0;
   let duplicates = 0;
+  let unused = 0;
+  const place = (ap: Appearance, row: InvFileRow) => {
+    const src = ap.source ?? '(unknown source)';
+    if (!roots.has(src)) roots.set(src, emptyNode(''));
+    nodeAt(roots.get(src)!, ap.path).files.push(row);
+  };
 
-  for (const e of liveAssets(manifest) as Entry[]) {
+  for (const e of Object.values(manifest.files || {}) as Entry[]) {
+    const unusedAs = unusedState(e);
+    if (unusedAs) {
+      // Not in the library: list it at every place it appeared, tagged with why.
+      for (const ap of appearancesOf(e)) {
+        unused += 1;
+        place(ap, {
+          driveFileId: e.driveFileId as string,
+          state: unusedAs,
+          name: ap.name ?? (e.originalName as string) ?? (e.driveFileId as string),
+          sha256: null,
+          assetType: (e.assetType as string) ?? null,
+          modifiedTime: (e.modifiedTime as string) ?? null,
+          isPrimary: false,
+          viaShortcut: !!ap.viaShortcut,
+          primary: null,
+        });
+      }
+      continue;
+    }
     const canonEntry = (canonical.get(keyOf(e)) as Entry | undefined) ?? e;
     const isCanonicalId = canonEntry.driveFileId === e.driveFileId;
     // The single primary appearance: the highest-priority location of the
@@ -152,6 +200,7 @@ export function fileInventory(): Inventory {
 
       const row: InvFileRow = {
         driveFileId: e.driveFileId as string,
+        state: isPrimary ? 'primary' : 'dup',
         name: ap.name ?? (e.originalName as string) ?? (e.driveFileId as string),
         sha256: (e.sha256 as string) ?? null,
         assetType: (e.assetType as string) ?? null,
@@ -161,9 +210,7 @@ export function fileInventory(): Inventory {
         primary: isPrimary ? null : primaryLoc,
       };
 
-      const src = ap.source ?? '(unknown source)';
-      if (!roots.has(src)) roots.set(src, emptyNode(''));
-      nodeAt(roots.get(src)!, ap.path).files.push(row);
+      place(ap, row);
     });
   }
 
@@ -175,5 +222,5 @@ export function fileInventory(): Inventory {
       return { source, root, fileCount: files, dupCount: dups };
     });
 
-  return { sources, totals: { files: primaries + duplicates, primaries, duplicates } };
+  return { sources, totals: { files: primaries + duplicates + unused, primaries, duplicates, unused } };
 }

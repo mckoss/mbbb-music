@@ -198,3 +198,17 @@ export async function listSyncRuns(dir) {
   }
   return out;
 }
+
+/**
+ * One file's change history across every recorded sync, newest first:
+ * [{ runId, startedAt, change }].
+ */
+export async function fileHistory(dir, driveFileId) {
+  const out = [];
+  for (const id of await runIds(dir)) {
+    const run = await loadSyncRun(dir, id);
+    const change = run?.changes?.find((c) => c.id === driveFileId);
+    if (change) out.push({ runId: id, startedAt: run.startedAt, change });
+  }
+  return out;
+}

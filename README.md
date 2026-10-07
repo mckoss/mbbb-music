@@ -83,6 +83,17 @@ moved, new content, or reclassified to another song, instrument, or part, with
 the before → after values). Admins browse these at `/admin/sync-history` (linked
 beside **Sync from Drive** on Library Status). The newest 200 runs are kept.
 
+To trace one file, use **Library Status → Files**: the Drive folder tree of every
+file the sync has seen (including ones the library doesn't use, tagged *Not
+imported*, *Removed*, *Unreachable*, *Failed*, or *Pending*), searchable by name,
+folder, or Drive file id. Each file opens `/library-status/files/<drive id>`,
+which explains how the library handles it: every Drive location, its sync status,
+what its name was read as (and after corrections), the corrections themselves,
+where the catalog places it (song, instrument, part, format, default vs alternate
+copy, or a duplicate / masked / hidden / Extra File, or why it isn't imported), and
+— for admins — every sync that changed it. `?file=<drive id>` on the Files page
+opens the tree down to that file.
+
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:
 

@@ -174,6 +174,13 @@ export function recentEditsDb(db: DatabaseSync, limit = 500): EditRow[] {
     .all(limit) as unknown as EditRow[];
 }
 
+/** Every edit (including soft-deleted ones) on one target, newest first. */
+export function editsForTargetDb(db: DatabaseSync, scope: Scope, targetId: string): EditRow[] {
+  return db
+    .prepare(`SELECT * FROM corrections WHERE scope = ? AND target_id = ? ORDER BY edited_at DESC, id DESC`)
+    .all(scope, targetId) as unknown as EditRow[];
+}
+
 /**
  * A cheap monotonic-ish signal that changes on any write (insert OR soft-delete),
  * for catalog-cache invalidation. Inserts bump max(id); deletes bump the deleted
@@ -218,3 +225,4 @@ export const getEdit = (id: number): EditRow | undefined => editorOf(db(), id);
 export const effectiveOverlay = (): Overlay => effectiveOverlayDb(db());
 export const recentEdits = (limit?: number): EditRow[] => recentEditsDb(db(), limit);
 export const revision = (): string => revisionDb(db());
+export const editsForTarget = (scope: Scope, targetId: string): EditRow[] => editsForTargetDb(db(), scope, targetId);
