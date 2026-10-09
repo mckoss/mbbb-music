@@ -3,8 +3,11 @@
 // and the catalog built from it, and explains the file's fate in the same terms
 // the catalog builder uses:
 //
-//   - never imported (ignored type, shortcut, system file), removed from Drive,
-//     unreachable, failed or still pending download;
+//   - archived by an admin (out of the library, whatever Drive says);
+//   - never imported (ignored type, shortcut, system file), unreachable, failed
+//     or still pending download;
+//   - removed from Drive — still in the library on its stored copy (flagged), so
+//     it keeps working until an admin archives it;
 //   - a duplicate: the same bytes live elsewhere, and that copy is the one used;
 //   - placed in a song — as which instrument / part / format (and whether it's the
 //     default copy players get, or an alternate in the chooser), as a score,
@@ -13,7 +16,7 @@
 //     app-generated replacement;
 //   - an Extra File (no song), or not placed at all.
 
-import { canonicalByContent, isLive, sourcePriority } from './catalog.js';
+import { canonicalByContent, isKeptAfterDriveRemoval, isLive, sourcePriority } from './catalog.js';
 import { isJunkName } from './classify.js';
 
 /** Plain-language reason for an `ignored|<reason>` status. */
@@ -148,11 +151,27 @@ function placementsFor(catalog, id) {
  * @param {{ tunes: object[], extras: object[], sources: string[] }} catalog
  * @returns {null | {
  *   state: string, headline: string, detail: string|null,
- *   placements: Placement[], extra: boolean,
+ *   placements: Placement[], extra: boolean, removedFromDrive: boolean,
  *   canonical: null | { id: string, name: string|null, location: string|null },
  * }}
  */
 export function describeHandling(id, manifest, catalog) {
+  const h = describe(id, manifest, catalog);
+  if (h?.removedFromDrive && h.state !== 'removed' && h.state !== 'archived') {
+    // Still offered from its stored copy; say so up front.
+    h.headline =
+      h.state === 'in-library'
+        ? 'Removed from Drive — still in the library.'
+        : `Removed from Drive — still in the library. ${h.headline}`;
+    h.detail = [h.detail, 'Its stored copy keeps it playable. Archive it if you no longer want it.']
+      .filter(Boolean)
+      .join(' ');
+  }
+  return h;
+}
+
+/** @returns {ReturnType<typeof describeHandling>} */
+function describe(id, manifest, catalog) {
   const e = manifest?.files?.[id];
   if (!e) return null;
   const status = String(e.status ?? '');
@@ -163,11 +182,19 @@ export function describeHandling(id, manifest, catalog) {
     placements: [],
     extra: false,
     canonical: null,
+    removedFromDrive: status === 'deleted',
     ...more,
   });
 
-  if (status === 'deleted') {
-    return result('removed', 'Removed — no longer in Drive.', 'The stored copy is kept, but it is out of the library.');
+  if (e.archived) {
+    return result(
+      'archived',
+      'Archived — out of the library.',
+      'An admin archived it, so players no longer see it. Unarchive it to bring it back.',
+    );
+  }
+  if (status === 'deleted' && !isKeptAfterDriveRemoval(e)) {
+    return result('removed', 'Removed from Drive before it was downloaded.', 'There is no stored copy to keep.');
   }
   if (status.startsWith('ignored')) {
     return result('ignored', 'Not imported.', ignoreReasonText(status.split('|')[1]));
@@ -181,7 +208,7 @@ export function describeHandling(id, manifest, catalog) {
   }
   if (status === 'error') return result('failed', 'Download failed.', e.error ?? null);
   if (status === 'pending') return result('pending', 'Waiting to download.', 'The next sync fetches it.');
-  if (!isLive(e) || isJunkName(e.originalName)) {
+  if ((!isLive(e) && !isKeptAfterDriveRemoval(e)) || isJunkName(e.originalName)) {
     return result('ignored', 'Not imported.', ignoreReasonText('junk'));
   }
 

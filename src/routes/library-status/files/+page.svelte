@@ -35,8 +35,9 @@
 
   // Tags for files the library doesn't use (primary/dup are handled above).
   const STATE_TAG: Record<string, { label: string; title: string }> = {
+    archived: { label: 'Archived', title: 'Archived by an admin — out of the library' },
     ignored: { label: 'Not imported', title: 'A file type or kind the sync does not import' },
-    removed: { label: 'Removed', title: 'No longer in Drive (archived)' },
+    removed: { label: 'Removed', title: 'Removed from Drive before it was downloaded' },
     unreachable: { label: 'Unreachable', title: 'A shortcut to a file the sync cannot read' },
     failed: { label: 'Failed', title: 'The download failed' },
     pending: { label: 'Pending', title: 'Waiting to download' },
@@ -71,6 +72,9 @@
     for (const src of inv.sources) walk(src.root, [src.source]);
     return out;
   });
+  // Deleted in Drive but still in the library — the queue to review and archive.
+  const removedKept = $derived(allRows.filter((h) => h.row.removedFromDrive && h.row.state === 'primary'));
+
   const MAX_HITS = 200;
   const hits = $derived.by(() => {
     const q = query.trim().toLowerCase();
@@ -110,9 +114,11 @@
           file's last-modified time (YYYY-MM-DD), so you can tell current from stale copies.
         </p>
         <p>
-          Files the library doesn't use are listed too, tagged <em>Not imported</em>,
-          <em>Removed</em>, <em>Unreachable</em>, <em>Failed</em>, or <em>Pending</em>. Click any
-          file to see exactly how it is handled.
+          Files the library doesn't use are listed too, tagged <em>Archived</em>,
+          <em>Not imported</em>, <em>Removed</em>, <em>Unreachable</em>, <em>Failed</em>, or
+          <em>Pending</em>. A file deleted in Drive stays in the library, tagged
+          <em>Not in Drive</em>, until an admin archives it. Click any file to see exactly how
+          it is handled.
         </p>
       </HelpPopup>
     </div>
@@ -128,6 +134,25 @@
     />
     <p class="hint">Click a file to see how the library handles it.</p>
   </header>
+
+  {#if removedKept.length && !query.trim()}
+    <details class="review">
+      <summary>
+        <strong>{removedKept.length} file{removedKept.length === 1 ? '' : 's'} removed from Drive, still in the library</strong>
+        <span class="meta">Open one to archive it</span>
+      </summary>
+      <ul>
+        {#each removedKept as h (h.row.driveFileId)}
+          <li>
+            <span class="hit">
+              <a class="file" href={infoHref(h.row.driveFileId)}>{h.row.name}</a>
+              <span class="path">{h.where.join(' / ')}</span>
+            </span>
+          </li>
+        {/each}
+      </ul>
+    </details>
+  {/if}
 
   {#if query.trim()}
     <div class="results">
@@ -199,6 +224,9 @@
 {/snippet}
 
 {#snippet tags(f: InvFileRow)}
+  {#if f.removedFromDrive}
+    <span class="badge state-tag gone" title="Deleted in Drive; still in the library until archived">Not in Drive</span>
+  {/if}
   {#if f.state === 'dup'}
     <span
       class="badge dup-tag"
@@ -424,6 +452,20 @@
     background: #f8e3e1;
     color: #8a2219;
     border-color: #e6bab5;
+  }
+  .badge.state-tag.gone {
+    background: #fbf0d9;
+    color: #7a5208;
+    border-color: #ecd4a0;
+  }
+  .review {
+    border: 1px solid #ecd4a0;
+    background: #fdf7ea;
+    border-radius: 6px;
+    padding: 6px 10px;
+  }
+  .review ul {
+    padding-left: 0;
   }
   .badge.state-tag.pending {
     background: #fbf0d9;

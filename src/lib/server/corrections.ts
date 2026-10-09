@@ -26,13 +26,14 @@ export type Scope = 'file' | 'song' | 'folder';
 /**
  * Fields a human may correct, by scope.
  *   file   — keyed by Drive file id: instrument/key/part, plus `songSlug` to
- *            (re)assign this one file to a song.
+ *            (re)assign this one file to a song, and `archived` (admin-only) to
+ *            take it out of the library.
  *   song   — keyed by the stable identity slug: display name + display slug.
  *   folder — keyed by the song-folder's Drive id: `songSlug` to (re)assign every
  *            file in that folder to a song.
  */
 export const CORRECTABLE_FIELDS: Record<Scope, readonly string[]> = {
-  file: ['instrumentSlug', 'key', 'partNumber', 'songSlug', 'hidden', 'hiddenInstruments', 'partPages'],
+  file: ['instrumentSlug', 'key', 'partNumber', 'songSlug', 'hidden', 'hiddenInstruments', 'partPages', 'archived'],
   song: ['displaySlug', 'displayName', 'videoUrl', 'bpm', 'timeSig'],
   folder: ['songSlug'],
 };

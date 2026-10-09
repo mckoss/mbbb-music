@@ -140,6 +140,9 @@ test('a removed Drive file is archived; its cached blob is retained', async () =
     assert.equal(report.summary.deleted, 1);
     const manifest = await loadManifest(resolve(dataDir, 'manifest.json'));
     assert.equal(manifest.files['ts-mp3'].status, 'deleted');
+    // It had been downloaded, so the library keeps offering it until an admin archives it.
+    assert.equal(manifest.files['ts-mp3'].statusBeforeRemoval, 'synced');
+    assert.equal(manifest.files['ts-mp3'].removedAt, FIXED_NOW().toISOString());
     // The blob is intentionally NOT removed (it may be shared).
     assert.ok(await exists(resolve(dataDir, 'cas', sha256('SYNTHETIC-MP3: track suit audio'))));
   });

@@ -4,14 +4,14 @@
 // duplicate, masked, hidden, an Extra File, or never imported and why). Admins
 // also see every sync that changed it. Viewable by any approved user, like the
 // rest of Library Info (the hook already gates that).
-import { error } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 
 import { loadConfig } from '../../../../sync/config.js';
-import { formatOf } from '../../../../sync/catalog.js';
+import { formatOf, isInLibrary } from '../../../../sync/catalog.js';
 import { describeHandling } from '../../../../sync/file-handling.js';
 import { fileHistory, historyDirFor } from '../../../../sync/history.js';
 import { getCatalog, getManifests, type ManifestEntry } from '$lib/server/library';
-import { editsForTarget } from '$lib/server/corrections';
+import { editField, editsForTarget } from '$lib/server/corrections';
 import { formatPacificDateTime } from '$lib/time';
 import { keyLabel } from '$lib/format';
 
@@ -92,7 +92,11 @@ export async function load({ params, locals }) {
     id,
     name: rawEntry.originalName ?? id,
     status: rawEntry.status ?? null,
-    sha256: rawEntry.status === 'deleted' || String(rawEntry.status ?? '').startsWith('ignored') ? null : (rawEntry.sha256 ?? null),
+    // Openable only while the library offers it (live, or kept after Drive removal, and not archived).
+    sha256: isInLibrary(entry) ? (entry.sha256 ?? null) : null,
+    archived: Boolean(entry.archived),
+    removedAt: rawEntry.status === 'deleted' && rawEntry.removedAt ? formatPacificDateTime(rawEntry.removedAt) : null,
+    canArchive: isAdmin,
     assetType: entry.assetType ?? null,
     mimeType: rawEntry.mimeType ?? null,
     size: rawEntry.size != null ? Number(rawEntry.size) : null,
@@ -108,3 +112,16 @@ export async function load({ params, locals }) {
     history,
   };
 }
+
+export const actions = {
+  /** Archive (take out of the library) or unarchive one file. Admin-only. */
+  archive: async ({ params, request, locals }) => {
+    if (locals.user?.role !== 'admin') throw error(403, 'Admins only');
+    if (!DRIVE_ID.test(params.id)) return fail(400, { message: 'Not a Drive file id' });
+    if (!getManifests().raw.files[params.id]) return fail(404, { message: 'Unknown file' });
+    const form = await request.formData();
+    const archived = form.get('archived') === 'true';
+    editField({ scope: 'file', targetId: params.id, field: 'archived', value: archived ? 'true' : 'false', by: locals.user.email });
+    return { ok: true };
+  },
+};

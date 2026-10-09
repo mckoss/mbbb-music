@@ -4,6 +4,7 @@
   import { assetIndexFor, urlForSha } from '$lib/asset-urls';
   import { viewHref, viewKind } from '$lib/view';
   import { instrumentDisplay } from '$lib/format';
+  import { enhance } from '$app/forms';
 
   let { data } = $props();
   const h = $derived(data.handling);
@@ -19,6 +20,7 @@
     removed: 'bad',
     unreachable: 'bad',
     failed: 'bad',
+    archived: 'muted',
   };
 
   const STATUS_TEXT: Record<string, string> = {
@@ -76,8 +78,19 @@
     <div class="actions">
       <a class="btn" href={`/library-status/files?file=${encodeURIComponent(data.id)}#f-${data.id}`}>Show in Drive tree</a>
       {#if openHref}<a class="btn" href={openHref}>Open</a>{/if}
-      <a class="btn ghost" href={data.driveUrl} target="_blank" rel="noopener">Open in Drive ↗</a>
+      {#if data.status !== 'deleted'}
+        <a class="btn ghost" href={data.driveUrl} target="_blank" rel="noopener">Open in Drive ↗</a>
+      {/if}
+      {#if data.canArchive}
+        <form method="POST" action="?/archive" use:enhance>
+          <input type="hidden" name="archived" value={data.archived ? 'false' : 'true'} />
+          <button class="btn ghost" type="submit">{data.archived ? 'Unarchive' : 'Archive'}</button>
+        </form>
+      {/if}
     </div>
+    {#if data.canArchive && !data.archived}
+      <p class="muted small">Archive takes this file out of the library for everyone. It is reversible (Unarchive, or revert it on Corrections).</p>
+    {/if}
   </header>
 
   {#if h}
@@ -135,7 +148,8 @@
   <div class="panel">
     <h3>Sync</h3>
     <dl class="facts">
-      <dt>Status</dt><dd>{statusText(data.status)}</dd>
+      <dt>Status</dt><dd>{statusText(data.status)}{#if data.archived}{' '}· archived{/if}</dd>
+      {#if data.removedAt}<dt>Removed from Drive</dt><dd>{data.removedAt}</dd>{/if}
       {#if data.lastSynced}<dt>Last synced</dt><dd>{data.lastSynced}</dd>{/if}
       {#if data.modified}<dt>Modified in Drive</dt><dd>{data.modified}</dd>{/if}
       {#if data.mimeType}<dt>Drive type</dt><dd>{data.mimeType}</dd>{/if}
@@ -266,6 +280,13 @@
     font-weight: 700;
     font-size: 0.86rem;
     text-decoration: none;
+  }
+
+  button.btn {
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.86rem;
   }
 
   .btn.ghost {

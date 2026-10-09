@@ -70,12 +70,13 @@ test('a part alone in its print format is flagged', () => {
 
 test('files the library does not use say why', () => {
   const files = [
-    entry('gone', 'Baile - Tuba.pdf', 'sha-g', { status: 'deleted' }),
+    entry('gone', 'Baile - Tuba.pdf', 'sha-g', { status: 'deleted', statusBeforeRemoval: 'pending' }),
     entry('sc', 'Link to Baile', null, { status: 'ignored|google-drive-shortcut', assetType: undefined }),
     entry('zip', 'Baile.zipx', null, { status: 'ignored|unsupported-type:zipx', assetType: undefined }),
     entry('un', 'Baile - Flute.pdf', null, { status: 'unreachable' }),
     entry('err', 'Baile - Drums.pdf', null, { status: 'error', error: 'HTTP 403' }),
   ];
+  // Removed from Drive before it was ever downloaded: nothing to keep.
   assert.equal(handle(files, 'gone').state, 'removed');
   assert.equal(handle(files, 'sc').state, 'ignored');
   assert.match(handle(files, 'sc').detail, /shortcut/);
@@ -102,4 +103,18 @@ test('a loose file with no song is an Extra File', () => {
   const manifest = { files: { x: files[0] } };
   const h = describeHandling('x', manifest, buildCatalog(manifest, ['Loose'], ['Loose']));
   assert.equal(h.state, 'extra');
+});
+
+test('a file deleted in Drive stays in the library, flagged, until archived', () => {
+  const files = [entry('a', 'Baile - Alto Horn.pdf', 'sha-a', { status: 'deleted', statusBeforeRemoval: 'synced' })];
+  const h = handle(files, 'a');
+  assert.equal(h.state, 'in-library');
+  assert.equal(h.removedFromDrive, true);
+  assert.match(h.headline, /^Removed from Drive — still in the library/);
+  assert.match(h.detail, /Archive it/);
+
+  const raw = { files: { a: files[0] } };
+  const manifest = applyCorrections(raw, { file: { a: { archived: 'true' } }, folder: {} });
+  const archived = describeHandling('a', manifest, buildCatalog(manifest, ['Library']));
+  assert.equal(archived.state, 'archived');
 });

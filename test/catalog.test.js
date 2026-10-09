@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf, sourcePriority, canonicalByContent, detectCollectionFolders, folderKey } from '../src/sync/catalog.js';
+import { applyCorrections, buildCatalog, partDownloadName, descriptorOf, matchIdentifiers, matchKnownSong, songPrefixOf, sourcePriority, canonicalByContent, detectCollectionFolders, folderKey } from '../src/sync/catalog.js';
 
 // A folder of one song's parts (their content is canonical in itself) vs a
 // by-instrument collection folder (its files' content is canonical in several
@@ -615,4 +615,40 @@ test('the app-generated "-band.mp3" is the primary MuseScore Audio, additive (ne
   assert.ok(bad.audio.some((a) => a.originalName === 'Bad_Guy.mp3'), 'the manual full mix is still present');
   assert.ok(bad.audio.some((a) => a.originalName === 'Bad_Guy-Drumset.mp3'), 'the isolated stem is still present');
   assert.ok(bad.audio.slice(1).every((a) => !a.museScore), 'only the generated mix carries the museScore flag');
+});
+
+// --- Files deleted in Drive stay in the library until archived --------------
+
+test('a file deleted in Drive stays in its song, flagged, until an admin archives it', () => {
+  const base = { sourceFolderLabel: 'S', originalFolder: 'Baile', songTitle: 'Baile', songTitleSlug: 'baile', assetType: 'pdf' };
+  const manifest = {
+    files: {
+      gone: { ...base, driveFileId: 'gone', originalName: 'Baile - Tuba.pdf', instrument: 'Tuba', instrumentSlug: 'tuba', sha256: 'g', status: 'deleted' },
+      never: { ...base, driveFileId: 'never', originalName: 'Baile - Flute.pdf', instrument: 'Flute', instrumentSlug: 'flute', sha256: 'n', status: 'deleted', statusBeforeRemoval: 'pending' },
+    },
+  };
+  const parts = (m) => buildCatalog(m, ['S']).tunes[0]?.parts ?? [];
+  // Older manifests carry no statusBeforeRemoval: a deleted file with content was downloaded.
+  assert.deepEqual(parts(manifest).map((p) => [p.driveFileId, p.removedFromDrive]), [['gone', true]]);
+
+  const archived = applyCorrections(manifest, { file: { gone: { archived: 'true' } }, folder: {} });
+  assert.deepEqual(parts(archived), []);
+  const unarchived = applyCorrections(manifest, { file: { gone: { archived: 'false' } }, folder: {} });
+  assert.equal(parts(unarchived).length, 1);
+});
+
+test('a copy still in Drive is preferred over one removed from Drive', () => {
+  const base = { sourceFolderLabel: 'S', originalFolder: 'Baile', songTitle: 'Baile', songTitleSlug: 'baile', assetType: 'pdf', instrument: 'Tuba', instrumentSlug: 'tuba' };
+  // Same slot, different bytes: the live copy is the default even though the removed one is newer.
+  const slot = buildCatalog({ files: {
+    old: { ...base, driveFileId: 'old', originalName: 'Baile - Tuba.pdf', sha256: 'a', status: 'deleted', modifiedTime: '2026-09-01' },
+    cur: { ...base, driveFileId: 'cur', originalName: 'Baile - Tuba.pdf', sha256: 'b', status: 'synced', modifiedTime: '2026-01-01' },
+  } }, ['S']).tunes[0].parts;
+  assert.deepEqual(slot.map((p) => p.driveFileId), ['cur', 'old']);
+  // Same bytes: the live copy is the canonical one.
+  const same = buildCatalog({ files: {
+    old: { ...base, driveFileId: 'old', originalName: 'Baile - Tuba.pdf', sha256: 'a', status: 'deleted' },
+    cur: { ...base, driveFileId: 'cur', originalName: 'Baile - Tuba.pdf', sha256: 'a', status: 'synced' },
+  } }, ['S']).tunes[0].parts;
+  assert.deepEqual(same.map((p) => [p.driveFileId, !!p.removedFromDrive]), [['cur', false]]);
 });

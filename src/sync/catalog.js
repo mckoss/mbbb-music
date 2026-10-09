@@ -106,6 +106,8 @@ export function applyCorrections(manifest, overlay) {
         }
         if ('key' in fpatch) e.key = fpatch.key || null;
         if ('hidden' in fpatch) e.hidden = fpatch.hidden === 'true';
+        // An admin's explicit archive takes a file out of the library entirely.
+        if ('archived' in fpatch) e.archived = fpatch.archived === 'true';
         if ('hiddenInstruments' in fpatch) {
           try { e.hiddenInstruments = JSON.parse(fpatch.hiddenInstruments || '[]'); }
           catch { e.hiddenInstruments = []; }
@@ -131,12 +133,28 @@ export function isLive(entry) {
 }
 
 /**
- * All live (present, non-ignored, non-deleted) manifest entries, excluding OS
+ * True for a file deleted from Drive whose stored copy the library keeps. Deleting
+ * a file in Drive does NOT take it out of the library — its blob stays in the CAS,
+ * so it stays playable (flagged "removed from Drive") until an admin archives it.
+ * Only a file that was actually downloaded before it vanished has a copy to keep;
+ * `statusBeforeRemoval` (absent in older manifests → assume it was synced) says so.
+ */
+export function isKeptAfterDriveRemoval(entry) {
+  return entry.status === 'deleted' && Boolean(entry.sha256) && (entry.statusBeforeRemoval ?? 'synced') === 'synced';
+}
+
+/** True for an entry the library offers: live or kept after Drive removal, and not archived. */
+export function isInLibrary(entry) {
+  return !entry.archived && (isLive(entry) || isKeptAfterDriveRemoval(entry));
+}
+
+/**
+ * Every manifest entry the library offers (see {@link isInLibrary}), excluding OS
  * junk. The junk filter here also hides junk already recorded as `synced` in an
  * older manifest (e.g. "._x.pdf"), so the catalog is clean without a re-sync.
  */
 export function liveAssets(manifest) {
-  return Object.values(manifest.files || {}).filter((e) => isLive(e) && !isJunkName(e.originalName));
+  return Object.values(manifest.files || {}).filter((e) => isInLibrary(e) && !isJunkName(e.originalName));
 }
 
 /**
@@ -323,6 +341,9 @@ export function sourcePriority(sourceLabels, manifest) {
  * the first seen.
  */
 function isMoreCanonical(candidate, current, pri) {
+  // A copy still in Drive beats one kept only because it was removed from Drive.
+  const removed = (e) => (e.status === 'deleted' ? 1 : 0);
+  if (removed(candidate) !== removed(current)) return removed(candidate) < removed(current);
   const container = (e) => (isContainerFolder(e.originalFolder) ? 1 : 0);
   if (container(candidate) !== container(current)) return container(candidate) < container(current);
   const rank = (e) => (pri.has(e.sourceFolderLabel) ? pri.get(e.sourceFolderLabel) : Number.MAX_SAFE_INTEGER);
@@ -428,8 +449,10 @@ function dedupeAudio(audio, pri) {
     // ...versions of one recording grouped together...
     const bk = baseKey(a).localeCompare(baseKey(b));
     if (bk) return bk;
-    // ...highest-priority source first, then newest, then name desc ("V1.2"<"V1.0").
+    // ...still-in-Drive copies first, then highest-priority source, then newest,
+    // then name desc ("V1.2"<"V1.0").
     return (
+      (a.removedFromDrive ? 1 : 0) - (b.removedFromDrive ? 1 : 0) ||
       sourceRank(a, pri) - sourceRank(b, pri) ||
       (b._mtime || '').localeCompare(a._mtime || '') ||
       (b.originalName || '').localeCompare(a.originalName || '')
@@ -457,7 +480,9 @@ function dedupeParts(parts, pri) {
   const out = [...bySha.values()].sort(
     (a, b) =>
       comparePart(a, b) ||
-      // Same slot: highest-priority source first, then newest, then name desc.
+      // Same slot: a copy still in Drive before one removed from Drive, then the
+      // highest-priority source, then newest, then name desc.
+      (a.removedFromDrive ? 1 : 0) - (b.removedFromDrive ? 1 : 0) ||
       sourceRank(a, pri) - sourceRank(b, pri) ||
       (b._mtime || '').localeCompare(a._mtime || '') ||
       (b.originalName || '').localeCompare(a.originalName || '')
@@ -780,6 +805,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       // Carry the generated flag so the masking pass can keep these and drop the
       // manual copies; a truthy value also lets the UI badge a standardized score.
       ...(isGenerated ? { generated: true } : {}),
+      // Deleted in Drive but kept: still offered, flagged so admins can review and archive it.
+      ...(e.status === 'deleted' ? { removedFromDrive: true } : {}),
       // Admin-set start pages for a whole-band chart, overriding the PDF's own
       // part labels. Omitted when empty so the common asset stays lean.
       ...(e.partPages && Object.keys(e.partPages).length ? { partPages: e.partPages } : {}),

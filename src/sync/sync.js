@@ -241,8 +241,16 @@ async function syncOnce({ driveClient, config, dryRun = false, now = () => new D
       continue;
     }
     if (entry.status === 'deleted') {
-      // Archive: mark deleted but never remove the cached blob (it may be shared).
-      manifest.files[entry.id] = compact({ ...entry.prev, status: 'deleted', syncedAt: timestamp });
+      // Gone from Drive: mark it deleted but never remove the cached blob. The
+      // library keeps offering a file that had been downloaded (catalog
+      // isKeptAfterDriveRemoval) until an admin archives it, so record whether it was.
+      manifest.files[entry.id] = compact({
+        ...entry.prev,
+        status: 'deleted',
+        statusBeforeRemoval: entry.prev?.status,
+        removedAt: timestamp,
+        syncedAt: timestamp,
+      });
       actions.deleted.push({ id: entry.id, name: entry.prev?.originalName });
       continue;
     }

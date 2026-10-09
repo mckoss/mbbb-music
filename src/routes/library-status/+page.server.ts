@@ -111,6 +111,7 @@ export const actions = {
     // Visibility changes use the dedicated admin action with current-state
     // merging; this generic correction endpoint must not bypass its checks.
     if (field === 'hidden' || field === 'hiddenInstruments') return fail(400, { message: 'Use Manage parts to change visibility' });
+    if (field === 'archived') return fail(400, { message: 'Archive a file from its Files page' });
     // Identity/grouping changes (slug rename, song reassignment) are privileged.
     if (isPrivileged(scope, field) && !PRIVILEGED_ROLES.has(user.role)) {
       throw error(403, 'This change is limited to admins and organizers');

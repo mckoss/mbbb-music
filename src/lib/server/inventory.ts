@@ -9,10 +9,9 @@
 // (never imported, removed from Drive, unreachable, failed) are listed too, tagged
 // with why, so every file the sync has seen can be found here.
 
-import { readFileSync } from 'node:fs';
-
 import { loadConfig } from '../../sync/config.js';
-import { sourcePriority, canonicalByContent, isLive } from '../../sync/catalog.js';
+import { sourcePriority, canonicalByContent, isLive, isKeptAfterDriveRemoval } from '../../sync/catalog.js';
+import { getManifests } from './library';
 import { isJunkName } from '../../sync/classify.js';
 
 /** One place a file appears in Drive (its real home, or a shortcut to it). */
@@ -28,11 +27,13 @@ interface Appearance {
  * doesn't use — never imported, removed from Drive, an unreadable shortcut, or a
  * failed / pending download.
  */
-export type InvState = 'primary' | 'dup' | 'ignored' | 'removed' | 'unreachable' | 'failed' | 'pending';
+export type InvState = 'primary' | 'dup' | 'archived' | 'ignored' | 'removed' | 'unreachable' | 'failed' | 'pending';
 
 export interface InvFileRow {
   driveFileId: string;
   state: InvState;
+  /** Deleted in Drive but still in the library on its stored copy (until archived). */
+  removedFromDrive: boolean;
   /** The name shown at THIS location. */
   name: string;
   sha256: string | null;
@@ -72,7 +73,8 @@ const EMPTY: Inventory = { sources: [], totals: { files: 0, primaries: 0, duplic
 /** The state of a file the library doesn't use, or null for a live asset. */
 function unusedState(e: Entry): InvState | null {
   const status = String(e.status ?? '');
-  if (status === 'deleted') return 'removed';
+  if (e.archived) return 'archived';
+  if (status === 'deleted') return isKeptAfterDriveRemoval(e) ? (isJunkName(e.originalName as string) ? 'ignored' : null) : 'removed';
   if (status === 'unreachable') return 'unreachable';
   if (status.startsWith('ignored')) return 'ignored';
   if (status === 'error') return 'failed';
@@ -139,12 +141,9 @@ function finalize(node: InvNode): { files: number; dups: number } {
 
 export function fileInventory(): Inventory {
   const cfg = loadConfig();
-  let manifest: { files?: Record<string, Entry> };
-  try {
-    manifest = JSON.parse(readFileSync(cfg.manifestPath, 'utf8'));
-  } catch {
-    return EMPTY; // no manifest yet
-  }
+  // The corrected manifest, so an archive (a correction) shows here too.
+  const manifest = getManifests().corrected as { files?: Record<string, Entry> };
+  if (!Object.keys(manifest.files ?? {}).length) return EMPTY; // no manifest yet
 
   const labels = ((cfg.sources as Array<{ label: string }>) || []).map((s) => s.label).filter(Boolean);
   const pri = sourcePriority(labels, manifest);
@@ -170,6 +169,7 @@ export function fileInventory(): Inventory {
         place(ap, {
           driveFileId: e.driveFileId as string,
           state: unusedAs,
+          removedFromDrive: false,
           name: ap.name ?? (e.originalName as string) ?? (e.driveFileId as string),
           sha256: null,
           assetType: (e.assetType as string) ?? null,
@@ -201,6 +201,7 @@ export function fileInventory(): Inventory {
       const row: InvFileRow = {
         driveFileId: e.driveFileId as string,
         state: isPrimary ? 'primary' : 'dup',
+        removedFromDrive: e.status === 'deleted',
         name: ap.name ?? (e.originalName as string) ?? (e.driveFileId as string),
         sha256: (e.sha256 as string) ?? null,
         assetType: (e.assetType as string) ?? null,

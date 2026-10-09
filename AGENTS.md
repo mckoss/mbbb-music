@@ -113,6 +113,10 @@ their runs never touch the real history.
 Per-file tracing lives at `/library-status/files/<drive id>`; the explanation is
 the pure `describeHandling` in `src/sync/file-handling.js` — keep it in step with
 `buildCatalog` when placement, masking, or dedup rules change.
+A file deleted in Drive stays in the library on its stored copy
+(`isKeptAfterDriveRemoval` in `src/sync/catalog.js`) until an admin archives it
+(the admin-only `archived` file correction); never drop removed files from the
+catalog on sync.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.

@@ -113,6 +113,10 @@ test('request classification matches each resource kind', () => {
   assert.ok(isAlwaysFreshRoute(new URL('https://x/profile')));
   assert.ok(isAlwaysFreshRoute(new URL('https://x/profile/__data.json?email=a')));
   assert.ok(!isAlwaysFreshRoute(new URL('https://x/gigs')));
+  assert.ok(isAlwaysFreshRoute(new URL('https://x/library-status/files')));
+  assert.ok(isAlwaysFreshRoute(new URL('https://x/library-status/files/abc/__data.json')));
+  assert.ok(isAlwaysFreshRoute(new URL('https://x/admin/sync-history/2026-10-01T00-00-00-000Z')));
+  assert.ok(!isAlwaysFreshRoute(new URL('https://x/library-status')));
 });
 
 // --- fetchWithTimeout (the linchpin) ----------------------------------------

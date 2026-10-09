@@ -34,7 +34,7 @@
     {
       key: 'removed',
       title: 'Removed',
-      blurb: 'No longer in Drive. Archived — the stored copy is kept, but it leaves the library.',
+      blurb: 'No longer in Drive. Still in the library on its stored copy — open a file to archive it.',
     },
     { key: 'ignored', title: 'Not imported', blurb: 'Newly seen files the sync skips (shortcuts, system files, unsupported types).' },
   ];

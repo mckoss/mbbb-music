@@ -94,6 +94,12 @@ copy, or a duplicate / masked / hidden / Extra File, or why it isn't imported), 
 — for admins — every sync that changed it. `?file=<drive id>` on the Files page
 opens the tree down to that file.
 
+Deleting a file in Drive does **not** take it out of the library. Its stored copy
+stays in `data/cas/`, so it keeps working, flagged *Not in Drive* (a copy still in
+Drive is always preferred as the default). The Files tab lists these files for
+review; an admin removes one with **Archive** on its file page (an `archived` file
+correction, so it is reversible — Unarchive, or revert it on Corrections).
+
 Install once (`npm install`), then try it against built-in synthetic fixtures,
 no Google credentials required:
 

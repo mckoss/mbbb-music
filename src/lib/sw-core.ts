@@ -88,7 +88,10 @@ export function isAlwaysFreshRoute(url: URL): boolean {
   // The profile editor must mirror the server exactly: you can't edit offline,
   // and a cached copy can show another member's data (or your own) by mistake.
   // Covers both the page navigation and its __data.json load.
-  return url.pathname === '/profile' || url.pathname === '/profile/__data.json';
+  if (url.pathname === '/profile' || url.pathname === '/profile/__data.json') return true;
+  // The file tracer and sync history are admin diagnostics: useless offline, and
+  // wrong when stale (an Archive would seem not to stick until a reload).
+  return url.pathname.startsWith('/library-status/files') || url.pathname.startsWith('/admin/sync-history');
 }
 
 // --- Primitives -------------------------------------------------------------
