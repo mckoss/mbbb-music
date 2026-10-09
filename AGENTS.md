@@ -101,6 +101,12 @@ website-entered RSVPs always
 win and disagreements show a "Gig Sheet Conflict" flag on the gig roster.
 Deleting a gig leaves a tombstone in `data/gig-sheet.json` so the sync never
 re-creates it; admins can "Allow re-import" from the sync panel.
+The parser finds the player-name and instrument columns by what their cells
+hold (sheets grow helper columns like "#" or leftover answers beside the
+names), reads a day range and year after a header's date as part of the date,
+and never cuts a title down to a fragment. An imported gig's auto-given name
+(`autoNames` in the state) is updated from the sheet only while nobody has
+renamed it on the site. Both gig pages link to the configured sheet.
 The admin-only **Sync Contacts** button on `/members`
 (`src/lib/server/contacts-sheet.ts`) reads the same spreadsheet's "Contacts"
 tab and fills only never-edited member-profile fields; contacts without an

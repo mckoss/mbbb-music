@@ -30,6 +30,8 @@ import {
   liftTombstone,
   RED_CANCEL_NOTE,
   GIG_SHEET_IMPORTER,
+  isAutoName,
+  gigSheetLink,
 } from '../src/lib/server/gig-sheet.ts';
 import { makeGig } from '../src/lib/gig.ts';
 
@@ -480,4 +482,81 @@ test('tombstoneGig and liftTombstone persist through the state file (temp dir on
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// --- Titles are never pruned to fragments; names found by content -----------
+
+test('a day range and a year after the date are part of the date, not the title', () => {
+  const name = (h) => cleanGigName(h, readHeaderDate(h)?.text ?? null);
+  assert.equal(name('June 4-6 2027. HONK! Fest Somewhere'), 'HONK! Fest Somewhere');
+  assert.equal(name('Oct 2 2027 Town HONK!'), 'Town HONK!');
+  assert.equal(name('May 30 - June 1, 2027 River Festival 2pm'), 'River Festival');
+  assert.equal(readHeaderDate('Oct 2 2027 Town HONK!').year, 2027);
+  // A long title is kept whole (no 60-character cap).
+  assert.equal(
+    name('Sept 18th - Above and Below Festival in a Faraway Harbor Town late afternoon/evening'),
+    'Above and Below Festival in a Faraway Harbor Town late afternoon/evening',
+  );
+  // When trimming would leave no words, the header is used instead of a number fragment.
+  assert.equal(name('June 4 7pm'), 'June 4 7pm');
+});
+
+test('parseGigSheet finds the name and instrument columns by their contents', () => {
+  // Instrument | name | leftover answers | "#" | gigs… — as band sheets drift.
+  const g = [
+    ['', '', '', '#', 'Oct 3 Harvest Fair 2pm', 'Oct 31 Halloween Parade', 'Nov 20 Town Market'],
+    ['trumpet', 'Avery', '', 'Avery', 'yes', 'no', 'yes'],
+    ['drums', 'Blake', 'maybe', 'yes', 'Yes', '', 'No'],
+    ['tuba', 'Casey', 'Yes', 'No', 'no', 'yes', ''],
+    ['alto', 'Drew B.', 'probably not', 'Maybe', '', 'yes', 'yes'],
+    ['', 'Calendar notes', '', '', 'ride needed', '', ''],
+  ];
+  const players = parseGigSheet(g, TODAY).players.map((p) => [p.name, p.instrument, p.answers.size]);
+  assert.deepEqual(players, [
+    ['Avery', 'trumpet', 3],
+    ['Blake', 'drums', 2],
+    ['Casey', 'tuba', 2],
+    ['Drew B.', 'alto', 2],
+    ['Calendar notes', '', 0],
+  ]);
+});
+
+test('isAutoName renames only names the import gave and nobody edited', () => {
+  assert.equal(isAutoName('Old', 'New', 'Old'), true); // still the recorded auto name
+  assert.equal(isAutoName('Edited', 'New', 'Old'), false); // renamed on the site
+  // Imported before names were recorded: only plain parser artifacts.
+  assert.equal(isAutoName('6 2027', 'HONK! Fest Somewhere', undefined), true);
+  assert.equal(isAutoName('2027 Town HONK!', 'Town HONK!', undefined), true);
+  assert.equal(isAutoName('Above and Below Festival in a Faraway Harbor', 'Above and Below Festival in a Faraway Harbor Town', undefined), true);
+  assert.equal(isAutoName('Our Fall Show', 'Fall Show', undefined), false);
+});
+
+test('a better header reading renames an imported gig, never a hand-named one', () => {
+  const s = fakeStores();
+  const state = emptyState();
+  const header = (h) => [['', 'Oct 3 Harvest Fair 2pm', h], ['Avery', 'yes', 'yes']];
+  run(s, state, header('Nov 20 Town Market'));
+  const market = byDate(s, '2026-11-20');
+  assert.equal(state.autoNames[market.id], 'Town Market');
+  // Simulate a gig imported by the old parser with a fragment for a name.
+  const fair = byDate(s, '2026-10-03');
+  fair.name = '2026 Harvest';
+  delete state.autoNames[fair.id];
+
+  const r = run(s, state, header('Nov 20 Town Market and Craft Fair'));
+  assert.equal(market.name, 'Town Market and Craft Fair'); // auto name, unedited → follows the sheet
+  assert.equal(fair.name, '2026 Harvest'); // legacy name that isn't a clear artifact: left alone
+  assert.deepEqual(r.renamed.map((x) => [x.from, x.name]), [['Town Market', 'Town Market and Craft Fair']]);
+
+  market.name = 'Market (our name)';
+  run(s, state, header('Nov 20 Town Market, Craft Fair and Bake Sale'));
+  assert.equal(market.name, 'Market (our name)'); // edited on the site → never touched
+});
+
+test('gigSheetLink opens the configured sheet tab, or nothing', () => {
+  const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+  assert.equal(gigSheetLink({ url: `https://docs.google.com/spreadsheets/d/${id}/edit#gid=42` }), `https://docs.google.com/spreadsheets/d/${id}/edit#gid=42`);
+  assert.equal(gigSheetLink({ url: id }), `https://docs.google.com/spreadsheets/d/${id}/edit`);
+  assert.equal(gigSheetLink({}), null);
+  assert.equal(gigSheetLink({ url: 'https://example.com/not-a-sheet' }), null);
 });

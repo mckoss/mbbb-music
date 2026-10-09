@@ -5,7 +5,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 
 import { listGigs, createGig } from '$lib/server/gigs';
-import { readState, runGigSheetSync, setSheetUrl, linkPlayer, liftTombstone } from '$lib/server/gig-sheet';
+import { readState, runGigSheetSync, setSheetUrl, linkPlayer, liftTombstone, gigSheetLink } from '$lib/server/gig-sheet';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
 import { canEditGigs, compareByDate } from '$lib/gig';
@@ -21,7 +21,9 @@ function requireAdmin(locals: App.Locals) {
 export function load({ locals }) {
   // Sorted by date so the soonest gig leads the list.
   const gigs = [...listGigs()].sort(compareByDate);
-  if (locals.user?.role !== 'admin') return { gigs, gigSheet: null };
+  // Everyone who sees the gigs gets a link to the band's Gig Sheet.
+  const sheetLink = gigSheetLink();
+  if (locals.user?.role !== 'admin') return { gigs, gigSheet: null, sheetLink };
 
   const state = readState();
   const members = listUsers()
@@ -29,6 +31,7 @@ export function load({ locals }) {
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     gigs,
+    sheetLink,
     gigSheet: { url: state.url ?? '', lastRun: state.lastRun ?? null, links: state.players, members },
   };
 }

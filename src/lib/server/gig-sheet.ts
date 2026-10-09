@@ -82,6 +82,8 @@ export interface GigSheetReport {
   canceled: { gigId: string; name: string; date: string }[];
   /** Gigs the import had canceled for a red header that is no longer red. */
   uncanceled: { gigId: string; name: string; date: string }[];
+  /** Imported gigs whose auto-given name was replaced by a better reading of the header. */
+  renamed?: { gigId: string; name: string; from: string; date: string }[];
   /** Whether header colors were read. */
   colorsRead: boolean;
   /** How the sheet was read, and why a path or the colors weren't available. */
@@ -124,6 +126,12 @@ export interface GigSheetState {
   canceledBySheet: Record<string, 'text' | 'color' | 'overridden'>;
   /** Gigs deleted on the site, by gig id (see GigTombstone). */
   tombstones: Record<string, GigTombstone>;
+  /**
+   * The name this import last gave each gig it created: gig id → name. While a
+   * gig still carries it (nobody renamed it on the site), a better name read
+   * from the sheet replaces it; a hand-edited name is never touched.
+   */
+  autoNames?: Record<string, string>;
   lastRun?: GigSheetReport;
 }
 
@@ -146,6 +154,7 @@ export function readState(dataDir?: string): GigSheetState {
       sheet: parsed.sheet ?? {},
       canceledBySheet: parsed.canceledBySheet ?? {},
       tombstones: parsed.tombstones ?? {},
+      ...(parsed.autoNames ? { autoNames: parsed.autoNames } : {}),
       ...(parsed.lastRun ? { lastRun: parsed.lastRun } : {}),
     };
   } catch {
@@ -162,6 +171,17 @@ function writeState(state: GigSheetState, dataDir?: string): void {
 }
 
 /** Save the sheet link (validated). Returns false when it isn't a Sheets link. */
+/**
+ * A link that opens the band's Gig Sheet (at its tab) in Google Sheets, for the
+ * gig pages — or null when no sheet is configured. Rebuilt from the parsed id so
+ * only a docs.google.com link is ever shown.
+ */
+export function gigSheetLink(state: Pick<GigSheetState, 'url'> = readState()): string | null {
+  const ref = state.url ? parseSheetUrl(state.url) : null;
+  if (!ref) return null;
+  return `https://docs.google.com/spreadsheets/d/${ref.spreadsheetId}/edit${ref.gid !== null ? `#gid=${ref.gid}` : ''}`;
+}
+
 export function setSheetUrl(url: string, dataDir?: string): boolean {
   if (!parseSheetUrl(url)) return false;
   const state = readState(dataDir);
@@ -363,6 +383,20 @@ export interface ApplyInput {
  * Apply a sheet grid to the app. Mutates `state` (links and applied replies)
  * and returns the run's report; the caller persists both.
  */
+/**
+ * May the import rename an imported gig called `current` to `next`? Only while
+ * the name is still the one the import gave it (`recorded`). Gigs imported
+ * before names were recorded qualify only when the old name is plainly an
+ * artifact of the earlier header reading: no real words ("6 2027"), a leading
+ * year ("2027 Town HONK!"), or a long title cut short at 60 characters.
+ */
+export function isAutoName(current: string, next: string, recorded: string | undefined): boolean {
+  if (recorded !== undefined) return current === recorded;
+  if (!/\p{L}{3}/u.test(current)) return true;
+  if (/^20\d{2}\b/.test(current) && next.endsWith(current.replace(/^20\d{2}\s*/, ''))) return true;
+  return current.length >= 30 && next.startsWith(current);
+}
+
 export function applyGigSheet(input: ApplyInput): GigSheetReport {
   const { grid, today, state, gigs, rsvps, members, trigger } = input;
   const parsed = parseGigSheet(grid, today, input.colors);
@@ -398,8 +432,14 @@ export function applyGigSheet(input: ApplyInput): GigSheetReport {
     const all = gigs.list();
     const linkedId = state.links[key];
     if (linkedId) {
-      const gig = all.find((g) => g.id === linkedId);
+      let gig = all.find((g) => g.id === linkedId);
       if (gig) {
+        if (gig.importedFrom === 'gig-sheet' && gig.name !== col.name && isAutoName(gig.name, col.name, state.autoNames?.[gig.id])) {
+          const from = gig.name;
+          gig = gigs.update(gig.id, { name: col.name }) ?? gig;
+          (report.renamed ??= []).push({ gigId: gig.id, name: gig.name, from, date: gig.date });
+        }
+        if (gig.importedFrom === 'gig-sheet' && gig.name === col.name) (state.autoNames ??= {})[gig.id] = col.name;
         resolved.push({ col, gig });
         continue;
       }
@@ -450,6 +490,7 @@ export function applyGigSheet(input: ApplyInput): GigSheetReport {
         importedFrom: 'gig-sheet',
       });
       report.created.push({ gigId: gig.id, name: gig.name, date: gig.date });
+      (state.autoNames ??= {})[gig.id] = gig.name;
     }
     state.links[key] = gig.id;
     resolved.push({ col, gig });

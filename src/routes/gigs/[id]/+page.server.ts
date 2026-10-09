@@ -18,7 +18,7 @@ import {
   importSet,
 } from '$lib/server/gigs';
 import { getRsvps, setRsvp } from '$lib/server/rsvps';
-import { readState as readGigSheetState, sheetConflict, tombstoneGig } from '$lib/server/gig-sheet';
+import { readState as readGigSheetState, sheetConflict, tombstoneGig, gigSheetLink } from '$lib/server/gig-sheet';
 import { listUsers } from '$lib/server/users';
 import { getProfile } from '$lib/server/members';
 import { canEditGigs, type GigInput, type GigTime } from '$lib/gig';
@@ -49,7 +49,8 @@ export function load({ params, locals }) {
   const replies = getRsvps(params.id);
   const statusByEmail = new Map(replies.map((r) => [r.email, r.status]));
   const replyByEmail = new Map(replies.map((r) => [r.email, r]));
-  const sheetAnswers = readGigSheetState().sheet[params.id] ?? {};
+  const sheetState = readGigSheetState();
+  const sheetAnswers = sheetState.sheet[params.id] ?? {};
 
   const members: RosterMember[] = listUsers().map((u) => {
     const p = getProfile(u.email);
@@ -70,6 +71,7 @@ export function load({ params, locals }) {
   const withStatus = (s: RsvpStatus) => members.filter((m) => m.status === s).sort(byName);
 
   return {
+    sheetLink: gigSheetLink(sheetState),
     rsvp: {
       yes: withStatus('yes'),
       maybe: withStatus('maybe'),

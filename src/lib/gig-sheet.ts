@@ -9,6 +9,7 @@
 // (src/lib/server/gig-sheet.ts) turns it into app-owned gigs and RSVPs.
 
 import type { GigTime } from './gig.js';
+import { detectInstrument } from '../sync/instruments.js';
 
 /** A player's answer for one gig, as far as the importer cares. */
 export type SheetAnswer = 'yes' | 'no';
@@ -112,6 +113,10 @@ const MONTHS: [RegExp, number][] = [
 const MONTH_DAY_RE =
   /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
 const NUMERIC_DATE_RE = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?\b/;
+// What can follow a date and still be part of it: a day range ("June 4-6",
+// "May 30 - June 1") and a year ("Oct 2 2027", "June 4-6, 2027").
+const DATE_TAIL_RE =
+  /^(?:\s*[-–]\s*(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+)?\d{1,2}(?:st|nd|rd|th)?\b(?![:.]?\d|\s*(?:am|pm|a|p)\b))?(?:,?\s+(20\d{2})\b)?/i;
 
 interface RawDate {
   month: number;
@@ -142,7 +147,11 @@ export function readHeaderDate(header: string): RawDate | null {
     if (pick[3]) year = pick[3].length === 2 ? 2000 + Number(pick[3]) : Number(pick[3]);
   }
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return { month, day, year, text: pick[0] };
+  // Take a day range and a year right after the date as part of it, so the
+  // name cleaner removes them too ("June 4-6 2027. HONK!" → "HONK!").
+  const tail = DATE_TAIL_RE.exec(header.slice(pick.index + pick[0].length));
+  if (tail?.[1] && year === null) year = Number(tail[1]);
+  return { month, day, year, text: pick[0] + (tail?.[0] ?? '') };
 }
 
 function ymd(year: number, month: number, day: number): string {
@@ -267,8 +276,9 @@ function withoutDate(header: string, dateText: string | null): string {
 /**
  * A readable gig name from a header: no status words, date or weekday, and
  * nothing from the first time onward ("SW Pride Parade 11-11:30 lineup…" →
- * "SW Pride Parade"). The full header is kept in the gig's notes, so nothing
- * is lost by trimming here.
+ * "SW Pride Parade"). The full header is kept in the gig's notes. The title
+ * itself is never cut short: when trimming would leave no real words, the
+ * header (minus status words and date) is used whole.
  */
 export function cleanGigName(header: string, dateText: string | null): string {
   let s = withoutDate(header.replace(/\s+/g, ' '), dateText);
@@ -281,11 +291,21 @@ export function cleanGigName(header: string, dateText: string | null): string {
   const stop = s.search(/\.\s/);
   if (stop > 0) s = s.slice(0, stop);
   s = s.replace(/[\s\-–—:.,&@]+$/, '').replace(/\s+(?:time|at|in)$/i, '').replace(/\s{2,}/g, ' ').trim();
-  if (s.length > 60) {
-    const cut = s.slice(0, 60);
-    s = cut.slice(0, Math.max(cut.lastIndexOf(' '), 30)).replace(/[\s\-–—:.,&@]+$/, '');
-  }
-  return s || header.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Gig';
+  if (hasWords(s)) return s;
+  // Trimming left only numbers/punctuation: fall back to the whole header, less
+  // status words and the date, rather than a fragment like "6 2027".
+  const whole = withoutDate(header.replace(/\s+/g, ' '), dateText)
+    .replace(STATUS_RE, ' ')
+    .replace(/^[\s\-–—:.,!?]+/, '')
+    .replace(/[\s\-–—:.,&@]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return hasWords(whole) ? whole : header.replace(/\s+/g, ' ').trim() || 'Gig';
+}
+
+/** At least one real word (three letters in a row), not just digits and punctuation. */
+function hasWords(s: string): boolean {
+  return /\p{L}{3}/u.test(s);
 }
 
 // --- Grid --------------------------------------------------------------------
@@ -302,19 +322,54 @@ function cell(row: string[] | undefined, i: number): string {
   return String(row?.[i] ?? '').trim();
 }
 
+// Cells that are someone's reply rather than a name: yes/no/maybe and the
+// band's free-text variants ("probably not", "CONFIRMED", "not happening", "-Yes").
+const REPLY_RE =
+  /^[\s*\-]*(?:y(?:es)?|no?|maybe|maybemaybe|mayb|probably|prob|confirmed|cancel+ed|not happening|tbd|moved|after|second|sets?|will|the)\b/i;
+
+/**
+ * Which columns left of the first gig hold the player's name and instrument.
+ * Read from the cells, not assumed from position: sheets grow helper columns
+ * ("#", leftover answer columns) between the names and the gigs. The name
+ * column has the most cells that are neither a reply nor an instrument; the
+ * instrument column the most cells that read as an instrument.
+ */
+function playerColumns(grid: string[][], headerRow: number, firstGig: number): { nameCol: number; instCol: number } {
+  const rows = grid.slice(headerRow + 1);
+  let nameCol = -1;
+  let nameScore = 0;
+  let instCol = -1;
+  let instScore = 0;
+  for (let c = 0; c < firstGig; c++) {
+    let names = 0;
+    let insts = 0;
+    for (const row of rows) {
+      const v = cell(row, c);
+      if (!v || !/\p{L}/u.test(v)) continue;
+      if (detectInstrument(v)) insts += 1;
+      else if (!REPLY_RE.test(v)) names += 1;
+    }
+    // Ties go right: the name sits nearest the gigs when columns look alike.
+    if (names > 0 && names >= nameScore) [nameCol, nameScore] = [c, names];
+    if (insts > instScore) [instCol, instScore] = [c, insts];
+  }
+  if (nameCol < 0) nameCol = Math.max(0, firstGig - 1);
+  if (instCol === nameCol || instScore === 0) instCol = nameCol >= 1 ? nameCol - 1 : -1;
+  return { nameCol, instCol };
+}
+
 /**
  * Parse the sheet grid (rows of cell strings, as the Sheets API returns them).
  * The header row is the first row with dated cells; gig columns start at the
- * first dated header, the player-name column sits just left of it and, when
- * there's room, the instrument column left of that.
+ * first dated header. The player-name and instrument columns are found among
+ * the columns left of it by what their cells hold (see playerColumns).
  */
 export function parseGigSheet(grid: string[][], today: string, colors?: HeaderColor[][] | null): ParsedSheet {
   const headerRow = grid.findIndex((row) => row.some((c) => readHeaderDate(String(c ?? ''))));
   if (headerRow < 0) return { gigs: [], players: [], undated: [] };
   const header = grid[headerRow];
   const firstGig = header.findIndex((c) => readHeaderDate(String(c ?? '')));
-  const nameCol = Math.max(0, firstGig - 1);
-  const instCol = firstGig >= 2 ? firstGig - 2 : -1;
+  const { nameCol, instCol } = playerColumns(grid, headerRow, firstGig);
 
   const width = Math.max(...grid.map((r) => r.length));
   const columns: number[] = [];

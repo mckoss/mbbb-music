@@ -676,7 +676,12 @@
 {/if}
 
 <section class="detail" class:hidden={performing} use:offlineEditGuard>
-  <a class="back" href="/gigs">← All gigs</a>
+  <div class="top-links">
+    <a class="back" href="/gigs">← All gigs</a>
+    {#if page.data.sheetLink}
+      <a class="back" href={page.data.sheetLink} target="_blank" rel="noopener">Gig Sheet ↗</a>
+    {/if}
+  </div>
 
   <header class="head">
     <div>
@@ -1289,6 +1294,13 @@
 
   .detail.hidden {
     display: none;
+  }
+
+  .top-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px 16px;
   }
 
   .back {

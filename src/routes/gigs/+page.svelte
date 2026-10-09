@@ -30,6 +30,7 @@
     linked: { gigId: string; name: string; date: string }[];
     canceled: { gigId: string; name: string; date: string }[];
     uncanceled?: { gigId: string; name: string; date: string }[];
+    renamed?: { gigId: string; name: string; from: string; date: string }[];
     colorsRead?: boolean;
     source?: 'sheets-api' | 'drive-export';
     sheetsApiError?: string;
@@ -64,6 +65,7 @@
     if (r.conflicts) bits.push(`${r.conflicts} conflict${r.conflicts === 1 ? '' : 's'}`);
     if (r.canceled.length) bits.push(`${r.canceled.length} canceled`);
     if (r.uncanceled?.length) bits.push(`${r.uncanceled.length} back on`);
+    if (r.renamed?.length) bits.push(`${r.renamed.length} renamed`);
     if (r.unmatched.length) bits.push(`${r.unmatched.length} unlinked player${r.unmatched.length === 1 ? '' : 's'}`);
     return bits.join(' · ');
   }
@@ -167,6 +169,9 @@
       <!-- What the public sees. Opens in its own tab: /shows is a standalone,
            band-branded page with no way back into the app. -->
       <a class="shows-link" href="/shows" target="_blank" rel="noopener">Public shows page ↗</a>
+      {#if page.data.sheetLink}
+        <a class="shows-link" href={page.data.sheetLink} target="_blank" rel="noopener">Gig Sheet ↗</a>
+      {/if}
       {#if gigSheet}
         <form
           method="POST"
@@ -242,6 +247,14 @@
           <ul>
             {#each lastRun.created as g (g.gigId)}
               <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)}</li>
+            {/each}
+          </ul>
+        {/if}
+        {#if lastRun.renamed?.length}
+          <h4>Renamed (better title from the sheet)</h4>
+          <ul>
+            {#each lastRun.renamed as g (g.gigId)}
+              <li><a href={`/gigs/${g.gigId}`}>{g.name}</a> · {formatGigDate(g.date)} <span class="muted">(was “{g.from}”)</span></li>
             {/each}
           </ul>
         {/if}
@@ -437,6 +450,10 @@
 </section>
 
 <style>
+  .muted {
+    color: var(--muted);
+  }
+
   .gigs {
     max-width: 920px;
     margin: 0 auto;
