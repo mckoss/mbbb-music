@@ -84,14 +84,14 @@ test('findDuplicates groups live assets by sha256, regardless of source', () => 
   assert.deepEqual(groups[0].files.map((f) => f.id).sort(), ['a', 'b', 'c']);
 });
 
-test('shortcuts and unsupported files are classified ignored, never new', () => {
+test('shortcuts and oversize files are classified ignored, never new', () => {
   const shortcut = {
     id: 's1',
     name: 'ref.pdf',
     mimeType: 'application/vnd.google-apps.shortcut',
     shortcutDetails: { targetId: 'x' },
   };
-  const db = { id: 'j1', name: 'index.db', mimeType: 'application/octet-stream' };
+  const db = { id: 'j1', name: 'index.db', mimeType: 'application/octet-stream', size: String(500 * 1024 * 1024) };
   const { counts, entries } = diffManifest(emptyManifest(), [classified(shortcut), classified(db)]);
   assert.equal(counts.ignored, 2);
   assert.equal(counts.new, undefined);

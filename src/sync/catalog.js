@@ -639,6 +639,35 @@ function clusterVoiceCount(group) {
  * when an instrument was detected, and carries a Drive "request access" URL
  * built from the shortcut's target id.
  */
+/** Why a file is on Extra Files only as a Drive link, by its ignore reason. */
+const LINK_ONLY_REASON = {
+  'google-native-file': 'A Google file with nothing to download (like a Form) — open it in Drive',
+  'google-drive-shortcut': 'A shortcut to a file the sync can’t open',
+  'too-large': 'Too large to store in the app (over 100 MB) — open it in Drive',
+  // Recorded by an older sync that skipped these types; the next sync downloads them.
+  'unsupported-type': 'Not downloaded yet — the next sync brings it in',
+  'unknown-type': 'Not downloaded yet — the next sync brings it in',
+};
+
+/**
+ * An Extra Files entry for a file the app has no stored copy of: no content
+ * hash, just its name, where it came from, why, and a link to it in Drive.
+ */
+function linkOnlyExtra(e, reason) {
+  const id = e.shortcutTarget || e.driveFileId;
+  const song = e.songTitle && e.songTitle !== 'Misc' ? e.songTitle : null;
+  return {
+    driveFileId: e.driveFileId,
+    originalName: e.originalName || null,
+    assetType: e.assetType || null,
+    modifiedTime: e.modifiedTime || null,
+    linkOnly: true,
+    reason,
+    ...(song ? { song } : {}),
+    driveUrl: id ? `https://drive.google.com/file/d/${encodeURIComponent(id)}/view` : null,
+  };
+}
+
 function unreachableItem(e) {
   const hasInstrument = Boolean(e.instrumentSlug);
   return {
@@ -776,7 +805,7 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   const bySong = new Map();
   const extras = [];
-  const extraOf = (e) => ({ sha256: e.sha256, originalName: e.originalName || null, assetType: e.assetType, modifiedTime: e.modifiedTime || null });
+  const extraOf = (e) => ({ sha256: e.sha256, driveFileId: e.driveFileId, originalName: e.originalName || null, assetType: e.assetType, modifiedTime: e.modifiedTime || null });
 
   const getSong = (slug, title) => {
     let song = bySong.get(slug);
@@ -907,16 +936,33 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
 
   // Pass 3: unreachable shortcuts (recorded by sync, no content) are surfaced on
   // the health view. Attach each to its song — by the song folder/title embedded
-  // in its metadata, falling back to a filename match — and skip any with no home.
+  // in its metadata, falling back to a filename match. One with no song is listed
+  // on Extra Files as a link instead (see pass 4).
   for (const e of Object.values(manifest.files || {})) {
-    if (e.status !== 'unreachable') continue;
+    if (e.status !== 'unreachable' || e.archived) continue;
     let song = bySong.get(songSlugOf(e));
     if (!song) {
       const m = matchKnownSong(e.originalName, known);
       if (m) song = bySong.get(m.slug);
     }
-    if (!song) continue;
+    if (!song) {
+      extras.push(linkOnlyExtra(e, 'A shortcut to a file the sync can’t open'));
+      continue;
+    }
     song.unreachable.push(unreachableItem(e));
+  }
+
+  // Pass 4: every file in Drive is represented somewhere. A file the sync
+  // couldn't store (a Google Form, a file too big for the store, one not yet
+  // downloaded) still gets an Extra Files entry that links to it in Drive. Only
+  // OS junk, folders, files an admin archived, and files gone from Drive before
+  // they were ever downloaded are left out.
+  for (const e of Object.values(manifest.files || {})) {
+    const status = String(e.status || '');
+    if (!status.startsWith('ignored|') || e.archived || isJunkName(e.originalName)) continue;
+    const why = status.slice('ignored|'.length);
+    if (why === 'folder' || why === 'junk') continue;
+    extras.push(linkOnlyExtra(e, LINK_ONLY_REASON[why.replace(/:.*$/, '')] ?? 'Not stored by the app'));
   }
 
   // Mask manually-created scores wherever app-generated ones exist. A song with

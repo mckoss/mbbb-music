@@ -36,7 +36,7 @@
   // Tags for files the library doesn't use (primary/dup are handled above).
   const STATE_TAG: Record<string, { label: string; title: string }> = {
     archived: { label: 'Archived', title: 'Archived by an admin — out of the library' },
-    ignored: { label: 'Not imported', title: 'A file type or kind the sync does not import' },
+    ignored: { label: 'Not stored', title: 'Not stored by the app — listed on Extra Files as a Drive link (or OS junk)' },
     removed: { label: 'Removed', title: 'Removed from Drive before it was downloaded' },
     unreachable: { label: 'Unreachable', title: 'A shortcut to a file the sync cannot read' },
     failed: { label: 'Failed', title: 'The download failed' },

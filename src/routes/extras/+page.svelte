@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import type { Catalog } from '$lib/types';
+  import type { Catalog, ExtraFile } from '$lib/types';
   import { stripCopyOf, fmtDate } from '$lib/format';
   import { audio, playSha, toggle } from '$lib/audio';
   import { RENDER_REV } from '$lib/render-rev';
@@ -12,12 +12,12 @@
 
   // Slug-based open/download URLs (no raw sha in the address bar or save name).
   const assetIndex = $derived(assetIndexFor(catalog));
-  const openUrl = (sha: string) => urlForSha(assetIndex, sha) ?? `/blob/${sha}`;
-  const dlUrl = (sha: string) => `${openUrl(sha)}?dl`;
+  const openUrl = (sha: string | undefined) => (sha ? (urlForSha(assetIndex, sha) ?? `/blob/${sha}`) : '#');
+  const dlUrl = (sha: string | undefined) => `${openUrl(sha)}?dl`;
   // Open through the in-app viewer (back affordance) instead of a dead-end new tab.
-  const viewLink = (e: { sha256: string; assetType?: string; name: string }) =>
+  const viewLink = (e: { sha256?: string; assetType?: string; name: string }) =>
     viewHref({
-      sha: e.sha256,
+      sha: e.sha256!,
       kind: viewKind(e.assetType),
       title: e.name,
       from: page.url.pathname,
@@ -26,13 +26,14 @@
 
   let q = $state('');
   const cleaned = $derived(
-    extras.map((e) => ({ ...e, name: e.originalName ? stripCopyOf(e.originalName) : 'Untitled' }))
+    extras.map((e: ExtraFile) => ({ ...e, name: e.originalName ? stripCopyOf(e.originalName) : 'Untitled' }))
   );
   const filtered = $derived(
     q.trim() ? cleaned.filter((e) => e.name.toLowerCase().includes(q.trim().toLowerCase())) : cleaned
   );
 
-  function playAudio(e: { sha256: string; name: string }) {
+  function playAudio(e: { sha256?: string; name: string }) {
+    if (!e.sha256) return;
     if ($audio.sha === e.sha256 && $audio.playing) toggle();
     else playSha(e.sha256, e.name);
   }
@@ -45,14 +46,30 @@
     <p class="body">
       Documents, set lists, images and charts that aren’t organized under a song
       folder and don’t match a song in the collection. Group them into song
-      folders in Drive to have them appear with their song.
+      folders in Drive to have them appear with their song. Files the app can’t
+      store (a Google Form, a very large video) are listed too, with a link to
+      open them in Drive.
     </p>
     <p class="count">{filtered.length} of {extras.length} files</p>
     <input class="search" type="search" placeholder="Search files…" bind:value={q} aria-label="Search extra files" />
   </header>
 
   <ul class="list">
-    {#each filtered as e (e.sha256)}
+    {#each filtered as e (e.sha256 ?? e.driveFileId)}
+      {#if e.linkOnly}
+        <li class="row link-only">
+          <div class="meta">
+            <span class="name stack">
+              <span>{e.name}</span>
+              <span class="why">{e.reason}{#if e.song}{' '}· from {e.song}{/if}</span>
+            </span>
+            {#if e.modifiedTime}<span class="date">{fmtDate(e.modifiedTime)}</span>{/if}
+            <span class="actions">
+              {#if e.driveUrl}<a class="act" href={e.driveUrl} target="_blank" rel="noopener">Open in Drive ↗</a>{/if}
+            </span>
+          </div>
+        </li>
+      {:else}
       <li class="row" class:has-thumb={e.assetType === 'image' || e.assetType === 'pdf' || e.assetType === 'notes'}>
         {#if e.assetType === 'image'}
           <a class="thumb" href={viewLink(e)} title="View full screen">
@@ -78,6 +95,7 @@
           </span>
         </div>
       </li>
+      {/if}
     {/each}
     {#if filtered.length === 0}
       <li class="empty">{extras.length === 0 ? 'No extra files.' : `No files match “${q}”.`}</li>
@@ -247,6 +265,22 @@
     background: #f7f5ef;
     font-weight: 700;
     font-size: 1rem;
+  }
+
+  .name.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .why {
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .link-only .name {
+    color: var(--muted);
   }
 
   .empty {

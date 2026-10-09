@@ -123,6 +123,10 @@ A file deleted in Drive stays in the library on its stored copy
 (`isKeptAfterDriveRemoval` in `src/sync/catalog.js`) until an admin archives it
 (the admin-only `archived` file correction); never drop removed files from the
 catalog on sync.
+Every Drive file must be represented: in a song, on Extra Files, or — when the
+app has no copy (Google Form, over 100 MB, unreadable shortcut) — as a
+link-only Extra Files entry (`linkOnlyExtra` in `src/sync/catalog.js`). Only OS
+junk, folders, and archived files are exempt.
 
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.

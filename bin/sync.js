@@ -20,7 +20,8 @@ const HELP = `mbbb-sync — Phase 1 Google Drive asset sync
 
 Scans each configured Drive source folder recursively (layout:
 <source>/<song-title>/<asset>) and syncs into the gitignored data/ directory:
-downloads only score PDFs, MP3s, and MuseScore files into a content-addressable
+downloads every file (Google Docs/Sheets exported to PDF; files over 100 MB and
+Google files with no export are left in Drive) into a content-addressable
 store at data/cas/<sha256>. De-duplication is intrinsic — identical bytes share
 one blob — and the cache persists, so rebuilding never re-downloads content
 already stored. data/manifest.json maps each Drive file to its hash, provenance,

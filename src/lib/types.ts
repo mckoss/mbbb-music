@@ -119,10 +119,23 @@ export interface Instrument {
   key: string | null;
 }
 
+/**
+ * An Extra Files entry: a stored file not tied to a song, or — when `linkOnly` —
+ * a Drive file the app couldn't store (a Google Form, an oversize file, an
+ * unreadable shortcut), shown with why and a link to it in Drive.
+ */
+export interface ExtraFile extends Omit<CatalogAsset, 'sha256'> {
+  sha256?: string;
+  linkOnly?: boolean;
+  reason?: string;
+  song?: string;
+  driveUrl?: string | null;
+}
+
 export interface Catalog {
   tunes: Tune[];
   instruments: Instrument[];
-  extras: CatalogAsset[];
+  extras: ExtraFile[];
   sources: string[]; // source labels in priority order (highest first)
   sourceUrls: Record<string, string>; // source label -> Google Drive folder URL
   uniqueCount: number;

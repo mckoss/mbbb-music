@@ -21,6 +21,7 @@
     unreachable: 'bad',
     failed: 'bad',
     archived: 'muted',
+    'link-only': 'info',
   };
 
   const STATUS_TEXT: Record<string, string> = {

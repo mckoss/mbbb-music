@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyDriveFile } from '../src/sync/classify.js';
+import { classifyDriveFile, MAX_GENERIC_BYTES } from '../src/sync/classify.js';
 
 test('classifies accepted asset types by mime', () => {
   const pdf = classifyDriveFile({ name: 'x.pdf', mimeType: 'application/pdf' });
@@ -72,9 +72,28 @@ test('ignores folders and non-exportable native Google files', () => {
   );
 });
 
-test('ignores unsupported asset types with a descriptive reason', () => {
-  assert.equal(classifyDriveFile({ name: 'data.db', mimeType: 'application/octet-stream' }).ignoreReason, 'unsupported-type:db');
-  assert.equal(classifyDriveFile({ name: 'noext', mimeType: 'application/octet-stream' }).ignoreReason, 'unknown-type');
+test('every other real file is downloaded as a generic file, unless too large', () => {
+  // Nothing in Drive goes unrepresented: unrecognized types are still band material.
+  for (const name of ['take.wav', 'tune.mid', 'chart.sib', 'score.musicxml', 'noext']) {
+    const c = classifyDriveFile({ name, mimeType: 'application/octet-stream', size: '1048576' });
+    assert.equal(c.ignored, false, name);
+    assert.equal(c.assetType, 'file', name);
+    assert.deepEqual(c.download, { mode: 'media' });
+  }
+  assert.equal(classifyDriveFile({ name: 'tune.mid', mimeType: 'audio/midi' }).ext, 'mid');
+  assert.equal(classifyDriveFile({ name: 'noext', mimeType: 'application/octet-stream' }).ext, 'bin');
+  // Too big for the store: left in Drive (listed on Extra Files as a link).
+  const big = classifyDriveFile({ name: 'gig.mov', mimeType: 'video/quicktime', size: String(MAX_GENERIC_BYTES + 1) });
+  assert.equal(big.ignored, true);
+  assert.equal(big.ignoreReason, 'too-large');
+  // A Google file with no export (a Form) stays ignored — nothing to download.
+  assert.equal(classifyDriveFile({ name: 'Sign-up', mimeType: 'application/vnd.google-apps.form' }).ignoreReason, 'google-native-file');
+});
+
+test('PNG, GIF and WebP are images like JPEG', () => {
+  for (const [name, mimeType] of [['a.png', 'image/png'], ['b.gif', 'image/gif'], ['c.webp', 'image/webp']]) {
+    assert.equal(classifyDriveFile({ name, mimeType }).assetType, 'image', name);
+  }
 });
 
 test('accepts images as downloadable/embeddable assets', () => {

@@ -24,10 +24,12 @@ export function ignoreReasonText(reason) {
   const r = String(reason ?? '');
   if (r === 'google-drive-shortcut') return 'It is a Drive shortcut. The file it points to is synced on its own.';
   if (r === 'junk') return 'It is a system file (like .DS_Store or a ._ sidecar), not music.';
-  if (r === 'google-native-file') return 'It is a Google file type with no PDF export (like a Form), so there is nothing to import.';
+  if (r === 'google-native-file') return 'It is a Google file type with no download (like a Form), so the app links to it in Drive.';
   if (r === 'folder') return 'It is a folder.';
-  if (r.startsWith('unsupported-type:')) return `Files of type .${r.slice('unsupported-type:'.length)} are not imported.`;
-  if (r === 'unknown-type') return 'Its file type is not recognized, so it is not imported.';
+  if (r === 'too-large') return 'It is over 100 MB — too large to store in the app — so the app links to it in Drive.';
+  if (r.startsWith('unsupported-type:'))
+    return `An older sync skipped .${r.slice('unsupported-type:'.length)} files; the next sync downloads it.`;
+  if (r === 'unknown-type') return 'An older sync skipped files with no extension; the next sync downloads it.';
   return `It is not imported (${r || 'unknown reason'}).`;
 }
 
@@ -196,13 +198,20 @@ function describe(id, manifest, catalog) {
   if (status === 'deleted' && !isKeptAfterDriveRemoval(e)) {
     return result('removed', 'Removed from Drive before it was downloaded.', 'There is no stored copy to keep.');
   }
+  const linkedOnExtras = (catalog?.extras ?? []).some((x) => x.linkOnly && x.driveFileId === id);
   if (status.startsWith('ignored')) {
-    return result('ignored', 'Not imported.', ignoreReasonText(status.split('|')[1]));
+    const why = status.split('|')[1];
+    if (why === 'junk' || why === 'folder' || isJunkName(e.originalName)) {
+      return result('ignored', 'Not imported.', ignoreReasonText(why));
+    }
+    return result('link-only', 'On Extra Files, as a link to Drive.', ignoreReasonText(why));
   }
   if (status === 'unreachable') {
     return result(
       'unreachable',
-      'Unreachable — a shortcut to a file the sync cannot read.',
+      linkedOnExtras
+        ? 'Unreachable — a shortcut the sync cannot read. Listed on Extra Files.'
+        : 'Unreachable — a shortcut the sync cannot read. Flagged on its song in Library Status.',
       'Share the target file with the sync (or "anyone with the link") and re-sync.',
     );
   }

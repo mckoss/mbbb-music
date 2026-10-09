@@ -51,7 +51,8 @@ interface TuneLike {
 }
 interface CatalogLike {
   tunes: TuneLike[];
-  extras?: AssetLike[];
+  // Link-only extras (files the app couldn't store) carry no sha256.
+  extras?: (Omit<AssetLike, 'sha256'> & { sha256?: string })[];
 }
 
 export interface AssetIndex {
@@ -182,6 +183,7 @@ export function buildAssetIndex(catalog: CatalogLike): AssetIndex {
   const idx: AssetIndex = { byPath: new Map(), bySha: new Map(), nameBySha: new Map() };
   for (const t of catalog.tunes) addTune(idx, t);
   for (const e of catalog.extras ?? []) {
+    if (!e.sha256) continue; // link-only: lives in Drive, nothing to serve
     place(idx, 'file/extras', stem(e, e.assetType ?? 'file'), extOf(e), e.sha256);
   }
   return idx;

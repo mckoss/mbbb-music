@@ -5,8 +5,10 @@
 // as `pdf` assets and fetched via export rather than ignored. Images (JPEG) are
 // accepted as `image` (embeddable in the web view); uploaded Office documents
 // (.docx) as `doc` and zip archives as `archive` — both download-only, since
-// Drive can only export *native* Google files, not uploaded binaries. Folders
-// and other unsupported types are ignored (recorded, never fetched). The Drive
+// Drive can only export *native* Google files, not uploaded binaries. Every
+// other real file is accepted as a generic `file` (download-only) unless it is
+// over MAX_GENERIC_BYTES. Folders, OS junk, and Google files with no export are
+// ignored (recorded, never fetched). The Drive
 // client resolves shortcuts to their targets before classification, so a
 // shortcut reaching here is one whose target was unreadable — also ignored.
 
@@ -73,6 +75,9 @@ const ASSET_KINDS = [
   },
   // Images embed directly in the web view (cover art, photos of charts, …).
   { type: 'image', ext: 'jpg', mimes: ['image/jpeg'], exts: ['jpg', 'jpeg'] },
+  { type: 'image', ext: 'png', mimes: ['image/png'], exts: ['png'] },
+  { type: 'image', ext: 'gif', mimes: ['image/gif'], exts: ['gif'] },
+  { type: 'image', ext: 'webp', mimes: ['image/webp'], exts: ['webp'] },
   // Uploaded Word documents — NOT native Google Docs (those export to PDF in
   // NATIVE_PDF_EXPORT above). Drive cannot export an uploaded .docx, so it is
   // served for download rather than rendered.
@@ -101,7 +106,7 @@ function extensionOf(name) {
 
 /**
  * @typedef {Object} Classification
- * @property {string|null} assetType  One of 'pdf' | 'notes' | 'mp3' | 'musescore' | 'image' | 'doc' | 'archive', or null when ignored.
+ * @property {string|null} assetType  One of 'pdf' | 'notes' | 'mp3' | 'musescore' | 'image' | 'doc' | 'archive' | 'file', or null when ignored.
  * @property {string|null} ext        Canonical extension for the asset, or null.
  * @property {boolean} ignored        True when the file should not be downloaded.
  * @property {string|null} ignoreReason  Human-readable reason when ignored.
@@ -173,8 +178,17 @@ export function classifyDriveFile(file) {
     }
   }
 
-  return ignore(ext ? `unsupported-type:${ext}` : 'unknown-type');
+  // Any other real file (WAV/M4A audio, MIDI, Sibelius, MusicXML, uploaded
+  // spreadsheets, video, …) is still band material: download it as a generic
+  // file so it appears with its song or on Extra Files. Only a file too big for
+  // the store is left in Drive — the catalog lists it on Extra Files as a link.
+  const size = Number(file?.size);
+  if (Number.isFinite(size) && size > MAX_GENERIC_BYTES) return ignore('too-large');
+  return { assetType: 'file', ext: ext || 'bin', ignored: false, ignoreReason: null, download: { mode: 'media' } };
 }
+
+/** Largest generic (otherwise-unrecognized) file the sync downloads: 100 MB. */
+export const MAX_GENERIC_BYTES = 100 * 1024 * 1024;
 
 function ignore(reason) {
   return { assetType: null, ext: null, ignored: true, ignoreReason: reason, download: null };

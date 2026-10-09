@@ -70,8 +70,13 @@ This makes **de-duplication intrinsic**: identical bytes hash to the same name,
 so the same content in two folders (or two sources) is stored exactly once, with
 no priority rules to configure. The store is also a durable **cache** — once a
 blob is present it is never re-downloaded, so rebuilding the manifest (or adding
-a future source like "generated from MuseScore master") costs no re-fetch. Drive
-shortcuts and non-asset files are ignored; the manifest drives incremental,
+a future source like "generated from MuseScore master") costs no re-fetch. Every
+file in Drive is represented in the library: recognized types (PDFs, MP3s,
+MuseScore, images, Docs) land with their song, any other file is stored as a
+generic download (with its song, or on Extra Files), and a file the app can't
+store — a Google Form, anything over 100 MB, an unreadable shortcut — is listed
+on Extra Files with a link to it in Drive. Only OS junk (`.DS_Store`, `._*`),
+folders, and admin-archived files are left out. The manifest drives incremental,
 idempotent refreshes and the end-of-sync report lists any content that appears in
 more than one Drive location. `data/` is gitignored — synced music never enters
 this repo.

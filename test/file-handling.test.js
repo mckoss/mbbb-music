@@ -78,9 +78,11 @@ test('files the library does not use say why', () => {
   ];
   // Removed from Drive before it was ever downloaded: nothing to keep.
   assert.equal(handle(files, 'gone').state, 'removed');
-  assert.equal(handle(files, 'sc').state, 'ignored');
+  // Not stored, but still represented: listed on Extra Files with a Drive link.
+  assert.equal(handle(files, 'sc').state, 'link-only');
   assert.match(handle(files, 'sc').detail, /shortcut/);
-  assert.match(handle(files, 'zip').detail, /\.zipx/);
+  assert.equal(handle(files, 'zip').state, 'link-only');
+  assert.match(handle(files, 'zip').detail, /next sync downloads/);
   assert.equal(handle(files, 'un').state, 'unreachable');
   assert.deepEqual([handle(files, 'err').state, handle(files, 'err').detail], ['failed', 'HTTP 403']);
   assert.equal(handle(files, 'missing'), null);
@@ -117,4 +119,24 @@ test('a file deleted in Drive stays in the library, flagged, until archived', ()
   const manifest = applyCorrections(raw, { file: { a: { archived: 'true' } }, folder: {} });
   const archived = describeHandling('a', manifest, buildCatalog(manifest, ['Library']));
   assert.equal(archived.state, 'archived');
+});
+
+test('every Drive file is represented: stored files in songs or Extra Files, the rest as Drive links', () => {
+  const files = [
+    entry('form', 'Baile sign-up', null, { status: 'ignored|google-native-file', assetType: undefined }),
+    entry('big', 'Baile rehearsal.mov', null, { status: 'ignored|too-large', assetType: undefined }),
+    entry('ds', '.DS_Store', null, { status: 'ignored|junk', assetType: undefined }),
+    entry('arch', 'Old form', null, { status: 'ignored|google-native-file', assetType: undefined, archived: true }),
+    entry('lost', 'Elsewhere - Flute.pdf', null, { status: 'unreachable', songTitle: 'Nowhere', songTitleSlug: 'nowhere', shortcutTarget: 'T1' }),
+  ];
+  const manifest = { files: Object.fromEntries(files.map((f) => [f.driveFileId, f])) };
+  const extras = buildCatalog(manifest, ['Library']).extras;
+  const byId = Object.fromEntries(extras.map((x) => [x.driveFileId, x]));
+  assert.deepEqual(Object.keys(byId).sort(), ['big', 'form', 'lost']); // not junk, not archived
+  assert.equal(byId.form.linkOnly, true);
+  assert.equal(byId.form.song, 'Baile');
+  assert.match(byId.big.reason, /over 100 MB/);
+  assert.equal(byId.form.driveUrl, 'https://drive.google.com/file/d/form/view');
+  assert.equal(byId.lost.driveUrl, 'https://drive.google.com/file/d/T1/view'); // the shortcut's target
+  assert.equal(byId.form.sha256, undefined);
 });
