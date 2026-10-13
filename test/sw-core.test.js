@@ -285,6 +285,17 @@ test('blob requests use the longer media timeout', async () => {
   assert.ok(usedMs >= 35, `media miss waited ${usedMs}ms, expected ~40ms`);
 });
 
+test('score page and page-count requests wait for a slow server instead of tripping offline', async () => {
+  // A response that arrives after the short (page) timeout but within the media
+  // timeout: the server opening a cold PDF during a gig download.
+  const slow = (body) => () => new Promise((resolve) => setTimeout(() => resolve(new Response(body)), 30));
+  const { env, marks } = makeEnv({ fetch: slow('{"pages":3}') });
+  const res = await routeGet(env, req(`/render/${SHA}/info`));
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '{"pages":3}');
+  assert.deepEqual(marks, ['reachable']); // never marked offline
+});
+
 test('SWR data load with nothing cached and offline returns an empty data shell', async () => {
   const { env } = makeEnv({ fetch: hangingFetch() });
   const res = await routeGet(env, req('/gigs/a/__data.json'));

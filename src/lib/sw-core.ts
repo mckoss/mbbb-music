@@ -377,8 +377,12 @@ export function routeGet(env: SwEnv, request: Request): Promise<Response> {
     return cacheFirst(env, appShellCache(env.version), request);
   }
   if (isRenderRequest(url)) {
-    // Store on view: anything you open is then available offline.
-    return cacheFirst(env, SCORES_CACHE, request, { store: true });
+    // Store on view: anything you open is then available offline. A cold page
+    // or page-count request makes the server open and read the PDF, which can
+    // take several seconds when a gig download asks for many at once — so give
+    // it the media timeout. A short timeout here read "server busy" as "offline"
+    // and tripped the breaker for every request behind it (a 504 on download).
+    return cacheFirst(env, SCORES_CACHE, request, { store: true, timeoutMs: env.mediaTimeoutMs });
   }
   if (isBlobRequest(url)) {
     // PDFs/recordings: served from cache when downloaded; not stored on casual

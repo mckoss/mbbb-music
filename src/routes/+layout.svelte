@@ -160,6 +160,51 @@
     };
   });
 
+  // Connection banner: say plainly when the server can't be reached, instead of
+  // leaving taps to look frozen. The service worker reports reachability as it
+  // changes (a failed or timed-out request trips it; any success clears it), and
+  // the window's own offline/online events cover airplane mode. While down, a
+  // light probe every 10s notices recovery even if the player taps nothing.
+  let netDown = $state(false);
+  let backOnline = $state(false);
+  let backTimer: ReturnType<typeof setTimeout> | null = null;
+  function setNetDown(down: boolean) {
+    if (down === netDown) return;
+    netDown = down;
+    if (backTimer) clearTimeout(backTimer);
+    backOnline = !down;
+    if (!down) backTimer = setTimeout(() => (backOnline = false), 3000);
+  }
+  $effect(() => {
+    if (!browser) return;
+    const onSw = (e: MessageEvent) => {
+      if (e.data?.type !== 'network') return;
+      // The device's own "offline" outranks a stray success seen by the worker.
+      if (e.data.online && navigator.onLine === false) return;
+      setNetDown(!e.data.online);
+    };
+    const onOffline = () => setNetDown(true);
+    navigator.serviceWorker?.addEventListener('message', onSw);
+    addEventListener('offline', onOffline);
+    if (navigator.onLine === false) setNetDown(true);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', onSw);
+      removeEventListener('offline', onOffline);
+    };
+  });
+  $effect(() => {
+    if (!browser || !netDown) return;
+    const probe = setInterval(async () => {
+      try {
+        const res = await fetch(`${base}/_app/version.json`, { cache: 'no-store' });
+        if (res.ok) setNetDown(false);
+      } catch {
+        // Still down — keep the banner.
+      }
+    }, 10_000);
+    return () => clearInterval(probe);
+  });
+
   // A navigation supersedes any pending nudge for the page we just left.
   let nudgePath = $state('');
   $effect(() => {
@@ -287,6 +332,16 @@
   });
 </script>
 
+{#if !overlayOpen && (netDown || backOnline)}
+  <div class="net-banner" class:ok={!netDown} role="status" aria-live="polite">
+    {#if netDown}
+      No connection — showing saved copies. The app reconnects on its own.
+    {:else}
+      Back online.
+    {/if}
+  </div>
+{/if}
+
 {#if authed && !overlayOpen}
   <header class="masthead">
     <div class="brand">
@@ -379,6 +434,21 @@
 <ScoreOverlay />
 
 <style>
+  .net-banner {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 8px 16px;
+    background: #7a2a1f;
+    color: #fff8ef;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .net-banner.ok {
+    background: #2f6b3a;
+  }
+
   .nav-spinner {
     position: fixed;
     top: 16px;

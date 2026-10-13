@@ -60,12 +60,24 @@ let flushingActivity = false;
 // re-probe — so it can never get stuck offline. Page online/offline events and
 // the worker's own navigator.onLine feed in as extra hints.
 let offlineUntil = 0;
+// What the pages were last told, so they hear only about real transitions.
+let reportedOnline = true;
 const isOnline = (): boolean => navigator.onLine !== false && Date.now() >= offlineUntil;
+/** Tell every open page whether the server is reachable (drives the connection banner). */
+const reportConnectivity = (online: boolean): void => {
+  if (online === reportedOnline) return;
+  reportedOnline = online;
+  void sw.clients.matchAll({ type: 'window' }).then((clients) => {
+    for (const client of clients) client.postMessage({ type: 'network', online });
+  });
+};
 const markOffline = (): void => {
   offlineUntil = Date.now() + OFFLINE_BREAKER_MS;
+  reportConnectivity(false);
 };
 const markReachable = (): void => {
   offlineUntil = 0;
+  reportConnectivity(true);
 };
 
 sw.addEventListener('install', (event) => {

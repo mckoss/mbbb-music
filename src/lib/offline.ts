@@ -18,6 +18,7 @@ import {
   buildShaSongMap,
   type GigManifest,
 } from './offline-urls';
+import { fetchRetrying, mapLimited } from './retry';
 
 export { scoreUrls, gigPageUrls, corePageUrls, urlsToDelete, type GigManifest };
 
@@ -67,6 +68,13 @@ export interface DownloadProgress {
   total: number;
 }
 
+/** Plain-language reason a download step failed, for the message shown to the player. */
+function failureText(status: number): string {
+  return status === 504 || status === 0
+    ? 'the server couldn’t be reached — check the connection'
+    : `the server answered ${status}`;
+}
+
 /**
  * Cache a gig's charts for offline use. `shas` are the resolved score hashes for
  * the chosen instrument/format; `audioShas` are the gig's recordings (cached as
@@ -86,15 +94,17 @@ export async function downloadGig(
 ): Promise<GigManifest> {
   if (!available()) throw new Error('Offline storage is not available in this browser.');
 
-  // Resolve each score's page count, then expand to its render URLs.
-  const perScore = await Promise.all(
-    gig.shas.map(async (sha) => {
-      const res = await fetch(`/render/${sha}/info`);
-      if (!res.ok) throw new Error(`Could not read score ${sha.slice(0, 8)} (${res.status}).`);
-      const { pages } = (await res.json()) as { pages: number };
-      return scoreUrls(sha, pages);
-    }),
-  );
+  // Resolve each score's page count, then expand to its render URLs. A cold
+  // count makes the server open the PDF, so ask a few at a time (not the whole
+  // set list at once) and retry transient failures.
+  const perScore = await mapLimited(gig.shas, 3, async (sha) => {
+    const res = await fetchRetrying(`/render/${sha}/info`);
+    if (!res.ok) {
+      throw new Error(`Couldn’t prepare one of the charts: ${failureText(res.status)}. Tap Download to try again.`);
+    }
+    const { pages } = (await res.json()) as { pages: number };
+    return scoreUrls(sha, pages);
+  });
 
   const renderUrls = perScore.flat();
   const pageUrls = gigPageUrls(gig.id);
@@ -109,15 +119,26 @@ export async function downloadGig(
   onProgress?.({ done, total });
 
   // Sequential keeps the progress meaningful and is gentle on a phone radio.
+  // Anything that fails (after retries) is collected rather than skipped
+  // silently: a gig is only marked downloaded when every page and recording is
+  // actually on the device. What did save stays cached, so trying again only
+  // fetches the rest.
+  const failed: string[] = [];
   for (const url of allUrls) {
     try {
-      const res = await fetch(url);
+      const res = await fetchRetrying(url);
       if (res.ok) await cache.put(url, res.clone());
+      else failed.push(url);
     } catch {
-      // A single missing page shouldn't abort the whole gig; the page just
-      // won't be available offline. (Surfaced via the page count if needed.)
+      failed.push(url); // e.g. the device ran out of storage
     }
     onProgress?.({ done: ++done, total });
+  }
+  if (failed.length) {
+    throw new Error(
+      `${failed.length} of ${total} ${failed.length === 1 ? 'item' : 'items'} didn’t download — ` +
+        'check the connection and tap Download again (what saved is kept, so it picks up where it left off).',
+    );
   }
 
   const manifest: GigManifest = {
