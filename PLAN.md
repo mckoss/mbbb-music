@@ -129,11 +129,33 @@ trumpet sections, since the range-fit step depends on them.
 
 ## Inventory (aggregate only)
 
-Drive library crawl, 2026-11: *pending*. Record counts here, never titles:
-songs with a MuseScore master plus PDFs, PDF-only songs, and how many need an
-alto horn or trumpet transcription. The per-song list lives in the private
-scores repository once it exists. Members usually keep a song's `.mscz` and its
-PDF renders together in that song's folder.
+Drive library crawl, 2026-11 (read-only, filenames and metadata only). Counts
+only; the per-song list belongs in the private scores repository.
+
+| | Songs |
+|---|---|
+| Song folders in the library | 52 |
+| MuseScore master + PDF parts | 21 |
+| PDF-only (no MuseScore master found) | 31 |
+| Trombone part but no alto horn part, `.mscz` master available | 17 |
+| Trombone part but no alto horn part, PDF-only | 19 |
+| Alto sax part but no trumpet part | 1 (PDF-only) |
+
+Observations that matter for the pipeline:
+
+- Members usually keep a song's `.mscz` and its PDF renders in the same song
+  folder. The app's song folders are mostly shortcuts into a second shared
+  tree, which also holds the only copies of a few songs.
+- The PDF-only parts look engraved (notation-software export names, extractable
+  text), not scanned, which favors OMR. A handful of songs exist only as one
+  combined all-parts PDF and may be scans.
+- A few PDF-only songs may have recoverable masters (recent MuseScore-style
+  exports, a zip that may contain a source), so check before running OMR.
+- Duplicates are common ("Copy of" files, versioned exports, wrapper folders),
+  and some instrument-index folders hold files found nowhere else.
+- **Privacy:** an instrument-index folder in the library also contains copies of
+  member-information and contact documents. Importers and any future Drive
+  crawler must stay restricted to music file types and never ingest those.
 
 ## Phases
 
@@ -145,10 +167,10 @@ PDF renders together in that song's folder.
      before and after the Opus 5.5 correction pass, with cost per page.
    - Decision gate: adopt LilyPond rendering only if most parts pass with a
      small set of fixup rules.
-2. **Transcription quick win:** alto horn from trombone and trumpet from alto
-   sax for songs that have a `.mscz` master, using the deterministic
-   transposition table and range-fitting, delivered as letter and lyre PDFs
-   (and to the Drive export folder).
+2. **Transcription quick win:** alto horn from trombone for the 17 songs with
+   a `.mscz` master, using the deterministic transposition table and
+   range-fitting, delivered as letter and lyre PDFs (and to the Drive export
+   folder). The one alto-sax-to-trumpet need is PDF-only, so it waits for OMR.
 3. **Private scores repository** (owner approval needed to create it and its
    bot credentials): layout above, templates, `fixups/`, CI that compiles every
    changed song and runs the MIDI check.
@@ -159,7 +181,7 @@ PDF renders together in that song's folder.
 5. **Drive export:** write access on one export folder; mirror published
    outputs with standardized names.
 6. **OMR backfill** of PDF-only songs, prioritizing those that need alto horn
-   or trumpet parts.
+   or trumpet parts (19 trombone-sourced, per the inventory).
 
 ## Open Questions
 
