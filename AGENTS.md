@@ -45,6 +45,7 @@ next.
 
 ```text
 README.md        - Project overview and open questions
+PLAN.md          - Music production pipeline plan (LilyPond masters, OMR); read first for pipeline work
 docs/README.md   - Links for the hosted docs surface
 docs/design.md   - Main product/design document
 docs/index.html  - Static interactive design prototype
