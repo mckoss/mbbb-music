@@ -117,12 +117,13 @@ range-fits by octave per phrase and flags the measures it moved.
 | Source part (written) | Target part (written) | Interval | Notes |
 |---|---|---|---|
 | Trombone, bass clef, concert pitch | E-flat alto horn | concert up a major 6th (`\transpose es c'`) | Low trombone notes land below the horn's range: octave up per phrase |
-| Trombone in B-flat, treble clef (brass-band style) | E-flat alto horn | written down a perfect 4th | Confirm which trombone notation each source uses |
 | E-flat alto sax | E-flat alto horn | same written pitch | Range check only: sax parts run higher than the horn |
 | E-flat alto sax | B-flat trumpet | written down a perfect 4th | Range check for trumpet |
 | B-flat tenor sax | B-flat trumpet | written down an octave | Same key; range check |
 | Concert pitch (score) | B-flat trumpet | concert up a major 2nd (`\transpose bes c'`) | |
 
+The band's trombone parts are bass clef at concert pitch (confirmed 2026-11), so
+trombone sources need no transposition step beyond the target instrument's.
 Practical ranges for our players are still to be confirmed with the horn and
 trumpet sections, since the range-fit step depends on them.
 
@@ -166,8 +167,6 @@ PDF renders together in that song's folder.
   as a job-pulling worker.
 - Whether original source PDFs for PDF-only songs are stored in the private
   repo (Git LFS) or stay in Drive, referenced by hash.
-- Do the band's trombone parts use bass clef concert pitch, B-flat treble clef,
-  or both?
 - Practical written ranges for alto horn and trumpet players.
 - Location and sharing of the Drive export folder; whether it replaces or sits
   beside the current library folders.
