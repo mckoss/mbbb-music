@@ -5,6 +5,7 @@
   import { base } from '$app/paths';
   import { goto, invalidateAll, afterNavigate } from '$app/navigation';
   import { instrumentSlug, printFormat, type PrintFormat } from '$lib/stores';
+  import { serverReachable } from '$lib/connectivity';
   import { resolveInstrument } from '$lib/instrument-choice';
   import { instrumentDisplay } from '$lib/format';
   import ScoreOverlay from '$lib/components/ScoreOverlay.svelte';
@@ -171,6 +172,7 @@
   function setNetDown(down: boolean) {
     if (down === netDown) return;
     netDown = down;
+    serverReachable.set(!down);
     if (backTimer) clearTimeout(backTimer);
     backOnline = !down;
     if (!down) backTimer = setTimeout(() => (backOnline = false), 3000);
