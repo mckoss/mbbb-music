@@ -4,6 +4,9 @@ const overlaps = (a: DOMRect, b: DOMRect) =>
   Math.min(a.right, b.right) > Math.max(a.left, b.left) &&
   Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top);
 
+// The map shows gigs from the last three months onward, so the gig marker this
+// test expects comes from the far-future "e2e-map" fixture gig: a fixture dated
+// near when it was written ages out of the window and silently breaks the test.
 test('compact map is dots-only and expanded datablocks avoid every point', async ({ page }) => {
   await page.goto('/members');
   const preview = page.locator('.preview');
