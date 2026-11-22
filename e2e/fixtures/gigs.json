@@ -58,6 +58,15 @@
       "hidden": true,
       "sets": [{ "id": "e2e-edit-set", "songSlugs": [] }],
       "rev": 1
+    },
+    {
+      "id": "e2e-map",
+      "name": "Member Map Fixture Gig",
+      "date": "2099-06-01",
+      "location": { "name": "Langley Park", "address": "Langley, WA" },
+      "hidden": true,
+      "sets": [],
+      "rev": 1
     }
   ]
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { RENDER_REV } from '$lib/render-rev';
+  import { serverReachable } from '$lib/connectivity';
 
   // One part's opening page inside a whole-band chart, as served by
   // /render/<sha>/info (derived from the PDF's own printed part labels).
@@ -48,9 +49,21 @@
     partStart?: { page: number; label: string } | null;
   } = $props();
 
-  // Friendly URL for the "Open the PDF" fallback; defaults to the raw blob if a
-  // caller didn't supply a slug-based one.
+  // Friendly URL of the PDF itself; defaults to the raw blob if a caller didn't
+  // supply a slug-based one. The error state offers it as a DOWNLOAD, never a
+  // link to open: opening a raw PDF in the installed (standalone) iPad app
+  // replaces the whole app with the PDF, with no way back. A download shows the
+  // system's preview sheet instead and leaves the app where it was.
   const pdfHref = $derived(openHref ?? `/blob/${sha}`);
+  const downloadName = $derived(`${(title || 'score').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'score'}.pdf`);
+  // /blob forces a download only with a named `dl`; the friendly score routes
+  // take a bare `?dl` and name the file themselves.
+  const downloadHref = $derived.by(() => {
+    const sep = pdfHref.includes('?') ? '&' : '?';
+    return pdfHref.startsWith('/blob/')
+      ? `${pdfHref}${sep}dl=${encodeURIComponent(downloadName)}`
+      : `${pdfHref}${sep}dl`;
+  });
 
   let pageNum = $state(1);
   let numPages = $state(0);
@@ -70,6 +83,129 @@
 
   // Guards against a stale info response landing after the sha changed again.
   let gen = 0;
+
+  // Self-healing loads. A page image or page count can fail on a live
+  // connection — a dropped packet on wifi, a server slow on a cold render — and
+  // an error that waits for the reader to notice and reload is a dead end on a
+  // music stand. So a failure while online retries by itself after these delays
+  // (showing "Loading score…" meanwhile), and an error or offline state retries
+  // again whenever the connection comes back or the app returns to the
+  // foreground. "Try again" does the same on demand.
+  const RETRY_DELAYS_MS = [1500, 4000, 10000];
+  let attempt = 0; // automatic retries spent on the current page / page count
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Bumped to re-run the page-count load, and to remount the <img> once a retry
+  // has fetched the page into the cache.
+  let infoKey = $state(0);
+  let imgKey = $state(0);
+
+  function clearRetry() {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+
+  /** Queue the next automatic retry; false once they're used up. */
+  function scheduleRetry(run: () => void): boolean {
+    if (attempt >= RETRY_DELAYS_MS.length) return false;
+    const delay = RETRY_DELAYS_MS[attempt++];
+    clearRetry();
+    loading = true;
+    err = null;
+    offline = false;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      run();
+    }, delay);
+    return true;
+  }
+
+  function showOffline() {
+    clearRetry();
+    loading = false;
+    offline = true;
+    err = null;
+  }
+
+  function showError(message: string) {
+    clearRetry();
+    loading = false;
+    offline = false;
+    err = message;
+  }
+
+  /**
+   * Fetch the current page through the service worker (which caches it on
+   * success), then remount the <img> so it loads from that cache. Fetching
+   * first, rather than just resetting the <img>, means a retry never depends on
+   * how a browser remembers an image that failed before.
+   */
+  async function refetchPage() {
+    const s = sha;
+    const n = pageNum;
+    try {
+      const res = await fetch(pageUrl(n));
+      if (s !== sha || n !== pageNum) return; // the reader has moved on
+      if (res.ok) {
+        imgKey += 1;
+        return;
+      }
+      if (res.status === 504) return showOffline();
+      failPage(`page ${n}: ${res.status}`);
+    } catch {
+      if (s !== sha || n !== pageNum) return;
+      failPage('network error');
+    }
+  }
+
+  function failPage(message: string) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return showOffline();
+    if (!scheduleRetry(refetchPage)) showError(message);
+  }
+
+  /** Retry now, from scratch (the "Try again" button, a reconnect, a return to the app). */
+  export function retryNow() {
+    attempt = 0;
+    clearRetry();
+    loading = true;
+    err = null;
+    offline = false;
+    if (numPages < 1) infoKey += 1;
+    else void refetchPage();
+  }
+
+  // A different score or page starts with a fresh set of automatic retries.
+  $effect(() => {
+    void sha;
+    void pageNum;
+    attempt = 0;
+    clearRetry();
+  });
+
+  // Retry a failed load when the server is reachable again or the app comes
+  // back to the foreground (e.g. after switching away to fix the wifi).
+  $effect(() => {
+    if (!browser) return;
+    const needsRetry = () => Boolean(err) || offline;
+    let wasReachable = true;
+    const unsubscribe = serverReachable.subscribe((reachable) => {
+      if (reachable && !wasReachable && needsRetry()) retryNow();
+      wasReachable = reachable;
+    });
+    const onOnline = () => {
+      if (needsRetry()) retryNow();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && needsRetry()) retryNow();
+    };
+    addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unsubscribe();
+      removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+      clearRetry();
+    };
+  });
 
   const pageUrl = (n: number) => `/render/${sha}/${n}.webp?r=${RENDER_REV}`;
   const src = $derived(numPages > 0 ? pageUrl(pageNum) : '');
@@ -92,6 +228,7 @@
   // Load the page count whenever the score changes; reset to page 1.
   $effect(() => {
     const s = sha;
+    void infoKey; // a retry re-runs this load
     if (!browser || !s) return;
     const myGen = ++gen;
     loading = true;
@@ -122,13 +259,14 @@
         applyStart(pages);
       } catch (e) {
         if (myGen === gen) {
-          offline = e instanceof Error && e.message === 'offline';
-          // A bare network failure offline (no SW short-circuit) lands here too.
-          if (!offline && typeof navigator !== 'undefined' && navigator.onLine === false) {
-            offline = true;
+          const isOffline =
+            (e instanceof Error && e.message === 'offline') ||
+            // A bare network failure offline (no SW short-circuit) lands here too.
+            (typeof navigator !== 'undefined' && navigator.onLine === false);
+          if (isOffline) showOffline();
+          else if (!scheduleRetry(() => (infoKey += 1))) {
+            showError(e instanceof Error ? e.message : String(e));
           }
-          err = offline ? null : e instanceof Error ? e.message : String(e);
-          loading = false;
         }
       }
     })();
@@ -160,21 +298,17 @@
   });
 
   function onLoad() {
+    attempt = 0;
+    clearRetry();
     loading = false;
     err = null;
     offline = false;
   }
   function onError() {
-    loading = false;
     // A page image that won't load while offline means this chart wasn't saved
-    // for offline use — show the friendly message, not a render error.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      offline = true;
-      err = null;
-    } else {
-      offline = false;
-      err = 'image failed to load';
-    }
+    // for offline use — show the friendly message (it retries on reconnect).
+    // Online, it retries by itself before admitting an error.
+    failPage('image failed to load');
   }
 
   export function prev() {
@@ -203,12 +337,14 @@
 <div class="pager">
   <div class="canvas-box">
     {#if src}
-      <img
-        {src}
-        alt={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`}
-        onload={onLoad}
-        onerror={onError}
-      />
+      {#key imgKey}
+        <img
+          {src}
+          alt={title ? `${title} — page ${pageNum}` : `Page ${pageNum}`}
+          onload={onLoad}
+          onerror={onError}
+        />
+      {/key}
     {/if}
 
     {#if loading}
@@ -217,15 +353,22 @@
         <span>Loading score…</span>
       </div>
     {:else if offline}
-      <p class="status offline">
-        This score isn't saved for offline use. Reconnect, or download it from the
-        gig page while you're online.
-      </p>
+      <div class="status offline" role="status">
+        <p>
+          This score isn't saved for offline use. It will load by itself when you're
+          back online, or download it from the gig page while you're online.
+        </p>
+        <button type="button" class="retry" onclick={retryNow}>Try again</button>
+      </div>
     {:else if err}
-      <p class="status error">
-        Couldn't render the score{#if err}: <span class="errdetail">{err}</span>{/if}.
-        <a href={pdfHref} target="_blank" rel="noopener">Open the PDF</a>
-      </p>
+      <div class="status error" role="alert">
+        <p>
+          Couldn't load this score{#if err}: <span class="errdetail">{err}</span>{/if}.
+          It will try again when the connection comes back.
+        </p>
+        <button type="button" class="retry" onclick={retryNow}>Try again</button>
+        <a class="download" href={downloadHref} download={downloadName}>Download the PDF</a>
+      </div>
     {/if}
 
     {#if tap && numPages > 1}
@@ -322,6 +465,32 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  /* Above the full-height page-turn tap zones, so "Try again" always gets the tap. */
+  .status.error,
+  .status.offline {
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status p {
+    margin: 0;
+  }
+
+  .status .retry {
+    min-height: 44px;
+    padding: 0 22px;
+    border-radius: 999px;
+    border: 1px solid #f2d36b;
+    background: #f2d36b;
+    color: #1c1b17;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
   }
 
   .status.error a {
