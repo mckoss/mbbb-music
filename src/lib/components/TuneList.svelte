@@ -7,7 +7,7 @@
   import { instrumentDisplay } from '$lib/format';
   import { STATUS_DESC } from '$lib/song-status';
   import TuneFilters from './TuneFilters.svelte';
-  import { defaultStatuses, filterTunes } from '$lib/tune-filters';
+  import { defaultStatuses, filterTunes, hiddenStatusMatches } from '$lib/tune-filters';
   import { cachedRenderShas } from '$lib/offline';
 
   let { tunes }: { tunes: Tune[] } = $props();
@@ -33,6 +33,8 @@
   // include/exclude that status. Ephemeral (resets per visit), like the search.
   let show = $state(defaultStatuses());
   const filtered = $derived(filterTunes(tunes, $search, show));
+  // A search lists every match; these are the ones the status chips would hide.
+  const hiddenMatches = $derived(hiddenStatusMatches(tunes, $search, show));
 
   const FORMAT_ORDER = ['letter', 'lyre'] as const;
   const FORMAT_LABEL: Record<string, string> = { letter: 'Letter', lyre: 'Lyre' };
@@ -82,7 +84,7 @@
   <header>
     <h2>Complete Collection</h2>
     <p class="count">{filtered.length} of {tunes.length} titles</p>
-    <TuneFilters bind:query={$search} bind:show />
+    <TuneFilters bind:query={$search} bind:show hidden={hiddenMatches} />
   </header>
 
   <ul class="rows">

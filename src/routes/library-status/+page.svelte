@@ -15,7 +15,7 @@
   import { youtubeId, youtubeThumb } from '$lib/youtube';
   import { writeFetch } from '$lib/client-version';
   import TuneFilters from '$lib/components/TuneFilters.svelte';
-  import { defaultStatuses, filterTunes } from '$lib/tune-filters';
+  import { defaultStatuses, filterTunes, hiddenStatusMatches } from '$lib/tune-filters';
 
   let query = $state('');
   let show = $state(defaultStatuses());
@@ -34,6 +34,8 @@
   const catalog = $derived(page.data.catalog as Catalog);
   const tunes = $derived(catalog.tunes ?? []);
   const filtered = $derived(filterTunes(tunes, query, show));
+  // A search lists every match; these are the ones the status chips would hide.
+  const hiddenMatches = $derived(hiddenStatusMatches(tunes, query, show));
   const instruments = $derived(catalog.instruments ?? []);
 
   // Friendly open URL (no raw sha leak), falling back to the blob for any sha
@@ -519,7 +521,7 @@
       </HelpPopup>
     </div>
     <p class="count">{filtered.length} of {tunes.length} songs · {instruments.length} instruments</p>
-    <TuneFilters bind:query bind:show />
+    <TuneFilters bind:query bind:show hidden={hiddenMatches} />
 
     <p class="back"><a href="/corrections">View recent metadata edits →</a></p>
     {#if isAdmin}<p class="back"><a href="/library-status/parts">Manage part choices →</a></p>{/if}
