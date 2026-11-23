@@ -14,11 +14,22 @@ for (const route of ['/', '/library-status']) {
     const search = page.getByRole('searchbox', { name: 'Search titles' });
     await search.fill('  EXAMPLE  ');
     await expect(page.locator('.count').first()).toContainText('1 of 2');
-    await filters.getByRole('button', { name: 'Unfiled', exact: true }).click();
+    // A search covers every song: hiding Unfiled keeps the match listed, with a
+    // warning that offers to add the hidden status back to the filter.
+    const unfiled = filters.getByRole('button', { name: 'Unfiled', exact: true });
+    await unfiled.click();
+    await expect(page.locator('.count').first()).toContainText('1 of 2');
+    const note = page.locator('.hidden-note');
+    await expect(note).toContainText('Showing 1 matching song from Unfiled');
+    await note.getByRole('button', { name: 'Add Unfiled to filter' }).click();
+    await expect(unfiled).toHaveAttribute('aria-pressed', 'true');
+    await expect(note).toHaveCount(0);
+    // With no search text the chips decide again.
+    await unfiled.click();
+    await search.fill('');
     await expect(page.locator('.count').first()).toContainText('0 of 2');
     await expect(page.locator('.empty')).toBeVisible();
-    await filters.getByRole('button', { name: 'Unfiled', exact: true }).click();
-    await expect(page.locator('.count').first()).toContainText('1 of 2');
+    await unfiled.click();
     await search.fill('no matching song');
     await expect(page.locator('.count').first()).toContainText('0 of 2');
     await search.fill('');
