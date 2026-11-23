@@ -218,6 +218,36 @@ test('files from a loose (unfoldered) source are matched by filename or sent to 
   assert.equal(extras[0].originalName, 'mutiny-bay-logo.jpg');
 });
 
+test('a song folder linked into a loose source by a folder shortcut is a real song folder', () => {
+  // A member drops a shortcut to a song folder into the loose source. Its files
+  // keep the folder's song even when their names wouldn't match or cluster
+  // (a lone MuseScore master, a full score with no instrument in its name).
+  const linked = (sha, name, assetType = 'pdf') => ({
+    status: 'synced', sha256: sha, assetType, sourceFolderLabel: 'loose',
+    originalFolder: 'Jingle Bell Rock', songTitle: 'Jingle Bell Rock', songTitleSlug: 'jingle-bell-rock',
+    songFolderLinked: true, originalName: name,
+  });
+  const manifest = {
+    files: {
+      master: linked('j1', 'JBR-final.mscz', 'musescore'),
+      score: linked('j2', 'JBR-final.pdf'),
+      tbn: { ...linked('j3', 'JBR-final-Trombone.pdf'), instrument: 'Trombone', instrumentSlug: 'trombone' },
+      // The same folder name without the shortcut flag stays loose: no song.
+      plain: {
+        status: 'synced', sha256: 'p1', assetType: 'pdf', sourceFolderLabel: 'loose',
+        originalFolder: 'Some Loose Folder', songTitle: 'Some Loose Folder', originalName: 'mystery.pdf',
+      },
+    },
+  };
+  const { tunes, extras } = buildCatalog(manifest, ['loose'], ['loose']);
+  const jbr = tunes.find((t) => t.slug === 'jingle-bell-rock');
+  assert.ok(jbr, 'the linked folder became its own song');
+  assert.equal(jbr.musescore.length, 1);
+  assert.equal(jbr.parts.length + jbr.scores.length, 2);
+  assert.ok(!tunes.some((t) => t.slug === 'some-loose-folder'), 'an unlinked loose folder is not a song');
+  assert.deepEqual(extras.map((e) => e.originalName), ['mystery.pdf']);
+});
+
 test('songPrefixOf strips trailing instrument/key/descriptor tokens', () => {
   assert.equal(songPrefixOf('Anthrax - Trumpet in Bb.pdf'), 'anthrax');
   assert.equal(songPrefixOf('Copy of Pony - Baritone (B.C.).pdf'), 'pony');

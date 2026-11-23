@@ -441,6 +441,9 @@ function buildAssetEntry(entry, meta, classification, sha, timestamp) {
     originalName: file.name,
     originalFolder: file.folderName,
     songFolderId: file.folderId,
+    // The song folder was reached through a folder shortcut: the catalog treats
+    // it as a real song folder even in a loose (unfoldered) source.
+    songFolderLinked: file.songFolderLinked || undefined,
     folderPath: file.folderPath,
     appearances: file.appearances,
     mimeType: file.mimeType,

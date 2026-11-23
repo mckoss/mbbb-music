@@ -268,9 +268,12 @@ export function createGoogleDriveClient(config = {}, options = {}) {
       // root that this folder descends from (null while still at the root); `path`
       // is the full chain of folder names from the root to here, so each asset can
       // record its complete Drive location (not just the first-level song folder).
-      const queue = [{ id: folderId, song: null, songId: null, path: [], viaShortcut: false, label: null }];
+      // `songLinked` marks a subtree whose song folder was reached through a
+      // folder shortcut: a deliberate "this folder is a song" link, honored as a
+      // real song folder even in a source otherwise read as loose files.
+      const queue = [{ id: folderId, song: null, songId: null, path: [], viaShortcut: false, label: null, songLinked: false }];
       while (queue.length) {
-        const { id, song, songId, path, viaShortcut, label } = queue.shift();
+        const { id, song, songId, path, viaShortcut, label, songLinked } = queue.shift();
         if (seen.has(id)) continue;
         seen.add(id);
         let children;
@@ -292,22 +295,25 @@ export function createGoogleDriveClient(config = {}, options = {}) {
           if (child.mimeType === FOLDER_MIME) {
             // Descend; the song (name + folder id) is fixed at the first folder
             // below the root, while the path grows with every level.
-            queue.push({ id: child.id, song: song ?? child.name, songId: songId ?? child.id, path: [...path, child.name], viaShortcut: false, label: null });
+            queue.push({ id: child.id, song: song ?? child.name, songId: songId ?? child.id, path: [...path, child.name], viaShortcut: false, label: null, songLinked: song ? songLinked : false });
           } else if (target?.targetMimeType === FOLDER_MIME && target.targetId) {
             // Shortcut to a folder: descend into the target as if it lived here,
             // recording the path under the shortcut's own display name (what you'd
             // see navigating Drive).
-            queue.push({ id: target.targetId, song: song ?? child.name, songId: songId ?? target.targetId, path: [...path, child.name], viaShortcut: true, label: child.name });
+            // A folder already walked (by this source or an earlier one) is
+            // skipped above via `seen`, so a link to a scanned folder adds nothing.
+            queue.push({ id: target.targetId, song: song ?? child.name, songId: songId ?? target.targetId, path: [...path, child.name], viaShortcut: true, label: child.name, songLinked: song ? songLinked : true });
           } else if (target?.targetId) {
             // Shortcut to a file: stand its target in at this location.
-            out.push(await resolveFileShortcut(child, song, songId, path));
+            const resolved = await resolveFileShortcut(child, song, songId, path);
+            out.push(songLinked ? { ...resolved, songFolderLinked: true } : resolved);
           } else {
             // Asset/leaf (Docs the classifier exports, others it ignores).
             // Tag it with its song folder (name + Drive id) and its full folder
             // path so the sync groups it correctly, folder-level corrections can
             // key on the stable id, and the inventory can mirror the Drive tree.
             const base = song ? { ...child, folderName: song, folderId: songId } : { ...child };
-            out.push({ ...base, folderPath: path });
+            out.push(songLinked ? { ...base, folderPath: path, songFolderLinked: true } : { ...base, folderPath: path });
           }
         }
       }

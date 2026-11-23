@@ -783,10 +783,12 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   // grouped by the song each one's content belongs to, not by the folder.
   const collections = detectCollectionFolders(manifest, canonical);
 
-  // A real per-song folder: not a loose (unfoldered) source, has a folder, and
-  // that folder isn't an index/admin container or a multi-song collection.
+  // A real per-song folder: not a loose (unfoldered) source — unless the song
+  // folder was linked in by a folder shortcut, a deliberate "this is a song
+  // folder" — has a folder, and that folder isn't an index/admin container or a
+  // multi-song collection.
   const isRealSongFolder = (e) =>
-    !loose.has(e.sourceFolderLabel) &&
+    (!loose.has(e.sourceFolderLabel) || e.songFolderLinked) &&
     e.originalFolder &&
     !isContainerFolder(e.originalFolder) &&
     !collections.has(folderKey(e));

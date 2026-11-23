@@ -179,6 +179,32 @@ test('listFiles descends into a shortcut-to-folder, attributing its subtree to a
   assert.ok(!files.some((f) => f.mimeType === SHORTCUT_MIME)); // shortcut never emitted as a file
 });
 
+test('files whose song folder was reached through a folder shortcut are flagged as linked', async () => {
+  // Root: a real song folder, a shortcut to a song folder (holding a nested
+  // folder and a file shortcut), and a real folder that itself holds a shortcut.
+  const tree = {
+    root: [aFolder('bg', 'Bad Guy'), aFolderShortcut('sc1', 'Jingle Bell Rock', 'jbr-real'), aFolder('ts', 'Track Suit')],
+    bg: [aPdf('p1', 'Bad Guy - Trumpet.pdf')],
+    'jbr-real': [aPdf('j1', 'JBR - Trombone.pdf'), aFolder('jparts', 'parts'), aFileShortcut('jsc', 'JBR - Tuba.pdf', 'real-tuba')],
+    jparts: [aPdf('j2', 'JBR - Tuba.pdf')],
+    ts: [aFolderShortcut('sc2', 'extras', 'ts-extras')],
+    'ts-extras': [aPdf('t1', 'Track Suit - Alto.pdf')],
+  };
+  const tuba = { id: 'real-tuba', name: 'JBR - Tuba (2).pdf', mimeType: 'application/pdf', sha256Checksum: 'abc', size: '1' };
+  const client = createGoogleDriveClient({}, { fetch: driveTreeFetch(tree, { 'real-tuba': tuba }), authClient: fakeAuth('t') });
+
+  const files = await client.listFiles('root');
+  const linked = Object.fromEntries(files.map((f) => [f.id, Boolean(f.songFolderLinked)]));
+  assert.deepEqual(linked, {
+    p1: false, // a real song folder
+    j1: true, // in the linked song folder
+    j2: true, // nested below it
+    'real-tuba': true, // a file shortcut inside it
+    t1: false, // the song folder is real; only a sub-folder was linked
+  });
+  assert.equal(files.find((f) => f.id === 'j2').folderName, 'Jingle Bell Rock');
+});
+
 test('listFiles resolves a shortcut-to-file, standing the target in at the shortcut location', async () => {
   // A trumpet PDF that physically lives elsewhere, dropped into the song folder
   // as a shortcut. Its real metadata (id, checksum, mime) must stand in.

@@ -148,6 +148,19 @@ test('a removed Drive file is archived; its cached blob is retained', async () =
   });
 });
 
+test('a song folder reached through a folder shortcut is recorded as linked in the manifest', async () => {
+  await withTempDir(async (dataDir) => {
+    const files = [
+      { id: 'jbr-tbn', name: 'JBR - Trombone.pdf', mimeType: 'application/pdf', folderId: 'demo-library', folderName: 'Jingle Bell Rock', songFolderLinked: true, content: 'JBR-TBN' },
+      { id: 'bg-tpt', name: 'Bad Guy - Trumpet.pdf', mimeType: 'application/pdf', folderId: 'demo-library', folderName: 'Bad Guy', content: 'BG-TPT' },
+    ];
+    await runSync({ driveClient: createFixtureDriveClient({ files }), config: makeConfig(dataDir), now: FIXED_NOW });
+    const m = await loadManifest(resolve(dataDir, 'manifest.json'));
+    assert.equal(m.files['jbr-tbn'].songFolderLinked, true);
+    assert.ok(!('songFolderLinked' in m.files['bg-tpt']), 'a real song folder carries no flag');
+  });
+});
+
 test('duplicate content is stored once; both Drive files point at the same blob', async () => {
   await withTempDir(async (dataDir) => {
     const files = [
