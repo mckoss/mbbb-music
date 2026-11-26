@@ -4,9 +4,23 @@
   import { fmtDate } from '$lib/format';
   import { instrumentDisplay } from '$lib/format';
 
-  // One song's generated output: preview every LilyPond file, and compare any
-  // instrument's printed part side by side — the band's original (or whatever a
-  // generated part replaced) on the left, the generated part on the right.
+  // One song's versions: every file grouped by origin (the band's originals, the
+  // MuseScore master and MuseScore-built parts, LilyPond builds), a preview of
+  // the LilyPond files, and a side-by-side viewer for any two part PDFs.
+  type Origin = 'original' | 'musescore' | 'lilypond' | 'draft';
+  interface VDoc {
+    sha: string;
+    name: string | null;
+    instrumentSlug: string;
+    instrument: string | null;
+    partNumber: number | null;
+    partNumbers: number[];
+    format: string;
+    source: string | null;
+    origin: Origin;
+    modified: string | null;
+    current: boolean;
+  }
   const data = $derived(page.data as {
     slug: string;
     title: string;
@@ -18,18 +32,64 @@
       outputs: { sha256: string; name: string; kind: string; format?: string; part?: string }[];
       ai: { cost: number } | null;
     } | null;
-    parts: {
-      sha: string;
-      name: string | null;
-      instrumentSlug: string;
-      instrument: string | null;
-      partNumber: number | null;
-      format: string;
-      source: string | null;
-      generated: boolean;
-      current: boolean;
-    }[];
+    parts: VDoc[];
+    scores: VDoc[];
+    audio: VDoc[];
+    musescore: VDoc[];
   });
+  const ORIGIN_LABEL: Record<Origin, string> = {
+    original: 'Original',
+    musescore: 'MuseScore-built',
+    lilypond: 'LilyPond',
+    draft: 'Draft (from PDFs)',
+  };
+
+  // ── All versions: one row per part, one column per origin ──
+  const origins = $derived(
+    (['original', 'musescore', 'lilypond', 'draft'] as Origin[]).filter((o) =>
+      [...data.parts, ...data.scores].some((d) => d.origin === o)
+    )
+  );
+  // Drum parts share one instrument, so tell them apart by kind.
+  const DRUM_KINDS: [RegExp, string][] = [
+    [/snare/i, 'Snare'],
+    [/tenor|toms?\b|quad/i, 'Tenors'],
+    [/bass[\s_-]*drum|drums-bass/i, 'Bass drum'],
+    [/kit|drum[\s_-]*set/i, 'Drum kit'],
+    [/cymbal/i, 'Cymbals'],
+  ];
+  const drumKind = (d: VDoc) => DRUM_KINDS.find(([re]) => re.test(d.name ?? ''))?.[1] ?? '';
+  const partName = (d: VDoc) => {
+    const kind = d.instrumentSlug === 'drums' ? drumKind(d) : '';
+    return `${d.instrument ?? d.instrumentSlug}${kind ? ` — ${kind}` : ''}${d.partNumbers.length ? ` ${d.partNumbers.join(' & ')}` : ''}`;
+  };
+  // A PDF in the scores bucket is either the full score or a generated part for
+  // an instrument off the core roster (piccolo, xylophone) — name it as such.
+  const scoreRowName = (d: VDoc) => {
+    const stem = (d.name ?? '').replace(/\.pdf$/i, '').replace(/[-_ ](letter|lyre)$/i, '');
+    if (d.origin === 'original' || /(^|[-_ ])(score|full|conductor)([-_ ]|$)/i.test(stem)) return 'Full score';
+    const rest = stem.startsWith(`${data.slug}-`) ? stem.slice(data.slug.length + 1) : stem;
+    const words = rest.replace(/[-_]+/g, ' ').trim();
+    return words ? `${words[0].toUpperCase()}${words.slice(1)} (extra part)` : 'Full score';
+  };
+  const versionRows = $derived.by(() => {
+    const rows = new Map<string, { label: string; cells: Record<string, VDoc[]> }>();
+    const add = (key: string, label: string, d: VDoc) => {
+      const row = rows.get(key) ?? { label, cells: {} };
+      (row.cells[d.origin] ??= []).push(d);
+      rows.set(key, row);
+    };
+    for (const d of data.parts) add(`p|${partName(d)}`, partName(d), d);
+    for (const d of data.scores) add(`s|${scoreRowName(d)}`, scoreRowName(d), d);
+    const rank = (l: string) => (l === 'Full score' ? 0 : /\(extra part\)$/.test(l) ? 2 : 1);
+    return [...rows.values()].sort((a, b) => rank(a.label) - rank(b.label) || a.label.localeCompare(b.label));
+  });
+  const cellLabel = (d: VDoc, all: VDoc[]) => {
+    const fmt = d.format === 'lyre' ? 'Lyre' : 'Letter';
+    // Several files in one cell: tell them apart by format, then by name.
+    const sameFmt = all.filter((x) => x.format === d.format).length > 1;
+    return sameFmt ? `${fmt} · ${d.name ?? 'file'}` : fmt;
+  };
   const from = $derived(page.url.pathname);
   const outputs = $derived(data.build?.outputs ?? []);
   const lySource = $derived(outputs.find((o) => o.kind === 'source') ?? null);
@@ -61,29 +121,38 @@
     }
   }
 
-  // ── Side-by-side compare ──
-  const isLily = (p: { source: string | null }) => p.source === 'lilypond';
-  const instruments = $derived(
-    [...new Map(data.parts.filter(isLily).map((p) => [p.instrumentSlug, p.instrument ?? p.instrumentSlug])).entries()].map(
-      ([slug, label]) => ({ slug, label })
-    )
-  );
+  // ── Side-by-side compare: up to three PDFs of one part (or the full score),
+  // e.g. the band's original, the MuseScore-built and the LilyPond version. ──
+  const SCORE = '__score';
+  const instruments = $derived([
+    ...(data.scores.length ? [{ slug: SCORE, label: 'Full score' }] : []),
+    ...[...new Map(data.parts.map((p) => [p.instrumentSlug, p.instrument ?? p.instrumentSlug])).entries()]
+      .map(([slug, label]) => ({ slug, label }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ]);
   let instrument = $state('');
   $effect(() => {
-    if (!instrument && instruments.length) instrument = instruments[0].slug;
+    if (!instruments.some((i) => i.slug === instrument) && instruments.length) {
+      // Start on a real part rather than the score when there is one.
+      instrument = (instruments.find((i) => i.slug !== SCORE) ?? instruments[0]).slug;
+    }
   });
-  const describe = (p: (typeof data.parts)[number]) =>
-    `${p.name ?? 'Part'}${p.format === 'lyre' ? ' (Lyre)' : ''}${p.current ? '' : ' — older version'}`;
-  const leftChoices = $derived(data.parts.filter((p) => p.instrumentSlug === instrument && !isLily(p)));
-  const rightChoices = $derived(data.parts.filter((p) => p.instrumentSlug === instrument && isLily(p)));
-  let leftSha = $state('');
-  let rightSha = $state('');
+  const describe = (p: VDoc) =>
+    `${ORIGIN_LABEL[p.origin]} · ${p.format === 'lyre' ? 'Lyre' : 'Letter'}${p.partNumbers.length ? ` · part ${p.partNumbers.join(' & ')}` : ''}${p.current ? '' : ' (older version)'}`;
+  const choices = $derived(instrument === SCORE ? data.scores : data.parts.filter((p) => p.instrumentSlug === instrument));
+  // Three panes; an empty value hides a pane.
+  let panes = $state<string[]>(['', '', '']);
+  let panesFor = '';
   $effect(() => {
-    // Default each side when the instrument changes: the band's own (manual)
-    // original on the left, the Letter generated part on the right.
-    if (!leftChoices.some((p) => p.sha === leftSha)) leftSha = (leftChoices.find((p) => !p.generated) ?? leftChoices[0])?.sha ?? '';
-    if (!rightChoices.some((p) => p.sha === rightSha)) rightSha = (rightChoices.find((p) => p.format === 'letter') ?? rightChoices[0])?.sha ?? '';
+    // Default the panes when the instrument changes: original, MuseScore-built,
+    // LilyPond (Letter preferred) — whichever exist, in that order.
+    if (panesFor === instrument) return;
+    panesFor = instrument;
+    const pick = (o: Origin) => choices.find((p) => p.origin === o && p.format === 'letter') ?? choices.find((p) => p.origin === o);
+    const picked = (['original', 'musescore', 'lilypond', 'draft'] as Origin[]).map(pick).filter(Boolean) as VDoc[];
+    panes = [0, 1, 2].map((i) => picked[i]?.sha ?? '');
   });
+  const shown = $derived(panes.filter(Boolean));
 
   const pageCounts = $state<Record<string, number>>({});
   async function pagesOf(sha: string) {
@@ -96,8 +165,7 @@
     }
   }
   $effect(() => {
-    void pagesOf(leftSha);
-    void pagesOf(rightSha);
+    for (const sha of panes) void pagesOf(sha);
   });
   const pageList = (sha: string) => Array.from({ length: pageCounts[sha] ?? 0 }, (_, i) => i + 1);
 </script>
@@ -118,9 +186,59 @@
     {/if}
   </header>
 
+  <section class="block">
+    <h3>All versions</h3>
+    <p class="hint muted">
+      Every copy of each part, by where it came from. Players see the newest generated version by
+      default and can pick the others as "older version".
+    </p>
+    <div class="scroller">
+      <table class="parts versions">
+        <thead>
+          <tr>
+            <th scope="col">Part</th>
+            {#each origins as o (o)}<th scope="col">{ORIGIN_LABEL[o]}</th>{/each}
+          </tr>
+        </thead>
+        <tbody>
+          {#each versionRows as r (r.label)}
+            <tr>
+              <th scope="row">{r.label}</th>
+              {#each origins as o (o)}
+                <td>
+                  {#each (r.cells[o] ?? []).sort((a, b) => a.format.localeCompare(b.format)) as d (d.sha)}
+                    <a href={viewHref({ sha: d.sha, title: `${data.title} — ${r.label} (${ORIGIN_LABEL[o]})`, from })} title={d.name ?? ''}>{cellLabel(d, r.cells[o])}</a>
+                  {:else}
+                    <span class="muted">·</span>
+                  {/each}
+                </td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    <ul class="files">
+      {#each data.musescore as m (m.sha)}
+        <li>
+          <span>MuseScore master</span>
+          <a href={`/blob/${m.sha}?dl=${encodeURIComponent(m.name ?? `${data.slug}.mscz`)}`}>download {m.name ?? ''}</a>
+          {#if m.modified}<span class="muted">modified {fmtDate(m.modified)}</span>{/if}
+        </li>
+      {/each}
+      {#each data.audio as a (a.sha)}
+        <li>
+          <span>{ORIGIN_LABEL[a.origin]} audio{a.current ? '' : ' (older version)'}</span>
+          <audio controls preload="none" src={`/blob/${a.sha}`}></audio>
+          <span class="muted">{a.name}</span>
+        </li>
+      {/each}
+    </ul>
+  </section>
+
   {#if data.build}
     <section class="block">
-      <h3>Files</h3>
+      <h3>LilyPond files</h3>
       <ul class="files">
         {#each scores as s (s.sha256)}
           <li><a href={viewHref({ sha: s.sha256, title: `${data.title} — Full score`, from })}>Full score</a> <span class="muted">{s.name}</span></li>
@@ -168,26 +286,22 @@
             {#each instruments as i (i.slug)}<option value={i.slug}>{instrumentDisplay(i.label, null)}</option>{/each}
           </select>
         </label>
-        <label>
-          Left (original)
-          <select bind:value={leftSha}>
-            {#if !leftChoices.length}<option value="">No other PDF for this instrument</option>{/if}
-            {#each leftChoices as p (p.sha)}<option value={p.sha}>{describe(p)}</option>{/each}
-          </select>
-        </label>
-        <label>
-          Right (LilyPond)
-          <select bind:value={rightSha}>
-            {#each rightChoices as p (p.sha)}<option value={p.sha}>{describe(p)}</option>{/each}
-          </select>
-        </label>
+        {#each [0, 1, 2] as i (i)}
+          <label>
+            {['First', 'Second', 'Third'][i]}
+            <select bind:value={panes[i]}>
+              <option value="">— none —</option>
+              {#each choices as p (p.sha)}<option value={p.sha}>{describe(p)}</option>{/each}
+            </select>
+          </label>
+        {/each}
       </div>
-      <div class="compare">
-        {#each [leftSha, rightSha] as sha, side (side)}
+      <div class="compare" style:grid-template-columns={`repeat(${Math.max(shown.length, 1)}, minmax(0, 1fr))`}>
+        {#each shown as sha (sha)}
+          {@const d = choices.find((c) => c.sha === sha)}
           <div class="col">
-            {#if !sha}
-              <p class="muted">Nothing to show.</p>
-            {:else if pageCounts[sha] == null}
+            {#if d}<p class="pane-title">{describe(d)}</p>{/if}
+            {#if pageCounts[sha] == null}
               <p class="muted">Loading…</p>
             {:else}
               {#each pageList(sha) as n (n)}
@@ -269,6 +383,24 @@
     padding: 6px 10px;
     border-bottom: 1px solid var(--line);
   }
+  .versions {
+    max-width: none;
+  }
+  .versions td {
+    vertical-align: top;
+  }
+  .versions td a {
+    display: inline-block;
+    margin-right: 10px;
+    min-height: 28px;
+  }
+  .scroller {
+    overflow-x: auto;
+    margin-bottom: 12px;
+  }
+  .hint {
+    margin-bottom: 8px;
+  }
   .pickers {
     display: flex;
     flex-wrap: wrap;
@@ -288,8 +420,15 @@
   }
   .compare {
     display: grid;
-    grid-template-columns: 1fr 1fr;
     gap: 12px;
+  }
+  .pane-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    padding: 4px 0;
   }
   .col {
     display: flex;
@@ -305,7 +444,7 @@
   }
   @media (max-width: 700px) {
     .compare {
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr !important;
     }
   }
 </style>

@@ -13,13 +13,15 @@ export const LILYPOND_VERSION = '2.24.3';
 
 /** Print formats, mirroring the app's PrintFormat taxonomy (letter, lyre). */
 export const LY_FORMATS = {
-  // Music stand: US Letter, ~1.75 mm staff space (the engraving standard).
+  // Music stand: US Letter, ~1.75 mm staff space (the engraving standard). The
+  // 1" top band is left empty for the app-owned header stamped afterwards
+  // (src/scores/stamp.js), exactly as on the MuseScore-built parts.
   letter: {
     staffSize: 20,
     paper: [
       'paper-width = 8.5\\in',
       'paper-height = 11\\in',
-      'top-margin = 0.5\\in',
+      'top-margin = 1.0\\in',
       'bottom-margin = 0.5\\in',
       'left-margin = 0.6\\in',
       'right-margin = 0.6\\in',
@@ -29,22 +31,37 @@ export const LY_FORMATS = {
   },
   // Lyre card: 7×5.5 in, pinned to the top-left of a portrait Letter sheet
   // (same physical layout as the MuseScore-built lyre parts) at ~1.35 mm staff
-  // space; one compact "Title — Part" line instead of the full title block.
+  // space; a 0.5" top band for the stamped one-line "Title - Part" header.
   lyre: {
     staffSize: 15.5,
     paper: [
       'paper-width = 8.5\\in',
       'paper-height = 11\\in',
-      'top-margin = 0.3\\in',
+      'top-margin = 0.5\\in',
       'left-margin = 0.25\\in',
       'right-margin = 1.75\\in',
       'bottom-margin = 5.75\\in',
       'ragged-last-bottom = ##t',
-      'print-page-number = ##f',
     ],
     compactTitle: true,
   },
 };
+
+/** The header/date stamp's page geometry per format (points), for stampCorners. */
+export const LYRE_TRIM = { width: 7 * 72, height: 5.5 * 72 };
+
+// LilyPond prints no title block, page numbers or tagline of its own: the
+// app-owned header and render date are stamped on afterwards, the same as on
+// MuseScore-built parts, so both generators' PDFs look alike.
+const NO_TITLES = [
+  'print-page-number = ##f',
+  'bookTitleMarkup = ##f',
+  'scoreTitleMarkup = ##f',
+  'oddHeaderMarkup = ##f',
+  'evenHeaderMarkup = ##f',
+  'oddFooterMarkup = ##f',
+  'evenFooterMarkup = ##f',
+];
 
 /** Escape a string for a LilyPond "string literal". */
 const lyString = (s) => JSON.stringify(String(s ?? ''));
@@ -178,7 +195,7 @@ export function fullScoreLy(src, title) {
   return [
     preamble(size),
     headerBlock(title, src.header),
-    `\\paper {\n  ${LY_FORMATS.letter.paper.join('\n  ')}\n}`,
+    `\\paper {\n  ${[...LY_FORMATS.letter.paper, ...NO_TITLES].join('\n  ')}\n}`,
     src.music,
     `\\score {\n  ${src.fullMusic}\n  \\layout {\n    \\context { \\Staff \\RemoveEmptyStaves }\n    \\context { \\DrumStaff \\RemoveEmptyStaves }\n  }\n}`,
   ].join('\n\n');
@@ -195,16 +212,10 @@ export function fullScoreLy(src, title) {
  */
 export function partLy(src, part, title, format) {
   const fmt = LY_FORMATS[format];
-  const titleMarkup = fmt.compactTitle
-    ? [
-        '  bookTitleMarkup = \\markup \\fill-line { \\line { \\bold \\fromproperty #\'header:title " — " \\fromproperty #\'header:instrument } }',
-        '  scoreTitleMarkup = ##f',
-      ]
-    : [];
   return [
     preamble(fmt.staffSize),
     headerBlock(title, fmt.compactTitle ? {} : src.header, { instrument: part.name }),
-    `\\paper {\n  ${[...fmt.paper, ...titleMarkup].join('\n  ')}\n}`,
+    `\\paper {\n  ${[...fmt.paper, ...NO_TITLES].join('\n  ')}\n}`,
     src.music,
     // Multi-bar rests always as the modern thick bar with a number (LilyPond
     // otherwise draws old "church rest" blocks for up to 10 bars).

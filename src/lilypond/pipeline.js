@@ -16,7 +16,8 @@ import { promisify } from 'node:util';
 
 import { resolveMscore, runMscore } from '../scores/musescore.js';
 import { readParts, readTitle, readSwing } from './musicxml.js';
-import { planSong, fullScoreLy, partLy, midiLy, LY_FORMATS } from './generate.js';
+import { planSong, fullScoreLy, partLy, midiLy, LY_FORMATS, LYRE_TRIM } from './generate.js';
+import { stampCorners } from '../scores/stamp.js';
 import { parseMidi, compareMidi } from './midi.js';
 
 const execFileP = promisify(execFile);
@@ -30,6 +31,26 @@ export function toolPaths(env = process.env) {
     lame: env.LAME_BIN || 'lame',
     soundfont: env.SOUNDFONT_PATH || '/usr/share/sounds/sf2/FluidR3_GM.sf2',
   };
+}
+
+/** Local render timestamp `YYYY-MM-DD HH:MM`, the same stamp the MuseScore builder prints. */
+export function renderStamp(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Stamp the app-owned header and render date onto a LilyPond PDF, matching the
+ * MuseScore-built parts: Letter gets a large centered title, the part on the
+ * left, page number right and the date bottom-right; Lyre gets one
+ * "Title - Part" line, the date top-right and the card's cut guides.
+ */
+export async function stampOutput(path, { title, part, format, date }) {
+  if (format === 'lyre') {
+    await stampCorners(path, { header: `${title} - ${part}`, date, datePosition: 'topRight', trim: LYRE_TRIM });
+  } else {
+    await stampCorners(path, { title, header: part, headerSize: 10, titleSize: 17, date, datePosition: 'bottomRight' });
+  }
 }
 
 /** A part at or above this match rate passes the fidelity check. */
@@ -198,9 +219,10 @@ export async function renderMusicXml(opts) {
   const outDir = join(workDir, 'out');
   await mkdir(outDir, { recursive: true });
   const outputs = [];
+  const renderDate = opts.renderDate ?? renderStamp();
   const scoreSource = fullScoreLy(src, title);
   const jobs = [
-    { base: `${songSlug}-score-letter`, source: scoreSource, kind: 'score', format: 'letter' },
+    { base: `${songSlug}-score-letter`, source: scoreSource, kind: 'score', format: 'letter', part: 'Full score' },
     ...src.parts.flatMap((p) =>
       formats.map((f) => ({ base: `${songSlug}-${p.slug}-${f}`, source: partLy(src, p, title, f), kind: 'part', format: f, part: p.name })),
     ),
@@ -209,7 +231,8 @@ export async function renderMusicXml(opts) {
   await pool(jobs, 3, async (j) => {
     try {
       const path = await compile(tools, outDir, j.base, j.source);
-      outputs.push({ path, name: `${j.base}.pdf`, kind: j.kind, format: j.format, ...(j.part ? { part: j.part } : {}) });
+      await stampOutput(path, { title, part: j.part, format: j.format, date: renderDate });
+      outputs.push({ path, name: `${j.base}.pdf`, kind: j.kind, format: j.format, ...(j.kind === 'part' ? { part: j.part } : {}) });
     } catch (err) {
       warnings.push(String(err.message || err));
     }
