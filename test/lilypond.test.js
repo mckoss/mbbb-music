@@ -175,7 +175,7 @@ test('planSong applies the fixups and plans every part', () => {
   const lyre = partLy(src, src.parts[0], 'Song', 'lyre');
   assert.match(lyre, /bottom-margin = 5\.75\\in/);
   assert.match(lyre, /\\compressMMRests/);
-  assert.match(midiLy(src), /\\unfoldRepeats \\articulate/);
+  assert.match(midiLy(src), /\\articulate \\unfoldRepeats/);
   assert.match(midiLy(src), /midiChannelMapping = #'instrument/);
   assert.equal(scoreStaffSize(2), 18);
   assert.equal(scoreStaffSize(20), 11);
@@ -303,4 +303,23 @@ test('synthetic MusicXML compiles to parts and MIDI with LilyPond', { skip: !has
   const drums = midi.tracks.find((t) => t.notes.every((n) => n.channel === 9));
   assert.ok(drums && drums.notes.length === 2, 'the snare plays on the drum channel');
   assert.ok(midi.tracks.some((t) => t.notes.some((n) => n.note === 70)), 'trumpet sounds concert B♭ for written C');
+});
+
+test('readSwing and midiLy apply the score swing to audio', async () => {
+  const { readSwing } = await import('../src/lilypond/musicxml.js');
+  const xml = '<sound><swing><first>5</first><second>3</second><swing-type>eighth</swing-type></swing></sound>';
+  assert.deepEqual(readSwing(xml), { first: 5, second: 3, unit: 8 });
+  assert.equal(readSwing('<swing><straight/></swing>'), null);
+  const src = { ...planSong(CONVERTED, PARTS), swing: readSwing(xml) };
+  assert.match(midiLy(src), /\\include "swing\.ly"/);
+  assert.match(midiLy(src), /\\articulate \\applySwing 8 #'\(5 3\) \\unfoldRepeats/);
+  assert.doesNotMatch(midiLy(planSong(CONVERTED, PARTS)), /applySwing/);
+});
+
+test('compareMidi tolerates small onset differences such as swing ratios', () => {
+  const ref = parseMidi(midiFile([[0, [[0, 60], [0.604, 62], [1, 64], [1.604, 65]]]]));
+  const swung = parseMidi(midiFile([[0, [[0, 60], [0.625, 62], [1, 64], [1.625, 65]]]]));
+  const straight = parseMidi(midiFile([[0, [[0, 60], [0.5, 62], [1, 64], [1.5, 65]]]]));
+  assert.equal(compareMidi(ref, swung)[0].match, 1);
+  assert.equal(compareMidi(ref, straight)[0].match, 0.5);
 });
