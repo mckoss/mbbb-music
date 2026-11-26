@@ -338,7 +338,7 @@
             {#each lyRows as r (r.slug)}
               {@const busy = r.job && (r.job.status === 'queued' || r.job.status === 'running')}
               <tr>
-                <th scope="row" class="song-col"><span class="song-title">{r.title}</span></th>
+                <th scope="row" class="song-col"><a class="song-title" href={`/library-status/generated-scores/${r.slug}`} title="Files and side-by-side compare">{r.title}</a></th>
                 <td>
                   {#if busy}
                     <span class="ly-status running">{r.job?.status === 'queued' ? 'Queued' : (r.job?.lines.at(-1)?.msg ?? 'Running')}…</span>
@@ -427,7 +427,7 @@
               {#each pdfRows as r (r.slug)}
                 {@const busy = r.job && (r.job.status === 'queued' || r.job.status === 'running')}
                 <tr>
-                  <th scope="row" class="song-col"><span class="song-title">{r.title}</span> <span class="muted">· {r.partCount} part PDFs</span></th>
+                  <th scope="row" class="song-col"><a class="song-title" href={`/library-status/generated-scores/${r.slug}`} title="Files and side-by-side compare">{r.title}</a> <span class="muted">· {r.partCount} part PDFs</span></th>
                   <td>
                     {#if busy}
                       <span class="ly-status running">{r.job?.status === 'queued' ? 'Queued' : (r.job?.lines.at(-1)?.msg ?? 'Running')}…</span>

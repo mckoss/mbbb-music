@@ -506,7 +506,7 @@
   // switch within the current song; the part number still carries song-to-song.
   let performPart = $state<number | null>(null);
   let performPartSha = $state<string | null>(null);
-  const performParts = $derived(performTune ? partsForFormat(performTune, instrument, format) : []);
+  const performParts = $derived(performTune ? partsForFormat(performTune, instrument, format, { withOlder: true }) : []);
   const performPartOptions = $derived(
     performParts.map((part) => ({
       value: part.sha256,

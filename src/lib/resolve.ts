@@ -22,18 +22,48 @@ export function partsFor(tune: Tune, instrumentSlug: string): CatalogPart[] {
 }
 
 /**
+ * Older versions of an instrument's parts: the band's own PDFs (or earlier
+ * generated ones) that a generated part replaced. They stay off packets and
+ * defaults but players can still pick them. Same format rule as the parts.
+ */
+export function olderPartsFor(tune: Tune, instrumentSlug: string, printFormat: PrintFormat): CatalogPart[] {
+  const all = (tune.masked ?? [])
+    .filter((m) => m.bucket === 'parts' && m.instrumentSlug === instrumentSlug && m.sha256)
+    .map(
+      (m) =>
+        ({
+          ...m,
+          instrumentSlug,
+          instrument: m.instrument ?? null,
+          key: m.key ?? null,
+          partNumber: m.partNumber ?? null,
+          format: m.format ?? 'letter',
+          superseded: true,
+        }) as CatalogPart
+    );
+  const inFormat = all.filter((p) => p.format === printFormat);
+  return inFormat.length > 0 ? inFormat : all;
+}
+
+/**
  * Parts for an instrument in the selected print format, so the list conforms to
  * the Format dropdown. Falls back to all of the instrument's parts when none
  * exist in the chosen format (so the user still sees the available rendition).
+ * With `withOlder`, the older versions generated parts replaced are appended
+ * (pickers use this; packets and downloads don't).
  */
 export function partsForFormat(
   tune: Tune,
   instrumentSlug: string,
-  printFormat: PrintFormat
+  printFormat: PrintFormat,
+  opts: { withOlder?: boolean } = {}
 ): CatalogPart[] {
   const all = partsFor(tune, instrumentSlug);
   const inFormat = all.filter((p) => p.format === printFormat);
-  return inFormat.length > 0 ? inFormat : all;
+  const current = inFormat.length > 0 ? inFormat : all;
+  if (!opts.withOlder) return current;
+  const seen = new Set(current.map((p) => p.sha256));
+  return [...current, ...olderPartsFor(tune, instrumentSlug, printFormat).filter((p) => !seen.has(p.sha256))];
 }
 
 /**
@@ -174,7 +204,7 @@ export function viewableDocs(
   // The instrument and format are chosen by their own dropdowns, so the Document
   // picker only needs the part identity — "Part 1", "Part 2", … (and "Full score"
   // / "Notes" below) — never the instrument name or a raw filename.
-  const parts = partsForFormat(tune, instrumentSlug, printFormat);
+  const parts = partsForFormat(tune, instrumentSlug, printFormat, { withOlder: true });
   for (const p of parts) push(p.sha256, partShortLabel(p, parts), 'part');
 
   // Charts the importer couldn't pin to an instrument — typically a whole-band
@@ -192,6 +222,10 @@ export function viewableDocs(
   const scores = tune.scores ?? [];
   for (const s of scores) {
     push(s.sha256, scores.length === 1 ? 'Full score' : `Full score — ${cleanDocName(s.originalName) || 'untitled'}`, 'score', s);
+  }
+  // Full scores a generated score replaced: still viewable, as older versions.
+  for (const m of (tune.masked ?? []).filter((x) => x.bucket === 'scores' && x.sha256)) {
+    push(m.sha256, `Full score — older version${cleanDocName(m.originalName) ? ` (${cleanDocName(m.originalName)})` : ''}`, 'score', m);
   }
 
   const notes = tune.notes ?? [];

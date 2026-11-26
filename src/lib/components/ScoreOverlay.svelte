@@ -56,7 +56,8 @@
   // score(s), and notes. The chosen one is addressed by sha (?part); absent or
   // stale, fall back to the first (a part, else a real score).
   const docs = $derived(open && tune ? viewableDocs(tune, instrument, format) : []);
-  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format) : []);
+  // Includes older versions (originals a generated part replaced), after the current parts.
+  const parts = $derived(open && tune ? partsForFormat(tune, instrument, format, { withOlder: true }) : []);
   const choiceKey = $derived(preferenceKey(page.data.user?.email ?? '', tune?.slug ?? '', instrument, format));
   const savedPart = $derived(parts.some((p) => p.sha256 === $partChoices[choiceKey]) ? $partChoices[choiceKey] : null);
   const current = $derived(docs.find((d) => d.sha === partSha) ?? docs.find((d) => d.sha === savedPart) ?? docs[0] ?? null);
