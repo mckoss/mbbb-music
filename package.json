@@ -1,6 +1,6 @@
 {
   "name": "mbbb-music",
-  "version": "1.68.0",
+  "version": "1.69.0",
   "private": true,
   "description": "Mutiny Bay Brass Band music library tooling. Phase 1: Google Drive asset sync.",
   "type": "module",
@@ -29,6 +29,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.14.0",
     "@napi-rs/canvas": "1.0.0",
     "google-auth-library": "9.15.1",
     "leaflet": "1.9.4",

@@ -152,6 +152,7 @@
     failed?: boolean;
   }
   interface LyBuild {
+    ai: { model: string; calls: number; cost: number } | null;
     origin: 'mscz' | 'omr';
     omr: LyOmr[] | null;
     builtAt: string;
@@ -174,6 +175,7 @@
   let lyBuilds = $state<Record<string, LyBuild>>({});
   let lyJobs = $state<LyJob[]>([]);
   let lyError = $state<string | null>(null);
+  let lyAi = $state(false); // server has an Anthropic key: offer the AI correction pass
   let lyOpen = $state<string | null>(null); // slug whose report is expanded
   const lyActive = $derived(lyJobs.some((j) => j.status === 'queued' || j.status === 'running'));
   const jobFor = (slug: string) => [...lyJobs].reverse().find((j) => j.slug === slug) ?? null;
@@ -186,6 +188,7 @@
       const wasActive = lyActive;
       lyBuilds = data.builds ?? {};
       lyJobs = data.jobs ?? [];
+      lyAi = Boolean(data.aiAvailable);
       lyError = null;
       // A build just finished: reload the catalog so new parts/audio appear.
       if (wasActive && !lyJobs.some((j) => j.status === 'queued' || j.status === 'running')) await invalidateAll();
@@ -394,6 +397,13 @@
           they sit beside the band's PDFs and replace nothing. OMR misreads (an odd bar
           length, a missed line) can make parts drift; the report lists every repair and gap.
         </p>
+        {#if lyAi}
+          <p class="hint">
+            <strong>Build with AI</strong> adds a correction pass: Claude Opus 5.5 compares each page
+            of every part with what OMR read and fixes the bars (each fix is checked against the
+            time signature first). It costs roughly $0.05–0.10 per page; the report shows the cost.
+          </p>
+        {/if}
         <div class="scroller">
           <table class="ly-table">
             <thead>
@@ -415,7 +425,7 @@
                     {:else if r.job?.status === 'failed'}
                       <span class="ly-status failed" title={r.job.error ?? ''}>Failed: {r.job.error}</span>
                     {:else if r.build}
-                      <span class="ly-status">Built {fmtDate(r.build.builtAt)} · {r.build.parts} parts read</span>
+                      <span class="ly-status">Built {fmtDate(r.build.builtAt)} · {r.build.parts} parts read{r.build.ai ? ` · AI-corrected ($${r.build.ai.cost.toFixed(2)})` : ''}</span>
                     {:else}
                       <span class="muted">Not built</span>
                     {/if}
@@ -430,6 +440,9 @@
                   </td>
                   <td class="ly-actions">
                     <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug] })}>{r.build ? 'Rebuild draft' : 'Build draft'}</button>
+                    {#if lyAi}
+                      <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug], ai: true })}>Build with AI</button>
+                    {/if}
                     {#if r.build}
                       <button type="button" class="ly-btn ghost" disabled={!!busy} onclick={() => lyPost({ action: 'revert', slug: r.slug })}>Remove</button>
                     {/if}
@@ -447,6 +460,9 @@
                         {/each}
                       </ul>
                       {#each r.build.warnings as w, i (i)}<p class="ly-error">{w}</p>{/each}
+                      {#if r.build.ai}
+                        <p class="muted">AI correction: {r.build.ai.model}, {r.build.ai.calls} calls, ${r.build.ai.cost.toFixed(2)}.</p>
+                      {/if}
                     </td>
                   </tr>
                 {/if}

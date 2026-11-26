@@ -253,8 +253,12 @@ or half that with the Batch API.
    MuseScore-built set. *v1.68.0:* PDF-only songs get a draft master: OMR per
    part PDF, bar counts repaired from the printed system measure numbers,
    transposition added, parts merged, then a full score and band MP3 (drafts
-   mask nothing). Still to do: the AI correction pass (fixes the OMR misreads
-   that make parts drift: wrong bar lengths, missed lines), drums from PDFs,
+   mask nothing). *v1.69.0:* optional AI correction pass (admin "Build with
+   AI"): Opus 5.5 corrects each page against its image in a compact bar
+   notation; bars are checked against the time signature before use; cost is
+   recorded per build. With hand-written answers in the same format, a part
+   went from 10% to 100% agreement with its MuseScore master; the model's own
+   accuracy is still to be measured on real songs. Still to do: drums from PDFs,
    splitting combined PDFs, the private scores repo and commit lineage, and
    draft/publish.
    Original plan: pipeline steps (convert -> commit with trailers -> build
