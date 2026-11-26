@@ -1,0 +1,10 @@
+.git
+node_modules
+data
+build
+.svelte-kit
+tmp
+config.json
+config.json.bak
+test-results
+playwright-report

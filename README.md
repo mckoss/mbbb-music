@@ -169,6 +169,10 @@ node bin/sync.js --dry-run        # lists/classifies real Drive files without do
 
 ### Railway setup (MBBB_CONFIG_JSON)
 
+Railway builds the repository's `Dockerfile`, which installs the system tools
+the server needs (LilyPond, headless MuseScore Studio 4.7.7 under Xvfb, unzip);
+see AGENTS.md "Deployment Image (Railway)".
+
 Railway has no checked-in `config.json`, so provide the same JSON through the
 `MBBB_CONFIG_JSON` environment variable. In the Railway service's **Variables**
 tab, add a variable named `MBBB_CONFIG_JSON` whose value is the whole config
