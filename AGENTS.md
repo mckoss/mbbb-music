@@ -136,6 +136,22 @@ junk, folders, and archived files are exempt.
 If a future app is added, update this file with the new install, run, test, and
 deploy commands before assuming another agent will know them.
 
+## Deployment Image (Railway)
+
+Railway builds the root `Dockerfile` (it takes precedence over Railway's default
+builder). Every system tool the server needs is installed there, never by hand
+on a running service: Node 24, LilyPond (`lilypond`, `musicxml2ly`), MuseScore
+Studio 4.7.7 (the band's scores are saved by 4.6.x; older versions refuse to open
+them), Xvfb, and `unzip`. MuseScore 4.7 needs an X display even for CLI exports,
+so `scripts/mscore-headless.sh` is installed as `/usr/local/bin/mscore`, runs it
+under `xvfb-run`, and `MSCORE_BIN` points the app at it. The app runs from
+`/app`, as it did under Railway's default builder.
+
+When you add a system dependency, add it to the `Dockerfile` and to the cloud dev
+environment's setup script together, and check that the image builds
+(`docker build -t mbbb .`); the build fails if `lilypond --version` or
+`mscore --version` does not run.
+
 ## Isolated Changes With Git Worktrees
 
 Every code change runs its whole lifecycle in a git worktree:
