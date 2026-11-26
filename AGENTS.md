@@ -188,10 +188,15 @@ Drive PDFs, or MuseScore-built parts — are never dropped: players see them in
 every part picker as "older version" entries after the current part
 (`partsForFormat(..., { withOlder: true })` in `src/lib/resolve.ts`), while
 packets and downloads keep only current files. Each song's page under the
-Generated tab (`/library-status/generated-scores/<slug>`) previews every
-LilyPond file (score, parts, band audio, the `.ly` source) and has a
-side-by-side viewer: pick an instrument and compare the original PDF with the
-generated part, page by page. Swing marked in the score (`<swing>`) is applied
+Generated tab (`/library-status/generated-scores/<slug>`) lists **all versions**
+of every part and the full score by origin (original Drive PDFs, MuseScore-built,
+LilyPond, draft), plus the MuseScore master and every recording; previews the
+LilyPond files (including the `.ly` source); and has a side-by-side viewer with
+up to three panes (default: original, MuseScore-built, LilyPond) for any part or
+the full score. LilyPond PDFs print no title block of their own: the same
+app-owned header and render-date stamp as MuseScore-built parts
+(`src/scores/stamp.js`, via `stampOutput` in `src/lilypond/pipeline.js`) is
+drawn into the reserved top band (1" Letter, 0.5" Lyre). Swing marked in the score (`<swing>`) is applied
 to the MIDI with LilyPond's `\applySwing`, and the fidelity check matches
 onsets within 0.05 beats.
 

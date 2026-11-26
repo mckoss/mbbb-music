@@ -335,3 +335,14 @@ test('mergeRests joins whole-bar rests split at page breaks, but not across mark
   const src = planSong(CONVERTED, PARTS);
   assert.match(partLy(src, src.parts[0], 'S', 'letter'), /MultiMeasureRest\.expand-limit = #1/);
 });
+
+test('LilyPond sources leave titles to the app stamp', () => {
+  const src = planSong(CONVERTED, PARTS);
+  for (const ly of [partLy(src, src.parts[0], 'S', 'letter'), partLy(src, src.parts[0], 'S', 'lyre'), fullScoreLy(src, 'S')]) {
+    assert.match(ly, /bookTitleMarkup = ##f/);
+    assert.match(ly, /oddFooterMarkup = ##f/);
+    assert.match(ly, /print-page-number = ##f/);
+  }
+  assert.match(partLy(src, src.parts[0], 'S', 'letter'), /top-margin = 1\.0\\in/);
+  assert.match(partLy(src, src.parts[0], 'S', 'lyre'), /top-margin = 0\.5\\in/);
+});
