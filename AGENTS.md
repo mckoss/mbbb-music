@@ -193,7 +193,9 @@ of every part and the full score by origin (original Drive PDFs, MuseScore-built
 LilyPond, draft), plus the MuseScore master and every recording; previews the
 LilyPond files (including the `.ly` source); and has a side-by-side viewer with
 up to three panes (default: original, MuseScore-built, LilyPond) for any part or
-the full score. LilyPond PDFs print no title block of their own: the same
+the full score. Song titles on Library Status and the Generated tab link to this
+page (with `?from=` for the back link), and admins can build, rebuild (with AI
+for PDF-only songs) or remove the LilyPond output from it directly. LilyPond PDFs print no title block of their own: the same
 app-owned header and render-date stamp as MuseScore-built parts
 (`src/scores/stamp.js`, via `stampOutput` in `src/lilypond/pipeline.js`) is
 drawn into the reserved top band (1" Letter, 0.5" Lyre). Swing marked in the score (`<swing>`) is applied

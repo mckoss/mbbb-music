@@ -610,7 +610,7 @@
           {#each g.rows as r (r.slug)}
             <tr>
               <th class="row-head" scope="row">
-                <span class="row-title">{r.title}</span>
+                <a class="row-title" href={`/library-status/generated-scores/${r.slug}?from=${encodeURIComponent('/library-status')}`} title="All versions, audio and generation for this song">{r.title}</a>
                 {#if canEdit}
                   <button class="edit-link" onclick={() => openEditor(r.slug)} title="Correct metadata for this song">✎ edit</button>
                 {/if}
