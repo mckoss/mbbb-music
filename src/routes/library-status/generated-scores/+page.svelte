@@ -176,6 +176,7 @@
   let lyJobs = $state<LyJob[]>([]);
   let lyError = $state<string | null>(null);
   let lyAi = $state(false); // server has an Anthropic key: offer the AI correction pass
+  let lyLoaded = $state(false); // status fetched (so a missing key is reported, not guessed)
   let lyOpen = $state<string | null>(null); // slug whose report is expanded
   const lyActive = $derived(lyJobs.some((j) => j.status === 'queued' || j.status === 'running'));
   const jobFor = (slug: string) => [...lyJobs].reverse().find((j) => j.slug === slug) ?? null;
@@ -189,6 +190,7 @@
       lyBuilds = data.builds ?? {};
       lyJobs = data.jobs ?? [];
       lyAi = Boolean(data.aiAvailable);
+      lyLoaded = true;
       lyError = null;
       // A build just finished: reload the catalog so new parts/audio appear.
       if (wasActive && !lyJobs.some((j) => j.status === 'queued' || j.status === 'running')) await invalidateAll();
@@ -397,11 +399,18 @@
           they sit beside the band's PDFs and replace nothing. OMR misreads (an odd bar
           length, a missed line) can make parts drift; the report lists every repair and gap.
         </p>
-        {#if lyAi}
-          <p class="hint">
-            <strong>Build with AI</strong> adds a correction pass: Claude Opus 5.5 compares each page
-            of every part with what OMR read and fixes the bars (each fix is checked against the
-            time signature first). It costs roughly $0.05–0.10 per page; the report shows the cost.
+        <p class="hint">
+          <strong>Build with AI</strong> adds a correction pass: Claude Opus 5.5 compares each page
+          of every part with what OMR read and fixes the bars (each fix is checked against the
+          time signature first). It costs roughly $0.05–0.10 per page; the report shows the cost.
+        </p>
+        {#if lyLoaded && !lyAi}
+          <p class="ly-warn" role="status">
+            <strong>Build with AI is off:</strong> the server has no <code>ANTHROPIC_API_KEY</code>.
+            To turn it on, open Railway → the <em>mbbb-music</em> service → <em>Variables</em>, add
+            <code>ANTHROPIC_API_KEY</code> with an Anthropic API key as its value, then click
+            <em>Deploy</em> on the staged-changes banner (a code deploy alone does not apply new
+            variables). Reload this page once the deploy finishes.
           </p>
         {/if}
         <div class="scroller">
@@ -440,9 +449,13 @@
                   </td>
                   <td class="ly-actions">
                     <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug] })}>{r.build ? 'Rebuild draft' : 'Build draft'}</button>
-                    {#if lyAi}
-                      <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug], ai: true })}>Build with AI</button>
-                    {/if}
+                    <button
+                      type="button"
+                      class="ly-btn"
+                      disabled={!!busy || !lyAi}
+                      title={lyAi ? '' : 'Off: the server has no ANTHROPIC_API_KEY (see the note above)'}
+                      onclick={() => lyPost({ action: 'build', slugs: [r.slug], ai: true })}>Build with AI</button
+                    >
                     {#if r.build}
                       <button type="button" class="ly-btn ghost" disabled={!!busy} onclick={() => lyPost({ action: 'revert', slug: r.slug })}>Remove</button>
                     {/if}
@@ -604,6 +617,14 @@
   }
   .ly-btn.ghost {
     background: transparent;
+  }
+  .ly-warn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #e0b252;
+    background: #fdf5e2;
+    color: #5c4300;
+    font-size: 0.88rem;
   }
   .ly-btn:disabled {
     opacity: 0.5;

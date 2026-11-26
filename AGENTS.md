@@ -203,6 +203,16 @@ signature (`validatePage`); valid pages replace the OMR bars, invalid bars keep
 the OMR reading, and each call's tokens and USD cost go into the build report.
 Tests stub the client (`stream(params).finalMessage()`); no test calls the API.
 
+**Never hide a feature without saying why.** When an admin feature is off for a
+missing setting (a key, a tool, a config value), keep its control visible but
+disabled and show an admin-only note naming the missing setting and the exact
+steps to enable it.
+
+**Railway variables are staged.** Adding or editing a service variable in
+Railway does nothing until someone clicks **Deploy** on the staged-changes
+banner; a push-triggered code deploy does not apply them. Check a variable is
+live by listing variable *names* through the Railway API, never values.
+
 ## Isolated Changes With Git Worktrees
 
 Every code change runs its whole lifecycle in a git worktree:
