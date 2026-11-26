@@ -141,3 +141,27 @@ test('activePdfs falls back to all instrument parts when none match the selected
     ['letter-1', 'letter-2']
   );
 });
+
+test('older versions (masked originals) are offered in pickers but not packets', async () => {
+  const { partsForFormat, olderPartsFor, viewableDocs } = await import('../src/lib/resolve.js');
+  const gen = { sha256: 'g1', instrumentSlug: 'trumpet', instrument: 'Trumpet', key: 'bflat', partNumber: 1, format: 'letter', originalName: 'song-trumpet-bflat-part1-letter.pdf', source: 'lilypond', generated: true };
+  const tune = {
+    slug: 's', title: 'S', status: 'Unfiled', lastModified: null,
+    parts: [gen], scores: [], notes: [], audio: [], musescore: [], images: [], files: [], unreachable: [],
+    masked: [
+      { bucket: 'parts', sha256: 'm1', instrumentSlug: 'trumpet', instrument: 'Trumpet', key: 'bflat', partNumber: 1, format: 'letter', originalName: 'Song-Trumpet 1.pdf', source: 'scores' },
+      { bucket: 'scores', sha256: 'm2', originalName: 'Song Score.pdf', source: 'scores' },
+    ],
+  };
+  assert.deepEqual(partsForFormat(tune, 'trumpet', 'letter').map((p) => p.sha256), ['g1'], 'packets: current only');
+  const picker = partsForFormat(tune, 'trumpet', 'letter', { withOlder: true });
+  assert.deepEqual(picker.map((p) => p.sha256), ['g1', 'm1'], 'pickers: current first, then older');
+  assert.equal(olderPartsFor(tune, 'trumpet', 'letter')[0].superseded, true);
+  assert.match(partShortLabel(picker[1], picker), /older version$/);
+  assert.doesNotMatch(partShortLabel(picker[0], picker), /older version/);
+  assert.match(partOptionLabel(picker[1], picker), /older version$/);
+  assert.deepEqual(activePdfs(tune, 'trumpet', 'letter').map((p) => p.sha), ['g1']);
+  const docs = viewableDocs(tune, 'trumpet', 'letter');
+  assert.deepEqual(docs.map((d) => d.sha), ['g1', 'm1', 'm2']);
+  assert.match(docs[2].label, /^Full score — older version/);
+});

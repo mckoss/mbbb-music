@@ -34,6 +34,8 @@ export interface CatalogPart {
   source: string | null; // canonical source label this copy came from
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
   modifiedTime?: string | null; // Drive last-modified ISO time
+  /** An older version a generated part replaced (a masked original), offered in pickers. */
+  superseded?: boolean;
 }
 
 export interface CatalogAsset {

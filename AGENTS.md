@@ -182,6 +182,19 @@ song's MuseScore-built parts and band mix and masks replaced manual parts.
 Removing a build brings those back. Test against a throwaway data dir (an
 `MBBB_CONFIG_JSON` with its own `dataDir`), never the real library.
 
+A rebuild replaces the song's previous LilyPond output (one copy per generated
+file; no generation history). Files a generated part masks — the band's own
+Drive PDFs, or MuseScore-built parts — are never dropped: players see them in
+every part picker as "older version" entries after the current part
+(`partsForFormat(..., { withOlder: true })` in `src/lib/resolve.ts`), while
+packets and downloads keep only current files. Each song's page under the
+Generated tab (`/library-status/generated-scores/<slug>`) previews every
+LilyPond file (score, parts, band audio, the `.ly` source) and has a
+side-by-side viewer: pick an instrument and compare the original PDF with the
+generated part, page by page. Swing marked in the score (`<swing>`) is applied
+to the MIDI with LilyPond's `\applySwing`, and the fidelity check matches
+onsets within 0.05 beats.
+
 PDF-only songs (no MuseScore master) get a **draft** master instead
 (`src/omr/`): `select-parts.js` picks one PDF per part (Letter preferred, shared
 role charts and drums skipped), Audiveris reads each, `score.js` repairs bar

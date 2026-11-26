@@ -98,6 +98,13 @@ function variantTag(part: CatalogPart): string {
  * this, identical labels make the variants impossible to tell apart or address.
  */
 export function partOptionLabel(part: CatalogPart, siblings: CatalogPart[]): string {
+  // Older versions (masked originals) are labelled among themselves, then marked.
+  const peers = siblings.filter((p) => !!p.superseded === !!part.superseded);
+  const label = partOptionLabelAmong(part, peers);
+  return part.superseded ? `${label} — older version` : label;
+}
+
+function partOptionLabelAmong(part: CatalogPart, siblings: CatalogPart[]): string {
   const base = partLabel(part);
   const collides = siblings.some((p) => p.sha256 !== part.sha256 && partLabel(p) === base);
   if (!collides) return base;
@@ -130,6 +137,12 @@ function partShortBase(part: CatalogPart): string {
  * with a variant tag only when two siblings would otherwise collide.
  */
 export function partShortLabel(part: CatalogPart, siblings: CatalogPart[]): string {
+  const peers = siblings.filter((p) => !!p.superseded === !!part.superseded);
+  const label = partShortLabelAmong(part, peers);
+  return part.superseded ? `${label} — older version` : label;
+}
+
+function partShortLabelAmong(part: CatalogPart, siblings: CatalogPart[]): string {
   const base = partShortBase(part);
   const collides = siblings.some((p) => p.sha256 !== part.sha256 && partShortBase(p) === base);
   if (!collides) return base;
