@@ -3,6 +3,9 @@
   import { viewHref } from '$lib/view';
   import { fmtDate } from '$lib/format';
   import { instrumentDisplay } from '$lib/format';
+  import { onMount } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
+  import { writeFetch } from '$lib/client-version';
 
   // One song's versions: every file grouped by origin (the band's originals, the
   // MuseScore master and MuseScore-built parts, LilyPond builds), a preview of
@@ -90,7 +93,69 @@
     const sameFmt = all.filter((x) => x.format === d.format).length > 1;
     return sameFmt ? `${fmt} · ${d.name ?? 'file'}` : fmt;
   };
-  const from = $derived(page.url.pathname);
+  const from = $derived(page.url.pathname + page.url.search);
+  // Back to wherever the song was opened from (Library Status or Generated).
+  const back = $derived.by(() => {
+    const f = page.url.searchParams.get('from') ?? '';
+    return f.startsWith('/library-status') ? f : '/library-status/generated-scores';
+  });
+  const backLabel = $derived(back.startsWith('/library-status/generated-scores') ? 'Generated' : 'Library Status');
+
+  // ── Admin: build / rebuild this song here (same queue as the Generated tab;
+  // the server re-checks the admin role on /admin/lilypond) ──
+  const isAdmin = $derived(page.data.user?.role === 'admin');
+  const hasMaster = $derived(data.musescore.length > 0);
+  interface Job {
+    slug: string;
+    status: 'queued' | 'running' | 'done' | 'failed';
+    error: string | null;
+    lines: { t: number; msg: string }[];
+  }
+  let job = $state<Job | null>(null);
+  let aiAvailable = $state(false);
+  let statusLoaded = $state(false);
+  let buildError = $state<string | null>(null);
+  const busy = $derived(job?.status === 'queued' || job?.status === 'running');
+
+  async function refreshStatus() {
+    try {
+      const res = await fetch('/admin/lilypond');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      const wasBusy = busy;
+      job = [...(d.jobs ?? [])].reverse().find((j: Job) => j.slug === data.slug) ?? null;
+      aiAvailable = Boolean(d.aiAvailable);
+      statusLoaded = true;
+      if (wasBusy && !(job?.status === 'queued' || job?.status === 'running')) await invalidateAll();
+    } catch (err) {
+      buildError = `Could not load build status (${err instanceof Error ? err.message : err})`;
+    }
+  }
+  async function act(body: Record<string, unknown>) {
+    buildError = null;
+    try {
+      const res = await writeFetch('/admin/lilypond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const out = await res.json();
+      if (out.skipped?.length) buildError = 'This song has nothing to build from.';
+      await refreshStatus();
+      if (body.action === 'revert') await invalidateAll();
+    } catch (err) {
+      buildError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  onMount(() => {
+    if (!isAdmin) return;
+    void refreshStatus();
+    const timer = setInterval(() => {
+      if (busy) void refreshStatus();
+    }, 2500);
+    return () => clearInterval(timer);
+  });
   const outputs = $derived(data.build?.outputs ?? []);
   const lySource = $derived(outputs.find((o) => o.kind === 'source') ?? null);
   const audio = $derived(outputs.find((o) => o.kind === 'audio') ?? null);
@@ -172,7 +237,7 @@
 
 <section class="status">
   <header>
-    <p class="kicker"><a href="/library-status/generated-scores">← Generated</a></p>
+    <p class="kicker"><a href={back}>← {backLabel}</a></p>
     <h2>{data.title}</h2>
     {#if data.build}
       <p class="count">
@@ -182,7 +247,43 @@
         {data.build.ai ? ` · AI correction $${data.build.ai.cost.toFixed(2)}` : ''}
       </p>
     {:else}
-      <p class="count">No LilyPond build for this song yet — build it from the Generated tab.</p>
+      <p class="count">No LilyPond build for this song yet.</p>
+    {/if}
+    {#if isAdmin}
+      <div class="admin-actions">
+        {#if hasMaster}
+          <button type="button" class="ly-btn primary" disabled={busy} onclick={() => act({ action: 'build', slugs: [data.slug] })}
+            >{data.build ? 'Rebuild with LilyPond' : 'Build with LilyPond'}</button
+          >
+        {:else if data.parts.length}
+          <button type="button" class="ly-btn primary" disabled={busy} onclick={() => act({ action: 'build', slugs: [data.slug] })}
+            >{data.build ? 'Rebuild draft from PDFs' : 'Build draft from PDFs'}</button
+          >
+          <button
+            type="button"
+            class="ly-btn"
+            disabled={busy || !aiAvailable}
+            title={aiAvailable ? '' : 'Off: the server has no ANTHROPIC_API_KEY'}
+            onclick={() => act({ action: 'build', slugs: [data.slug], ai: true })}>Build with AI</button
+          >
+        {/if}
+        {#if data.build}
+          <button type="button" class="ly-btn ghost" disabled={busy} onclick={() => act({ action: 'revert', slug: data.slug })}>Remove LilyPond output</button>
+        {/if}
+        {#if busy}
+          <span class="ly-status">{job?.status === 'queued' ? 'Queued' : (job?.lines.at(-1)?.msg ?? 'Running')}…</span>
+        {:else if job?.status === 'failed'}
+          <span class="ly-error">Failed: {job.error}</span>
+        {/if}
+      </div>
+      {#if statusLoaded && !hasMaster && data.parts.length && !aiAvailable}
+        <p class="ly-warn">
+          <strong>Build with AI is off:</strong> the server has no <code>ANTHROPIC_API_KEY</code>. Add it in
+          Railway → the <em>mbbb-music</em> service → <em>Variables</em>, then click <em>Deploy</em> on the
+          staged-changes banner.
+        </p>
+      {/if}
+      {#if buildError}<p class="ly-error">{buildError}</p>{/if}
     {/if}
   </header>
 
@@ -328,6 +429,50 @@
   }
   .kicker a {
     text-decoration: none;
+  }
+  .admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .ly-btn {
+    min-height: 40px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    font-weight: 600;
+  }
+  .ly-btn.primary {
+    background: var(--accent, #1f5f8b);
+    border-color: transparent;
+    color: #fff;
+  }
+  .ly-btn.ghost {
+    background: transparent;
+  }
+  .ly-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .ly-status {
+    color: var(--accent, #1f5f8b);
+    font-size: 0.88rem;
+  }
+  .ly-error {
+    color: #b3261e;
+    font-size: 0.88rem;
+  }
+  .ly-warn {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #e0b252;
+    background: #fdf5e2;
+    color: #5c4300;
+    font-size: 0.88rem;
   }
   .count,
   .muted {
