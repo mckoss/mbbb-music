@@ -1,0 +1,56 @@
+// Admin-only LilyPond pipeline control (PLAN.md decision 9: every file
+// conversion is started by an admin, enforced here on the server).
+//   GET  /admin/lilypond → { jobs, builds } — queue state and each song's last build
+//   POST /admin/lilypond → { action: 'build', slugs } | { action: 'build-all' } | { action: 'revert', slug }
+// The hook already restricts /admin/* to admins; we re-check defensively.
+import { error, json } from '@sveltejs/kit';
+
+import { allConvertibleSlugs, enqueue, getJobs, revert } from '$lib/server/lilypond-runner';
+import { readState } from '$lib/server/lilypond-store';
+
+function requireAdmin(locals: App.Locals) {
+  if (locals.user?.role !== 'admin') throw error(403, 'Admins only');
+}
+
+/** Per-song build summary for the Generated page (no output lists). */
+function builds() {
+  const out: Record<string, unknown> = {};
+  for (const [slug, b] of Object.entries(readState().songs)) {
+    out[slug] = {
+      builtAt: b.builtAt,
+      builtBy: b.builtBy,
+      masterSha256: b.masterSha256,
+      outputs: b.outputs.length,
+      parts: b.report.parts.length,
+      passed: b.report.passed,
+      warnings: b.report.warnings,
+      checks: b.report.checks,
+    };
+  }
+  return out;
+}
+
+export function GET({ locals }) {
+  requireAdmin(locals);
+  return json({ jobs: getJobs(), builds: builds() });
+}
+
+export async function POST({ locals, request }) {
+  requireAdmin(locals);
+  const body = await request.json().catch(() => ({}));
+  const by = locals.user?.email ?? null;
+  if (body.action === 'build') {
+    const slugs = Array.isArray(body.slugs) ? body.slugs.map(String).filter(Boolean) : [];
+    if (!slugs.length) throw error(400, 'No songs given');
+    return json(enqueue(slugs, by));
+  }
+  if (body.action === 'build-all') {
+    return json(enqueue(allConvertibleSlugs(), by));
+  }
+  if (body.action === 'revert') {
+    const slug = String(body.slug || '');
+    if (!slug) throw error(400, 'No song given');
+    return json({ reverted: revert(slug) });
+  }
+  throw error(400, 'Unknown action');
+}

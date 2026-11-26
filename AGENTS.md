@@ -53,6 +53,7 @@ docs/app.js      - Prototype data and behavior
 docs/styles.css  - Prototype styling
 docs/assets/     - Public-safe visual assets
 src/sync/        - Phase 1 Drive asset sync core (reusable service)
+src/lilypond/    - LilyPond pipeline: .mscz -> MusicXML -> .ly + fixups -> PDFs, MIDI, MP3
 src/server/      - Express-callable handler for hosted refreshes
 bin/sync.js      - Phase 1 sync CLI entry point
 test/            - node:test suites (slug, classify, manifest, sync)
@@ -142,15 +143,41 @@ Railway builds the root `Dockerfile` (it takes precedence over Railway's default
 builder). Every system tool the server needs is installed there, never by hand
 on a running service: Node 24, LilyPond (`lilypond`, `musicxml2ly`), MuseScore
 Studio 4.7.7 (the band's scores are saved by 4.6.x; older versions refuse to open
-them), Xvfb, and `unzip`. MuseScore 4.7 needs an X display even for CLI exports,
+them), Xvfb, `unzip`, and fluidsynth with the FluidR3 General MIDI soundfont
+plus `lame` (MIDI → MP3 for the LilyPond pipeline; `SOUNDFONT_PATH` points at
+the soundfont). MuseScore 4.7 needs an X display even for CLI exports,
 so `scripts/mscore-headless.sh` is installed as `/usr/local/bin/mscore`, runs it
 under `xvfb-run`, and `MSCORE_BIN` points the app at it. The app runs from
 `/app`, as it did under Railway's default builder.
 
 When you add a system dependency, add it to the `Dockerfile` and to the cloud dev
 environment's setup script together, and check that the image builds
-(`docker build -t mbbb .`); the build fails if `lilypond --version` or
-`mscore --version` does not run.
+(`docker build -t mbbb .`); the build fails if `lilypond`, `mscore`,
+`fluidsynth` or `lame` does not run, or the soundfont is missing. In a cloud dev
+container the proxy re-signs HTTPS, so a local build needs its CA
+(`/root/.ccr/ca-bundle.crt`) copied in and set as `CURL_CA_BUNDLE` and
+`NODE_EXTRA_CA_CERTS` in a scratch copy of the Dockerfile; never commit that.
+
+## LilyPond Pipeline (admin-only)
+
+`src/lilypond/` turns a song's MuseScore master into LilyPond-engraved output:
+MuseScore exports MusicXML (and a reference MIDI), `musicxml2ly --absolute
+--midi` converts it, the fixup rules in `fixups.js` correct it (drum staves,
+drum sounds by family, accidentals in part names, MuseScore layout breaks), and
+`generate.js` writes one LilyPond source per output: full score (Letter), each
+part in Letter and Lyre, and a MIDI score (repeats unfolded, one channel per
+instrument) that fluidsynth + lame render to `<song>-band.mp3`. `midi.js`
+compares LilyPond's MIDI with MuseScore's, part by part; a build "passes" when
+every pitched part matches at least 95% (drums compare timing only).
+
+Admins start builds on the Generated tab (`/library-status/generated-scores`);
+the queue runs in the server (`src/lib/server/lilypond-runner.ts`) behind
+`/admin/lilypond`, which re-checks the admin role (PLAN.md decision 9). Outputs
+are stored in `data/cas`, recorded in the gitignored `data/lilypond/state.json`,
+and join the catalog as the generated source `lilypond`, which supersedes the
+song's MuseScore-built parts and band mix and masks replaced manual parts.
+Removing a build brings those back. Test against a throwaway data dir (an
+`MBBB_CONFIG_JSON` with its own `dataDir`), never the real library.
 
 ## Isolated Changes With Git Worktrees
 

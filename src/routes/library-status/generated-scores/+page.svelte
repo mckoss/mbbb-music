@@ -6,6 +6,9 @@
   import { sourceStyle } from '$lib/sources';
   import HelpPopup from '$lib/components/HelpPopup.svelte';
   import { viewHref } from '$lib/view';
+  import { onMount } from 'svelte';
+  import { invalidateAll } from '$app/navigation';
+  import { writeFetch } from '$lib/client-version';
 
   // Build-pipeline view: which MuseScore (.mscz) masters in the library have been
   // turned into app-generated parts/scores/audio (by `bin/build-scores.js`) and
@@ -129,9 +132,99 @@
     audio: processed.reduce((n, r) => n + r.audio, 0),
   });
 
+  // ── LilyPond pipeline (admin-only; PLAN.md decision 9) ──────────────────
+  // Admins build each MuseScore master into LilyPond-engraved parts, a full
+  // score and band audio. The server enforces the role; non-admins never see
+  // this panel or reach /admin/lilypond.
+  const isAdmin = $derived(page.data.user?.role === 'admin');
+
+  interface LyCheck {
+    reference: string;
+    drums: boolean;
+    notes: number;
+    match: number;
+  }
+  interface LyBuild {
+    builtAt: string;
+    builtBy: string | null;
+    masterSha256: string;
+    outputs: number;
+    parts: number;
+    passed: boolean;
+    warnings: string[];
+    checks: LyCheck[] | null;
+  }
+  interface LyJob {
+    slug: string;
+    title: string;
+    status: 'queued' | 'running' | 'done' | 'failed';
+    error: string | null;
+    lines: { t: number; msg: string }[];
+    finishedAt: number | null;
+  }
+  let lyBuilds = $state<Record<string, LyBuild>>({});
+  let lyJobs = $state<LyJob[]>([]);
+  let lyError = $state<string | null>(null);
+  let lyOpen = $state<string | null>(null); // slug whose report is expanded
+  const lyActive = $derived(lyJobs.some((j) => j.status === 'queued' || j.status === 'running'));
+  const jobFor = (slug: string) => [...lyJobs].reverse().find((j) => j.slug === slug) ?? null;
+
+  async function lyRefresh() {
+    try {
+      const res = await fetch('/admin/lilypond');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const wasActive = lyActive;
+      lyBuilds = data.builds ?? {};
+      lyJobs = data.jobs ?? [];
+      lyError = null;
+      // A build just finished: reload the catalog so new parts/audio appear.
+      if (wasActive && !lyJobs.some((j) => j.status === 'queued' || j.status === 'running')) await invalidateAll();
+    } catch (err) {
+      lyError = `Could not load LilyPond status (${err instanceof Error ? err.message : err})`;
+    }
+  }
+
+  async function lyPost(body: Record<string, unknown>) {
+    lyError = null;
+    try {
+      const res = await writeFetch('/admin/lilypond', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const out = await res.json();
+      if (out.skipped?.length) lyError = `No MuseScore master for: ${out.skipped.join(', ')}`;
+      await lyRefresh();
+      if (body.action === 'revert') await invalidateAll();
+    } catch (err) {
+      lyError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  onMount(() => {
+    if (!isAdmin) return;
+    void lyRefresh();
+    const timer = setInterval(() => {
+      if (lyActive) void lyRefresh();
+    }, 2500);
+    return () => clearInterval(timer);
+  });
+
   // Master count drives the "x of y processed" headline.
   const masters = $derived(genRows.filter((r) => r.master));
   const processedMasters = $derived(masters.filter(hasGen));
+
+  const masterSha = (slug: string) => tunes.find((t) => t.slug === slug)?.musescore[0]?.sha256 ?? null;
+  const lyRows = $derived(
+    masters
+      .map((r) => ({ ...r, build: lyBuilds[r.slug] ?? null, job: jobFor(r.slug) }))
+      .map((r) => ({ ...r, changed: !!(r.build && r.build.masterSha256 !== masterSha(r.slug)) })),
+  );
+  const lyBuiltCount = $derived(lyRows.filter((r) => r.build).length);
+  const pct = (m: number) => `${Math.round(m * 100)}%`;
+
 </script>
 
 <!-- Master filename with the Drive source (friendly name + Coverage color key)
@@ -183,6 +276,90 @@
       {show(totals.parts)} parts · {show(totals.extra)} extra parts · {totals.audio} audio generated
     </p>
   </header>
+
+  {#if isAdmin}
+    <section class="block ly">
+      <div class="ly-head">
+        <h3>LilyPond builds <span class="badge">{lyBuiltCount} of {masters.length}</span></h3>
+        <button
+          type="button"
+          class="ly-btn primary"
+          disabled={lyActive || masters.length === 0}
+          onclick={() => lyPost({ action: 'build-all' })}>Build all with LilyPond</button
+        >
+      </div>
+      <p class="hint">
+        Admin only. Converts each MuseScore master to LilyPond, then engraves a full score,
+        every part in Letter and Lyre, and full-band audio. Each build is checked note by
+        note against the MuseScore master. LilyPond output replaces the MuseScore-built
+        parts and audio for that song; <em>Remove</em> brings them back.
+      </p>
+      {#if lyError}<p class="ly-error" role="alert">{lyError}</p>{/if}
+      <div class="scroller">
+        <table class="ly-table">
+          <thead>
+            <tr>
+              <th scope="col" class="song-col">Song</th>
+              <th scope="col">LilyPond</th>
+              <th scope="col">Check</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each lyRows as r (r.slug)}
+              {@const busy = r.job && (r.job.status === 'queued' || r.job.status === 'running')}
+              <tr>
+                <th scope="row" class="song-col"><span class="song-title">{r.title}</span></th>
+                <td>
+                  {#if busy}
+                    <span class="ly-status running">{r.job?.status === 'queued' ? 'Queued' : (r.job?.lines.at(-1)?.msg ?? 'Running')}…</span>
+                  {:else if r.job?.status === 'failed'}
+                    <span class="ly-status failed" title={r.job.error ?? ''}>Failed: {r.job.error}</span>
+                  {:else if r.build}
+                    <span class="ly-status">Built {fmtDate(r.build.builtAt)} · {r.build.parts} parts · {r.build.outputs} files</span>
+                    {#if r.changed}<span class="badge update" title="The MuseScore master changed since this build">Update</span>{/if}
+                  {:else}
+                    <span class="muted">Not built</span>
+                  {/if}
+                </td>
+                <td>
+                  {#if r.build?.checks}
+                    {@const bad = r.build.checks.filter((c) => !c.drums && c.match < 0.95)}
+                    <button type="button" class="ly-link" class:fail={bad.length > 0} onclick={() => (lyOpen = lyOpen === r.slug ? null : r.slug)}>
+                      {bad.length === 0 ? '✓ matches master' : `✗ ${bad.length} part${bad.length === 1 ? '' : 's'} differ`}
+                    </button>
+                  {:else if r.build}
+                    <span class="muted">no check</span>
+                  {/if}
+                </td>
+                <td class="ly-actions">
+                  <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug] })}>{r.build ? 'Rebuild' : 'Build'}</button>
+                  {#if r.build}
+                    <button type="button" class="ly-btn ghost" disabled={!!busy} onclick={() => lyPost({ action: 'revert', slug: r.slug })}>Remove</button>
+                  {/if}
+                </td>
+              </tr>
+              {#if lyOpen === r.slug && r.build?.checks}
+                <tr class="ly-report">
+                  <td colspan="4">
+                    <ul>
+                      {#each r.build.checks as c, i (i)}
+                        <li class:fail={!c.drums && c.match < 0.95}>
+                          <span>{c.reference}{c.drums ? ' (drums: timing only)' : ''}</span>
+                          <span>{pct(c.match)} of {c.notes} notes</span>
+                        </li>
+                      {/each}
+                    </ul>
+                    {#each r.build.warnings as w, i (i)}<p class="ly-error">{w}</p>{/each}
+                  </td>
+                </tr>
+              {/if}
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {/if}
 
   <section class="block">
     <h3>Needs processing <span class="badge">{needsProcessing.length}</span></h3>
@@ -292,6 +469,80 @@
 </section>
 
 <style>
+  .ly-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .ly-btn {
+    min-height: 40px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    font-weight: 600;
+  }
+  .ly-btn.primary {
+    background: var(--accent, #1f5f8b);
+    border-color: transparent;
+    color: #fff;
+  }
+  .ly-btn.ghost {
+    background: transparent;
+  }
+  .ly-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .ly-actions {
+    white-space: nowrap;
+    display: flex;
+    gap: 6px;
+  }
+  .ly-status.running {
+    color: var(--accent, #1f5f8b);
+  }
+  .ly-status.failed,
+  .ly-error,
+  .ly-link.fail,
+  .ly-report li.fail {
+    color: #b3261e;
+  }
+  .ly-link {
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    color: inherit;
+    font: inherit;
+  }
+  .ly-report ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    columns: 2 18rem;
+    font-size: 0.85rem;
+  }
+  .ly-report li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    break-inside: avoid;
+    padding: 2px 0;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
   .status {
     max-width: 100%;
     margin: 0 auto;
