@@ -48,6 +48,11 @@ repository (below) or in the gitignored `data/` volume, never here.
 8. **Most pressing deliverables:** E-flat alto horn parts, usually transcribed
    from trombone and occasionally from saxophone; and trumpet parts covering
    alto sax melody lines now that the band has fewer sax players.
+9. **The whole pipeline is admin-only.** Every file conversion (MuseScore ->
+   LilyPond, transposition, re-rendering, OMR, and the AI correction pass) is
+   started only by an admin; organizers and members cannot start one. Enforce
+   the role on the server when a job is created, not just by hiding controls.
+   Record who started each job, and for AI jobs the model and cost.
 
 ## Pipeline Shape
 
