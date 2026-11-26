@@ -323,3 +323,15 @@ test('compareMidi tolerates small onset differences such as swing ratios', () =>
   assert.equal(compareMidi(ref, swung)[0].match, 1);
   assert.equal(compareMidi(ref, straight)[0].match, 0.5);
 });
+
+test('mergeRests joins whole-bar rests split at page breaks, but not across marks', async () => {
+  const { mergeRests } = await import('../src/lilypond/fixups.js');
+  assert.equal(mergeRests('\\time 4/4  R1*2  | % 4\n    R1*3  | % 7\n    R1*4  | % 11\n    r2'), '\\time 4/4  R1*9  | % 11\n    r2');
+  assert.equal(mergeRests('R1 | R1 | R1 |'), 'R1*3 |');
+  assert.equal(mergeRests('R2. | R2. |'), 'R2.*2 |');
+  assert.equal(mergeRests('R1*2 | \\mark \\default R1*3 |'), 'R1*2 | \\mark \\default R1*3 |', 'a rehearsal mark keeps rests apart');
+  assert.equal(mergeRests('R1*2 | R2*2 |'), 'R1*2 | R2*2 |', 'different bar lengths stay apart');
+  assert.equal(mergeRests('R1*3/4 R1*3/4'), 'R1*3/4 R1*3/4', 'scaled rests are left alone');
+  const src = planSong(CONVERTED, PARTS);
+  assert.match(partLy(src, src.parts[0], 'S', 'letter'), /MultiMeasureRest\.expand-limit = #1/);
+});

@@ -5,7 +5,7 @@
 // and the \score block around the staves.
 
 import { parseConverted } from './lyparse.js';
-import { keyNone, layoutBreaks, drumify, drumStaff, flatNames, drumFamily, setInstrumentName } from './fixups.js';
+import { keyNone, layoutBreaks, mergeRests, drumify, drumStaff, flatNames, drumFamily, setInstrumentName } from './fixups.js';
 import { slugify } from '../sync/slugify.js';
 import { detectInstrument, detectKey, detectPartNumbers, translatePartName } from '../sync/instruments.js';
 
@@ -114,7 +114,7 @@ export function partSlug(partName, index) {
  * @returns {SongSources}
  */
 export function planSong(converted, parts) {
-  const fixed = flatNames(layoutBreaks(keyNone(converted)));
+  const fixed = flatNames(mergeRests(layoutBreaks(keyNone(converted))));
   const p = parseConverted(fixed);
   if (!p.music) throw new Error('musicxml2ly output has no \\score music');
 
@@ -206,7 +206,9 @@ export function partLy(src, part, title, format) {
     headerBlock(title, fmt.compactTitle ? {} : src.header, { instrument: part.name }),
     `\\paper {\n  ${[...fmt.paper, ...titleMarkup].join('\n  ')}\n}`,
     src.music,
-    `\\score {\n  \\compressMMRests ${part.staff}\n  \\layout {\n    indent = 0\n    \\context { \\Staff \\override InstrumentName.stencil = ##f }\n    \\context { \\DrumStaff \\override InstrumentName.stencil = ##f }\n  }\n}`,
+    // Multi-bar rests always as the modern thick bar with a number (LilyPond
+    // otherwise draws old "church rest" blocks for up to 10 bars).
+    `\\score {\n  \\compressMMRests ${part.staff}\n  \\layout {\n    indent = 0\n    \\context { \\Staff \\override InstrumentName.stencil = ##f \\override MultiMeasureRest.expand-limit = #1 }\n    \\context { \\DrumStaff \\override InstrumentName.stencil = ##f \\override MultiMeasureRest.expand-limit = #1 }\n  }\n}`,
   ].join('\n\n');
 }
 

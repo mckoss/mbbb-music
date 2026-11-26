@@ -15,6 +15,9 @@
 //   5. layoutBreaks  — drop the line/page breaks copied from MuseScore's
 //                      full-score layout; they force one system per page in a
 //                      single part. LilyPond lays out each output itself.
+//   6. mergeRests    — join back-to-back whole-bar rests (R1*2 | R1*3 → R1*5)
+//                      that musicxml2ly split at MuseScore's page breaks, so a
+//                      part prints one "9" rest instead of "2 · 3 · 4".
 
 import { matchClose } from './lyparse.js';
 
@@ -26,6 +29,24 @@ export function keyNone(ly) {
 /** Rule 5. */
 export function layoutBreaks(ly) {
   return ly.replace(/\\(?:pageBreak|break|noPageBreak|noBreak)\b/g, '');
+}
+
+/**
+ * Rule 6: merge consecutive whole-bar rests of the same bar length. Only bar
+ * checks, `% n` bar-number comments and whitespace may sit between them, so a
+ * rehearsal mark, tempo, time or key change, or barline keeps them apart.
+ */
+export function mergeRests(ly) {
+  // Between two rests: any mix of whitespace, bar checks and % comments.
+  const re = /R(\d+\.*)(?:\*(\d+))?(?![\d.\/])((?:\s|\||%[^\n]*)*)R\1(?:\*(\d+))?(?![\d.*\/])/;
+  let out = ly;
+  for (let guard = 0; guard < 10000; guard++) {
+    // The bar checks between the two rests fall inside the merged span.
+    const next = out.replace(re, (_, dur, a, _gap, b) => `R${dur}*${Number(a ?? 1) + Number(b ?? 1)}`);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 
 // General MIDI percussion note → LilyPond drum pitch name (drumpitch-init.ly).
