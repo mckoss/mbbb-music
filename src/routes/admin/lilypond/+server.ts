@@ -2,6 +2,8 @@
 // conversion is started by an admin, enforced here on the server).
 //   GET  /admin/lilypond → { jobs, builds } — queue state and each song's last build
 //   POST /admin/lilypond → { action: 'build', slugs } | { action: 'build-all' } | { action: 'revert', slug }
+// A song with a MuseScore master is converted from it; a PDF-only song gets a
+// draft master read from its part PDFs by OMR (src/omr/pipeline.js).
 // The hook already restricts /admin/* to admins; we re-check defensively.
 import { error, json } from '@sveltejs/kit';
 
@@ -19,6 +21,8 @@ function builds() {
     out[slug] = {
       builtAt: b.builtAt,
       builtBy: b.builtBy,
+      origin: b.origin ?? 'mscz',
+      omr: b.report.omr ?? null,
       masterSha256: b.masterSha256,
       outputs: b.outputs.length,
       parts: b.report.parts.length,

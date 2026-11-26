@@ -7,6 +7,9 @@
 #   - unzip, used when building score parts
 #   - fluidsynth + the FluidR3 General MIDI soundfont + lame, which render the
 #     LilyPond pipeline's MIDI to full-band MP3s (src/lilypond/pipeline.js)
+#   - Audiveris 5.11 (optical music recognition, bundles its own Java runtime;
+#     needs libgtk-3 even headless) and Tesseract English data, for draft
+#     masters of PDF-only songs (src/omr)
 # Keep the cloud dev environment's setup script in step with this file.
 
 FROM node:24.22.3-bookworm-slim AS node
@@ -20,7 +23,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl unzip lilypond \
-      fluidsynth fluid-soundfont-gm lame \
+      fluidsynth fluid-soundfont-gm lame libgtk-3-0t64 \
       xvfb xauth fonts-dejavu-core \
       libegl1 libopengl0 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 \
       libasound2t64 libpulse0 libpipewire-0.3-0t64 libnss3 libjack-jackd2-0 \
@@ -33,12 +36,20 @@ RUN mkdir -p /opt/musescore && cd /opt/musescore \
  && curl -fsSL -o ms.AppImage "$MUSESCORE_URL" \
  && chmod +x ms.AppImage && ./ms.AppImage --appimage-extract >/dev/null \
  && rm ms.AppImage
+ARG AUDIVERIS_URL=https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-ubuntu24.04-x86_64.deb
+ARG TESSDATA_URL=https://raw.githubusercontent.com/tesseract-ocr/tessdata/4.1.0/eng.traineddata
+RUN curl -fsSL -o /tmp/audiveris.deb "$AUDIVERIS_URL" \
+ && dpkg-deb -x /tmp/audiveris.deb / && rm /tmp/audiveris.deb \
+ && mkdir -p /root/.config/AudiverisLtd/audiveris/tessdata \
+ && curl -fsSL -o /root/.config/AudiverisLtd/audiveris/tessdata/eng.traineddata "$TESSDATA_URL"
 COPY scripts/mscore-headless.sh /usr/local/bin/mscore
 ENV MSCORE_BIN=/usr/local/bin/mscore XDG_RUNTIME_DIR=/tmp/runtime-root \
-    SOUNDFONT_PATH=/usr/share/sounds/sf2/FluidR3_GM.sf2
+    SOUNDFONT_PATH=/usr/share/sounds/sf2/FluidR3_GM.sf2 \
+    AUDIVERIS_BIN=/opt/audiveris/bin/Audiveris
 # Fail the build if any pipeline tool cannot run.
 RUN lilypond --version | head -1 && mscore --version \
- && fluidsynth --version | head -1 && lame --version | head -1 && test -s "$SOUNDFONT_PATH"
+ && fluidsynth --version | head -1 && lame --version | head -1 && test -s "$SOUNDFONT_PATH" \
+ && "$AUDIVERIS_BIN" -help | grep -q Syntax && echo "Audiveris OK"
 
 FROM base AS build
 WORKDIR /app

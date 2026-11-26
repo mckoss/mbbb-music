@@ -157,7 +157,8 @@ export function stripCopyOf(name: string): string {
  * The app-generated full-band mix is labeled "MuseScore Audio" regardless of its
  * filename (set `museScore` on the asset — see catalog.js `isMuseScoreAudio`).
  */
-export function audioLabel(originalName: string | null, museScore = false, lilypond = false): string {
+export function audioLabel(originalName: string | null, museScore = false, lilypond = false, omrDraft = false): string {
+  if (omrDraft) return 'Band Audio (draft from PDFs)';
   if (lilypond) return 'Band Audio';
   if (museScore) return 'MuseScore Audio';
   if (!originalName) return 'Full recording';

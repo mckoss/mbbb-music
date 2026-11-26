@@ -118,14 +118,12 @@ async function compile(tools, dir, base, source, ext = 'pdf') {
  * @returns {Promise<{ outputs: PipelineOutput[], report: PipelineReport }>}
  */
 export async function convertMscz(opts) {
-  const { input, songSlug, workDir } = opts;
+  const { input, workDir } = opts;
   const log = opts.log ?? (() => {});
-  const formats = opts.formats ?? Object.keys(LY_FORMATS);
-  const tools = toolPaths(opts.env);
   const warnings = [];
   await mkdir(workDir, { recursive: true });
 
-  // 1. MuseScore: MusicXML for conversion, MIDI as the fidelity reference.
+  // MuseScore: MusicXML for conversion, MIDI as the fidelity reference.
   const { bin: mscore, version: mscoreVersion } = await resolveMscore(opts.env);
   // MuseScore picks the input format from the extension; content-store blobs
   // have none, so work from a named copy.
@@ -140,23 +138,63 @@ export async function convertMscz(opts) {
     const why = String(err.stderr || '').split('\n').filter((l) => /error|fail|cannot|unable/i.test(l)).slice(-3).join(' ');
     throw new Error(`MuseScore could not open the master${why ? `: ${why}` : ''}`);
   }
+  let haveRef = true;
   try {
     await runMscore(mscore, ['-f', '-o', refMidi, master]);
   } catch {
+    haveRef = false;
     warnings.push('MuseScore could not export reference MIDI; fidelity check skipped.');
   }
+  return renderMusicXml({
+    ...opts,
+    xmlPath,
+    referenceMidi: haveRef ? refMidi : null,
+    warnings,
+    versions: { musescore: mscoreVersion },
+    log,
+  });
+}
+
+/**
+ * Render a MusicXML score with LilyPond: full score, optionally every part in
+ * each print format, the LilyPond master, MIDI, and the band MP3. Shared by the
+ * MuseScore path and the OMR (PDF-only) path.
+ *
+ * @param {object} opts
+ * @param {string} opts.xmlPath          MusicXML (score-partwise) to render.
+ * @param {string} opts.songSlug
+ * @param {string} [opts.title]
+ * @param {string} opts.workDir
+ * @param {string|null} [opts.referenceMidi]  MIDI to check against (MuseScore's).
+ * @param {boolean} [opts.parts]         Engrave per-part PDFs (default true).
+ * @param {string[]} [opts.formats]
+ * @param {boolean} [opts.audio]
+ * @param {string[]} [opts.warnings]     Warnings collected so far.
+ * @param {Record<string,string>} [opts.versions]
+ * @param {(msg: string) => void} [opts.log]
+ * @param {NodeJS.ProcessEnv} [opts.env]
+ * @returns {Promise<{ outputs: PipelineOutput[], report: PipelineReport }>}
+ */
+export async function renderMusicXml(opts) {
+  const { xmlPath, songSlug, workDir } = opts;
+  const log = opts.log ?? (() => {});
+  const formats = opts.parts === false ? [] : (opts.formats ?? Object.keys(LY_FORMATS));
+  const tools = toolPaths(opts.env);
+  const warnings = opts.warnings ?? [];
+  await mkdir(workDir, { recursive: true });
+
   const xml = await readFile(xmlPath, 'utf8');
   const parts = readParts(xml);
   const title = opts.title || readTitle(xml) || songSlug;
 
-  // 2. musicxml2ly (absolute pitches, so drum notes map by staff position).
+  // musicxml2ly (absolute pitches, so drum notes map by staff position).
   log('Converting MusicXML to LilyPond');
   const convertedPath = join(workDir, 'converted.ly');
   await run(tools.musicxml2ly, ['--absolute', '--midi', '-o', convertedPath, xmlPath]);
   const src = planSong(await readFile(convertedPath, 'utf8'), parts);
   log(`Planned ${src.parts.length} parts`);
 
-  // 3. Render with LilyPond.
+  // Render with LilyPond.
   const outDir = join(workDir, 'out');
   await mkdir(outDir, { recursive: true });
   const outputs = [];
@@ -167,7 +205,7 @@ export async function convertMscz(opts) {
       formats.map((f) => ({ base: `${songSlug}-${p.slug}-${f}`, source: partLy(src, p, title, f), kind: 'part', format: f, part: p.name })),
     ),
   ];
-  log(`Engraving ${jobs.length} PDFs`);
+  log(`Engraving ${jobs.length} PDF${jobs.length === 1 ? '' : 's'}`);
   await pool(jobs, 3, async (j) => {
     try {
       const path = await compile(tools, outDir, j.base, j.source);
@@ -183,12 +221,12 @@ export async function convertMscz(opts) {
   await writeFile(masterPath, scoreSource);
   outputs.push({ path: masterPath, name: `${songSlug}.ly`, kind: 'source' });
 
-  // 4. MIDI → fidelity check → MP3.
+  // MIDI → fidelity check → MP3.
   let checks = null;
   log('Rendering MIDI');
   const midiPath = await compile(tools, workDir, 'band', midiLy(src), 'midi');
-  if (await exists(refMidi)) {
-    checks = compareMidi(parseMidi(await readFile(refMidi)), parseMidi(await readFile(midiPath)));
+  if (opts.referenceMidi && (await exists(opts.referenceMidi))) {
+    checks = compareMidi(parseMidi(await readFile(opts.referenceMidi)), parseMidi(await readFile(midiPath)));
   }
   if (opts.audio !== false) {
     log('Rendering MP3');
@@ -219,7 +257,7 @@ export async function convertMscz(opts) {
       checks,
       passed,
       warnings,
-      versions: { musescore: mscoreVersion, lilypond: lilypondVersion },
+      versions: { ...(opts.versions ?? {}), lilypond: lilypondVersion },
     },
   };
 }

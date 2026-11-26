@@ -13,7 +13,7 @@ import { statusMap, statusMtimeMs } from './song-status.js';
 import { effectiveOverlay, revision as correctionsRevision } from './corrections.js';
 import { msczFacts } from './tempo.js';
 import { catalogEntries as lilypondEntries, stateMtimeMs as lilypondMtimeMs } from './lilypond-store.js';
-import { LILYPOND_SOURCE } from '../../lilypond/catalog-entries.js';
+import { LILYPOND_SOURCE, LILYPOND_OMR_SOURCE } from '../../lilypond/catalog-entries.js';
 import { DEFAULT_STATUS } from '$lib/song-status';
 
 export interface AssetMeta {
@@ -98,7 +98,7 @@ function load(): Loaded {
   // (data/lilypond/state.json); a Drive sync never rewrites them.
   const manifest: Manifest = { ...corrected, files: { ...corrected.files, ...lilypondEntries() } };
   const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean; generated?: boolean }[];
-  const sourceLabels = [...sources.map((s) => s.label).filter(Boolean), LILYPOND_SOURCE];
+  const sourceLabels = [...sources.map((s) => s.label).filter(Boolean), LILYPOND_SOURCE, LILYPOND_OMR_SOURCE];
   // Sources explicitly marked `foldered: false` aren't organized into per-song
   // folders; their files are grouped by the song embedded in each filename.
   const looseLabels = sources.filter((s) => s.foldered === false).map((s) => s.label);
