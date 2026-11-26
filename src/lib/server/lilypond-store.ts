@@ -39,6 +39,8 @@ export interface LilypondReport {
   title: string;
   origin?: 'omr';
   omr?: OmrPartReport[];
+  /** AI correction pass usage, when it ran. */
+  ai?: { model: string; calls: number; inputTokens: number; outputTokens: number; cost: number };
   parts: { name: string; slug: string; drums: boolean }[];
   checks: PartCheck[] | null;
   passed: boolean;

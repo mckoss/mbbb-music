@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 
 import { pdfPageText } from './pdf-text.js';
 import { systemStartNumbers, repairMeasures, prepPart, mergeParts } from './score.js';
+import { correctPart } from './correct.js';
 import { renderMusicXml } from '../lilypond/pipeline.js';
 
 const execFileP = promisify(execFile);
@@ -69,6 +70,7 @@ async function omrPdf(tools, pdfPath, outDir) {
  * @param {string} opts.title
  * @param {number|null} [opts.tempo]   Quarter-note BPM when the PDFs carry none.
  * @param {string} opts.workDir
+ * @param {{ client: object }|null} [opts.ai]  Run the AI correction pass with this Anthropic client.
  * @param {(msg: string) => void} [opts.log]
  * @param {NodeJS.ProcessEnv} [opts.env]
  */
@@ -79,6 +81,7 @@ export async function buildFromPdfs(opts) {
   const warnings = [];
   const omr = [];
   const prepped = [];
+  const ai = opts.ai ? { calls: 0, inputTokens: 0, outputTokens: 0, cost: 0 } : null;
 
   for (const [i, part] of opts.parts.entries()) {
     if (part.instrumentSlug === 'drums') {
@@ -96,7 +99,14 @@ export async function buildFromPdfs(opts) {
       const fixed = repairMeasures(xml, printed);
       const notes = [...fixed.notes];
       if (movements > 1) notes.unshift(`OMR split the PDF into ${movements} pieces; only the first was used.`);
-      const p = prepPart(fixed.xml, { id: `P${prepped.length + 1}`, name: part.name, instrumentSlug: part.instrumentSlug, key: part.key });
+      let partXml = fixed.xml;
+      if (opts.ai && ai) {
+        const c = await correctPart({ xml: partXml, pdfPath: pdf, partName: part.name, client: opts.ai.client, log });
+        partXml = c.xml;
+        notes.push(...c.notes);
+        for (const k of Object.keys(ai)) ai[k] += c.usage[k];
+      }
+      const p = prepPart(partXml, { id: `P${prepped.length + 1}`, name: part.name, instrumentSlug: part.instrumentSlug, key: part.key });
       prepped.push(p);
       omr.push({ part: part.name, bars: p.measures.length, notes });
     } catch (err) {
@@ -123,5 +133,5 @@ export async function buildFromPdfs(opts) {
     log,
     env: opts.env,
   });
-  return { outputs, report: { ...report, origin: 'omr', omr } };
+  return { outputs, report: { ...report, origin: 'omr', omr, ...(ai ? { ai: { model: 'claude-opus-5-5', ...ai } } : {}) } };
 }

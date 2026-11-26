@@ -4,6 +4,8 @@
 // are durable in data/lilypond/state.json.
 
 import { createHash } from 'node:crypto';
+
+import Anthropic from '@anthropic-ai/sdk';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +34,13 @@ export interface Job {
   outputs: number;
   passed: boolean | null;
   kind: 'mscz' | 'pdf';
+  /** Run the AI correction pass (PDF-only songs; needs ANTHROPIC_API_KEY). */
+  ai: boolean;
+}
+
+/** True when the server can run the AI correction pass. */
+export function aiAvailable(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY);
 }
 
 const MAX_RECENT = 30;
@@ -67,7 +76,7 @@ function planFor(slug: string): Plan | null {
  * Queue songs for a LilyPond build (skipping ones already queued or running).
  * Returns the slugs actually queued and those with nothing to build from.
  */
-export function enqueue(slugs: string[], requestedBy: string | null): { queued: string[]; skipped: string[] } {
+export function enqueue(slugs: string[], requestedBy: string | null, opts: { ai?: boolean } = {}): { queued: string[]; skipped: string[] } {
   const queued: string[] = [];
   const skipped: string[] = [];
   for (const slug of [...new Set(slugs)]) {
@@ -90,6 +99,7 @@ export function enqueue(slugs: string[], requestedBy: string | null): { queued: 
       outputs: 0,
       passed: null,
       kind: c.kind,
+      ai: Boolean(opts.ai) && c.kind === 'pdf' && aiAvailable(),
     });
     queued.push(slug);
   }
@@ -134,6 +144,8 @@ async function runJob(job: Job) {
             title: tune.title,
             tempo: tune.tempo?.bpm ?? null,
             workDir: join(workDir, 'build'),
+            // The SDK reads ANTHROPIC_API_KEY from the environment (Railway variable).
+            ai: job.ai ? { client: new Anthropic() } : null,
             log: say,
           });
     say(`Storing ${outputs.length} files`);
@@ -154,6 +166,8 @@ async function runJob(job: Job) {
     job.outputs = stored.length;
     job.passed = report.passed;
     for (const w of report.warnings) say(`Warning: ${w}`);
+    const aiCost = (report as { ai?: { cost: number } }).ai?.cost;
+    if (aiCost != null) say(`AI correction cost $${aiCost.toFixed(2)}.`);
     if (plan.kind === 'pdf') say('Done — draft master built from the part PDFs; see the report for what OMR fixed or missed.');
     else say(report.passed ? 'Done — every pitched part matches the MuseScore master.' : 'Done — some parts differ from the MuseScore master; see the report.');
   } finally {

@@ -189,9 +189,19 @@ counts against the measure numbers printed at each system start (read from the
 PDF text layer), adds the transposition and MIDI sound OMR can't know, and
 merges the parts; `renderMusicXml` then engraves a full score and band MP3. Draft
 outputs use the ordinary source `lilypond-omr`, so they sit beside the band's
-PDFs and mask nothing. OMR misreads (a wrong bar length, a missed line) are not
-fixed here — the report lists them; the AI correction pass (PLAN.md, admin-only,
-Opus 5.5 via `ANTHROPIC_API_KEY` in Railway) is the next step.
+PDFs and mask nothing. OMR misreads (a wrong bar length, a missed line) are
+listed in the report.
+
+**AI correction pass** (`src/omr/correct.js`, admin-only "Build with AI", shown
+only when the server has `ANTHROPIC_API_KEY` — a Railway service variable; the
+cloud dev environment has no key). Per page of each part PDF, Claude Opus 5.5
+(`claude-opus-5-5`, effort `high`, structured JSON output, server-side refusal
+fallback, cached system prompt) sees the page image (`pdf-image.js`) beside the
+OMR reading in the compact one-line-per-bar notation of `compact.js`, and returns
+the page's bars. Every returned bar is parsed and checked against the time
+signature (`validatePage`); valid pages replace the OMR bars, invalid bars keep
+the OMR reading, and each call's tokens and USD cost go into the build report.
+Tests stub the client (`stream(params).finalMessage()`); no test calls the API.
 
 ## Isolated Changes With Git Worktrees
 
