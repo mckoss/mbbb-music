@@ -135,8 +135,9 @@ only; the per-song list belongs in the private scores repository.
 | | Songs |
 |---|---|
 | Song folders in the library | 52 |
-| MuseScore master + PDF parts | 21 |
-| PDF-only (no MuseScore master found) | 31 |
+| MuseScore master + PDF parts | 22 |
+| PDF-only (no MuseScore master found) | 30 |
+| PDF-only with no separate parts (one combined PDF) | 6 |
 | Trombone part but no alto horn part, `.mscz` master available | 17 |
 | Trombone part but no alto horn part, PDF-only | 19 |
 | Alto sax part but no trumpet part | 1 (PDF-only) |
@@ -156,6 +157,72 @@ Observations that matter for the pipeline:
 - **Privacy:** an instrument-index folder in the library also contains copies of
   member-information and contact documents. Importers and any future Drive
   crawler must stay restricted to music file types and never ingest those.
+
+Re-crawled 2026-11-26 (master-count corrections above). Some `.mscz` files
+carry Drive mime type `application/x-zip`, so a mime-only search misses them;
+the sync's classifier already matches the `.mscz` extension.
+
+## Experiment Results (2026-11)
+
+Phase 1 trials, run in a cloud dev container with the production toolchain
+(MuseScore 4.7.7 under Xvfb, LilyPond 2.24.3). Scored by the MIDI note
+comparison above: pitch sequence per part, then rhythm of matched notes.
+
+### 1a. `.mscz` -> MusicXML -> `.ly` (3 songs, 35 pitched parts)
+
+- **Pitched parts: 31 of 35 match the MuseScore MIDI note for note** (two songs
+  23 of 23 after rule 1; the third 8 of 12). The other 4 differ only in cue
+  notes (rule 3) and in how grace notes and glissandos play back, so the
+  comparison should tolerate those. Repeats (one song has 48 repeat signs)
+  survive.
+- Fixup rules found so far:
+  1. Drop `\key c \none`, which musicxml2ly writes on percussion staves and
+     LilyPond rejects (the whole file fails to compile without this).
+  2. Map unpitched percussion to `\drummode` names. Drum staves currently come
+     out as pitched notes or silent in MIDI; the timing of the notes that do come
+     through is exact.
+  3. Cue notes: print small and silent (musicxml2ly makes them full size and
+     audible).
+  4. Title from the catalog, not the MusicXML (scores often say "Untitled
+     score"); flat sign in instrument names ("B♭") is dropped.
+- MuseScore 4.6+ files need MuseScore 4.7.x to open (now in the Railway image).
+
+### 1b. OMR on part PDFs of songs that have a master (Audiveris 5.11)
+
+| Part type | Pitch accuracy of notes read | Rhythm accuracy | Notes |
+|---|---|---|---|
+| Brass (4 parts) | 100% (no wrong pitches) | 96-98% | 0-12% of notes missing, all structural |
+| Alto sax (1 part) | 87.6% of master | 63.5% | lost multi-rests, missing x-noteheads, false ties |
+| Snare, 5-line | 48% of hits | 18.5% | unusable |
+| Snare, 1-line | - | - | Audiveris fails ("no multi-line staves") |
+| Combined all-parts PDF | - | - | treated as one movement per part; only the first exports; 1-line drum pages fail |
+
+- Errors are mostly **structural**: multi-measure rest counts read as 1, a
+  missed end-repeat, and spurious ties, rather than wrong pitches.
+- Installing Tesseract English data lets Audiveris read titles, part names and
+  rehearsal marks but does not change note accuracy.
+- Throughput: about 8 s per 2-page part.
+
+### 1b. AI correction pass (one part, done by hand as a stand-in)
+
+Comparing the original PDF against a render of the OMR result, page by page,
+found every error class above from the images alone (9 edits). Result for the
+worst pitched part: **pitch 87.6% -> 97.3%, rhythm 63.5% -> 99.4%** of the
+master. The residue was the staff position of x-noteheads and one missed note,
+which a second round should catch. Estimated API cost for the automated loop:
+about $1-1.50 per part (2-3 rounds), about $400-550 for the 30 PDF-only songs,
+or half that with the Batch API.
+
+### Decision gate
+
+- **Adopt LilyPond rendering for `.mscz` songs** (pitched parts pass; rules 1-4
+  are small and deterministic).
+- **OMR + correction pass is viable for engraved pitched parts.** Before OMR:
+  split combined PDFs into per-part PDFs (part name is text on each page).
+- **Drums need another route** (Audiveris cannot read 1-line percussion
+  staves): direct AI transcription of drum pages, or manual entry.
+- The automated correction loop needs an Anthropic API key in Railway's service
+  variables when it is built into the app; none is needed before then.
 
 ## Phases
 
@@ -185,8 +252,8 @@ Observations that matter for the pipeline:
 
 ## Open Questions
 
-- Where MuseScore runs for conversion: a Railway container, or the owner's Mac
-  as a job-pulling worker.
+- Where Audiveris runs for OMR (Java 25, ~80 MB package): the Railway image or
+  a separate worker. MuseScore conversion now runs in the Railway image.
 - Whether original source PDFs for PDF-only songs are stored in the private
   repo (Git LFS) or stay in Drive, referenced by hash.
 - Practical written ranges for alto horn and trumpet players.
