@@ -93,3 +93,24 @@ export function readTitle(xml) {
   const title = t ? decodeXml(t).trim() : '';
   return title && !/^untitled score$/i.test(title) ? title : null;
 }
+
+/**
+ * The swing feel the score asks for (first <swing> direction that isn't
+ * <straight/>), e.g. { first: 5, second: 3, unit: 8 } for swung eighths, or
+ * null for straight playback. musicxml2ly ignores swing, so the MIDI score
+ * applies it itself.
+ *
+ * @param {string} xml
+ * @returns {{ first: number, second: number, unit: number }|null}
+ */
+export function readSwing(xml) {
+  for (const m of xml.matchAll(/<swing>([\s\S]*?)<\/swing>/g)) {
+    if (/<straight\s*\/>/.test(m[1])) continue;
+    const first = Number(m[1].match(/<first>\s*(\d+)/)?.[1]);
+    const second = Number(m[1].match(/<second>\s*(\d+)/)?.[1]);
+    const type = m[1].match(/<swing-type>\s*([a-z0-9]+)/)?.[1] ?? 'eighth';
+    const unit = { eighth: 8, '16th': 16 }[type];
+    if (first > 0 && second > 0 && unit) return { first, second, unit };
+  }
+  return null;
+}

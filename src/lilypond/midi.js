@@ -87,21 +87,45 @@ export function parseMidi(buf) {
   return { ticksPerBeat, tracks: tracks.filter((tr) => tr.notes.length) };
 }
 
-/** Counter of keys → occurrences. */
-function tally(keys) {
+/** Onset tolerance in beats: absorbs tick rounding and small swing-ratio differences. */
+export const ONSET_TOLERANCE = 0.05;
+
+/** Group note onsets (sorted) by pitch, or all under one key for drums. */
+function onsetsByKey(tr, drums) {
   const m = new Map();
-  for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
+  for (const n of tr.notes) {
+    const k = drums ? 0 : n.note;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(n.beat);
+  }
+  for (const list of m.values()) list.sort((a, b) => a - b);
   return m;
 }
 
-function overlap(a, b) {
+/** Notes of `a` with a same-key note of `b` within `tol` beats (each used once). */
+function matched(a, b, tol) {
   let shared = 0;
-  for (const [k, n] of a) shared += Math.min(n, b.get(k) ?? 0);
+  for (const [k, xs] of a) {
+    const ys = b.get(k);
+    if (!ys) continue;
+    let j = 0;
+    for (const x of xs) {
+      while (j < ys.length && ys[j] < x - tol) j++;
+      if (j < ys.length && Math.abs(ys[j] - x) <= tol) {
+        shared++;
+        j++;
+      }
+    }
+  }
+  return shared;
+}
+
+function overlap(a, b, tol) {
   let ta = 0;
   let tb = 0;
-  for (const n of a.values()) ta += n;
-  for (const n of b.values()) tb += n;
-  return Math.max(ta, tb) ? shared / Math.max(ta, tb) : 1;
+  for (const v of a.values()) ta += v.length;
+  for (const v of b.values()) tb += v.length;
+  return Math.max(ta, tb) ? matched(a, b, tol) / Math.max(ta, tb) : 1;
 }
 
 /**
@@ -114,22 +138,22 @@ function overlap(a, b) {
 
 /**
  * Compare each reference track with its best-matching candidate track. Pitched
- * tracks compare (onset, pitch) pairs; drum tracks (channel 10) compare onsets
- * only, since drum sound mapping is a choice, not a transcription. Onsets are
- * rounded to a 48th of a beat so tick-resolution differences don't count.
+ * tracks compare (onset, pitch); drum tracks (channel 10) compare onsets only,
+ * since drum sound mapping is a choice, not a transcription. An onset counts as
+ * the same within ONSET_TOLERANCE beats, so tick rounding and a slightly
+ * different swing ratio (MuseScore exports 5:3 but plays about 3:2) don't count
+ * as wrong notes.
  *
  * @param {{ tracks: MidiTrack[] }} reference   e.g. MuseScore's MIDI
  * @param {{ tracks: MidiTrack[] }} candidate   e.g. LilyPond's MIDI
  * @returns {PartCheck[]}
  */
-export function compareMidi(reference, candidate) {
-  const q = (beat) => Math.round(beat * 48);
-  const keyed = (tr, drums) => tally(tr.notes.map((n) => (drums ? `${q(n.beat)}` : `${q(n.beat)}:${n.note}`)));
+export function compareMidi(reference, candidate, tol = ONSET_TOLERANCE) {
   return reference.tracks.map((ref) => {
     const drums = ref.notes.every((n) => n.channel === 9);
-    const refKeys = keyed(ref, drums);
+    const refKeys = onsetsByKey(ref, drums);
     let best = 0;
-    for (const cand of candidate.tracks) best = Math.max(best, overlap(refKeys, keyed(cand, drums)));
+    for (const cand of candidate.tracks) best = Math.max(best, overlap(refKeys, onsetsByKey(cand, drums), tol));
     return { reference: ref.name, drums, notes: ref.notes.length, match: best };
   });
 }

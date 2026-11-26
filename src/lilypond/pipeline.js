@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { resolveMscore, runMscore } from '../scores/musescore.js';
-import { readParts, readTitle } from './musicxml.js';
+import { readParts, readTitle, readSwing } from './musicxml.js';
 import { planSong, fullScoreLy, partLy, midiLy, LY_FORMATS } from './generate.js';
 import { parseMidi, compareMidi } from './midi.js';
 
@@ -191,8 +191,8 @@ export async function renderMusicXml(opts) {
   log('Converting MusicXML to LilyPond');
   const convertedPath = join(workDir, 'converted.ly');
   await run(tools.musicxml2ly, ['--absolute', '--midi', '-o', convertedPath, xmlPath]);
-  const src = planSong(await readFile(convertedPath, 'utf8'), parts);
-  log(`Planned ${src.parts.length} parts`);
+  const src = { ...planSong(await readFile(convertedPath, 'utf8'), parts), swing: readSwing(xml) };
+  log(`Planned ${src.parts.length} parts${src.swing ? ` (swing ${src.swing.first}:${src.swing.second})` : ''}`);
 
   // Render with LilyPond.
   const outDir = join(workDir, 'out');

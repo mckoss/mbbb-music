@@ -103,6 +103,7 @@ export function partSlug(partName, index) {
  * @property {string} fullMusic   The full-band `<< … >>` with fixed-up staves.
  * @property {string|null} tempo
  * @property {Record<string,string>} header
+ * @property {{ first: number, second: number, unit: number }|null} [swing]
  */
 
 /**
@@ -216,9 +217,12 @@ export function partLy(src, part, title, format) {
  * @param {SongSources} src
  */
 export function midiLy(src) {
+  // Swing (e.g. 5:3 eighths) is applied to the unfolded music before
+  // articulation, so the band MP3 swings like MuseScore's playback.
+  const swing = src.swing ? `\\applySwing ${src.swing.unit} #'(${src.swing.first} ${src.swing.second}) ` : '';
   return [
-    `\\version "${LILYPOND_VERSION}"\n\\include "articulate.ly"`,
+    `\\version "${LILYPOND_VERSION}"\n\\include "articulate.ly"${src.swing ? '\n\\include "swing.ly"' : ''}`,
     src.music,
-    `\\score {\n  \\unfoldRepeats \\articulate ${src.fullMusic}\n  \\midi {\n    ${src.tempo ?? ''}\n    \\context { \\Score midiChannelMapping = #'instrument }\n  }\n}`,
+    `\\score {\n  \\articulate ${swing}\\unfoldRepeats ${src.fullMusic}\n  \\midi {\n    ${src.tempo ?? ''}\n    \\context { \\Score midiChannelMapping = #'instrument }\n  }\n}`,
   ].join('\n\n');
 }
