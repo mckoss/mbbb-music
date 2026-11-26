@@ -250,9 +250,13 @@ or half that with the Batch API.
    with a MuseScore master into LilyPond output from the Generated tab (full
    score, Letter + Lyre parts, band MP3 via fluidsynth, per-part MIDI check);
    output is app-owned (`data/lilypond/state.json`) and supersedes the
-   MuseScore-built set. Still to do: the private scores repo and commit lineage,
-   draft/publish, and OMR-built masters for PDF-only songs (several part PDFs
-   merged into one master score so they get multi-instrument audio).
+   MuseScore-built set. *v1.68.0:* PDF-only songs get a draft master: OMR per
+   part PDF, bar counts repaired from the printed system measure numbers,
+   transposition added, parts merged, then a full score and band MP3 (drafts
+   mask nothing). Still to do: the AI correction pass (fixes the OMR misreads
+   that make parts drift: wrong bar lengths, missed lines), drums from PDFs,
+   splitting combined PDFs, the private scores repo and commit lineage, and
+   draft/publish.
    Original plan: pipeline steps (convert -> commit with trailers -> build
    letter/lyre), lineage recorded by commit SHA, draft/publish, published
    generated parts mask the manual PDFs they replace (by lineage rather than by

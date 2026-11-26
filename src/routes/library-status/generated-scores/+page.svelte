@@ -144,7 +144,16 @@
     notes: number;
     match: number;
   }
+  interface LyOmr {
+    part: string;
+    bars: number;
+    notes: string[];
+    skipped?: string;
+    failed?: boolean;
+  }
   interface LyBuild {
+    origin: 'mscz' | 'omr';
+    omr: LyOmr[] | null;
     builtAt: string;
     builtBy: string | null;
     masterSha256: string;
@@ -223,6 +232,21 @@
       .map((r) => ({ ...r, changed: !!(r.build && r.build.masterSha256 !== masterSha(r.slug)) })),
   );
   const lyBuiltCount = $derived(lyRows.filter((r) => r.build).length);
+
+  // PDF-only songs: no MuseScore master, but part PDFs a draft master can be
+  // read from (OMR). Drafts sit beside the band's PDFs and replace nothing.
+  const pdfRows = $derived(
+    tunes
+      .filter((t) => !t.musescore.length && t.parts.some((p) => !p.shared && !p.generated))
+      .map((t) => ({
+        slug: t.slug,
+        title: t.title,
+        partCount: new Set(t.parts.filter((p) => !p.shared && !p.generated).map((p) => `${p.instrumentSlug}|${(p.partNumbers ?? [p.partNumber]).join('-')}`)).size,
+        build: lyBuilds[t.slug] ?? null,
+        job: jobFor(t.slug),
+      }))
+      .sort((a, b) => a.title.localeCompare(b.title)),
+  );
   const pct = (m: number) => `${Math.round(m * 100)}%`;
 
 </script>
@@ -359,6 +383,79 @@
         </table>
       </div>
     </section>
+
+    {#if pdfRows.length}
+      <section class="block ly">
+        <h3>Draft masters from PDFs <span class="badge">{pdfRows.filter((r) => r.build).length} of {pdfRows.length}</span></h3>
+        <p class="hint">
+          Admin only. For songs with no MuseScore master: reads each part PDF with OMR, repairs
+          bar counts from the printed measure numbers, merges the parts into one master score,
+          and renders a full score and band audio. Drum parts are skipped. These are drafts:
+          they sit beside the band's PDFs and replace nothing. OMR misreads (an odd bar
+          length, a missed line) can make parts drift; the report lists every repair and gap.
+        </p>
+        <div class="scroller">
+          <table class="ly-table">
+            <thead>
+              <tr>
+                <th scope="col" class="song-col">Song</th>
+                <th scope="col">Draft</th>
+                <th scope="col">Report</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each pdfRows as r (r.slug)}
+                {@const busy = r.job && (r.job.status === 'queued' || r.job.status === 'running')}
+                <tr>
+                  <th scope="row" class="song-col"><span class="song-title">{r.title}</span> <span class="muted">· {r.partCount} part PDFs</span></th>
+                  <td>
+                    {#if busy}
+                      <span class="ly-status running">{r.job?.status === 'queued' ? 'Queued' : (r.job?.lines.at(-1)?.msg ?? 'Running')}…</span>
+                    {:else if r.job?.status === 'failed'}
+                      <span class="ly-status failed" title={r.job.error ?? ''}>Failed: {r.job.error}</span>
+                    {:else if r.build}
+                      <span class="ly-status">Built {fmtDate(r.build.builtAt)} · {r.build.parts} parts read</span>
+                    {:else}
+                      <span class="muted">Not built</span>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if r.build?.omr}
+                      {@const gaps = r.build.omr.filter((o) => o.failed || o.skipped || o.notes.some((n) => /missed|extra|short|differs|not checked/i.test(n))).length}
+                      <button type="button" class="ly-link" class:fail={gaps > 0} onclick={() => (lyOpen = lyOpen === r.slug ? null : r.slug)}>
+                        {gaps === 0 ? 'clean read' : `${gaps} part${gaps === 1 ? '' : 's'} with gaps`}
+                      </button>
+                    {/if}
+                  </td>
+                  <td class="ly-actions">
+                    <button type="button" class="ly-btn" disabled={!!busy} onclick={() => lyPost({ action: 'build', slugs: [r.slug] })}>{r.build ? 'Rebuild draft' : 'Build draft'}</button>
+                    {#if r.build}
+                      <button type="button" class="ly-btn ghost" disabled={!!busy} onclick={() => lyPost({ action: 'revert', slug: r.slug })}>Remove</button>
+                    {/if}
+                  </td>
+                </tr>
+                {#if lyOpen === r.slug && r.build?.omr}
+                  <tr class="ly-report">
+                    <td colspan="4">
+                      <ul class="omr-list">
+                        {#each r.build.omr as o, i (i)}
+                          <li class:fail={o.failed || !!o.skipped}>
+                            <strong>{o.part}</strong>{o.bars ? ` · ${o.bars} bars` : ''}
+                            {#each o.notes as n, j (j)}<div class="omr-note">{n}</div>{/each}
+                          </li>
+                        {/each}
+                      </ul>
+                      {#each r.build.warnings as w, i (i)}<p class="ly-error">{w}</p>{/each}
+                    </td>
+                  </tr>
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {/if}
   {/if}
 
   <section class="block">
@@ -534,6 +631,18 @@
   }
   .muted {
     color: var(--muted);
+  }
+  .ly-report ul.omr-list {
+    columns: 1;
+  }
+  .ly-report .omr-list li {
+    display: block;
+    padding: 4px 0;
+  }
+  .omr-note {
+    font-size: 0.82rem;
+    color: var(--muted);
+    padding-left: 12px;
   }
   .sr-only {
     position: absolute;

@@ -888,6 +888,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       const audio = { ...asset, instrumentSlug: e.instrumentSlug || undefined, _mtime: e.modifiedTime || '' };
       // Tag the app-generated full-band mix so it sorts first / auto-selects and
       // the UI can label it "MuseScore Audio" (additive — manual audio is kept).
+      // A draft band mix rendered from a PDF-only song's parts (OMR + LilyPond).
+      if (e.sourceFolderLabel === 'lilypond-omr' && /-band\.mp3$/i.test(e.originalName || '')) audio.omrDraft = true;
       if (isMuseScoreAudio(audio)) {
         audio.museScore = true;
         // Rendered by the app's LilyPond pipeline rather than MuseScore.

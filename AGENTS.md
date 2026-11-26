@@ -54,6 +54,7 @@ docs/styles.css  - Prototype styling
 docs/assets/     - Public-safe visual assets
 src/sync/        - Phase 1 Drive asset sync core (reusable service)
 src/lilypond/    - LilyPond pipeline: .mscz -> MusicXML -> .ly + fixups -> PDFs, MIDI, MP3
+src/omr/         - PDF-only songs: Audiveris OMR per part -> bar repair -> merged draft master
 src/server/      - Express-callable handler for hosted refreshes
 bin/sync.js      - Phase 1 sync CLI entry point
 test/            - node:test suites (slug, classify, manifest, sync)
@@ -145,7 +146,9 @@ on a running service: Node 24, LilyPond (`lilypond`, `musicxml2ly`), MuseScore
 Studio 4.7.7 (the band's scores are saved by 4.6.x; older versions refuse to open
 them), Xvfb, `unzip`, and fluidsynth with the FluidR3 General MIDI soundfont
 plus `lame` (MIDI → MP3 for the LilyPond pipeline; `SOUNDFONT_PATH` points at
-the soundfont). MuseScore 4.7 needs an X display even for CLI exports,
+the soundfont), and Audiveris 5.11 (OMR; bundles its own Java, needs
+`libgtk-3-0t64` even headless; `AUDIVERIS_BIN`) with Tesseract English data in
+`/root/.config/AudiverisLtd/audiveris/tessdata`. MuseScore 4.7 needs an X display even for CLI exports,
 so `scripts/mscore-headless.sh` is installed as `/usr/local/bin/mscore`, runs it
 under `xvfb-run`, and `MSCORE_BIN` points the app at it. The app runs from
 `/app`, as it did under Railway's default builder.
@@ -153,7 +156,7 @@ under `xvfb-run`, and `MSCORE_BIN` points the app at it. The app runs from
 When you add a system dependency, add it to the `Dockerfile` and to the cloud dev
 environment's setup script together, and check that the image builds
 (`docker build -t mbbb .`); the build fails if `lilypond`, `mscore`,
-`fluidsynth` or `lame` does not run, or the soundfont is missing. In a cloud dev
+`fluidsynth`, `lame` or Audiveris does not run, or the soundfont is missing. In a cloud dev
 container the proxy re-signs HTTPS, so a local build needs its CA
 (`/root/.ccr/ca-bundle.crt`) copied in and set as `CURL_CA_BUNDLE` and
 `NODE_EXTRA_CA_CERTS` in a scratch copy of the Dockerfile; never commit that.
@@ -178,6 +181,17 @@ and join the catalog as the generated source `lilypond`, which supersedes the
 song's MuseScore-built parts and band mix and masks replaced manual parts.
 Removing a build brings those back. Test against a throwaway data dir (an
 `MBBB_CONFIG_JSON` with its own `dataDir`), never the real library.
+
+PDF-only songs (no MuseScore master) get a **draft** master instead
+(`src/omr/`): `select-parts.js` picks one PDF per part (Letter preferred, shared
+role charts and drums skipped), Audiveris reads each, `score.js` repairs bar
+counts against the measure numbers printed at each system start (read from the
+PDF text layer), adds the transposition and MIDI sound OMR can't know, and
+merges the parts; `renderMusicXml` then engraves a full score and band MP3. Draft
+outputs use the ordinary source `lilypond-omr`, so they sit beside the band's
+PDFs and mask nothing. OMR misreads (a wrong bar length, a missed line) are not
+fixed here — the report lists them; the AI correction pass (PLAN.md, admin-only,
+Opus 5.5 via `ANTHROPIC_API_KEY` in Railway) is the next step.
 
 ## Isolated Changes With Git Worktrees
 

@@ -27,8 +27,18 @@ export interface PartCheck {
   match: number;
 }
 
+export interface OmrPartReport {
+  part: string;
+  bars: number;
+  notes: string[];
+  skipped?: string;
+  failed?: boolean;
+}
+
 export interface LilypondReport {
   title: string;
+  origin?: 'omr';
+  omr?: OmrPartReport[];
   parts: { name: string; slug: string; drums: boolean }[];
   checks: PartCheck[] | null;
   passed: boolean;
@@ -38,8 +48,11 @@ export interface LilypondReport {
 
 export interface LilypondBuild {
   title: string;
+  /** How the master was made: converted from MuseScore, or read from part PDFs. */
+  origin?: 'mscz' | 'omr';
   builtAt: string;
   builtBy: string | null;
+  /** The MuseScore master's hash, or for OMR builds a hash over the part PDFs used. */
   masterSha256: string;
   outputs: LilypondOutput[];
   report: LilypondReport;

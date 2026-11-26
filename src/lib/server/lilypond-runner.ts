@@ -3,11 +3,14 @@
 // in-memory per process — fine for the single Railway instance; finished builds
 // are durable in data/lilypond/state.json.
 
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { convertMscz } from '../../lilypond/pipeline.js';
+import { buildFromPdfs } from '../../omr/pipeline.js';
+import { selectPdfParts } from '../../omr/select-parts.js';
 import { casPath, getCatalog } from './library.js';
 import { recordBuild, removeBuild, storeBlob, type LilypondOutput } from './lilypond-store.js';
 
@@ -28,6 +31,7 @@ export interface Job {
   lines: JobLine[];
   outputs: number;
   passed: boolean | null;
+  kind: 'mscz' | 'pdf';
 }
 
 const MAX_RECENT = 30;
@@ -40,22 +44,34 @@ export function getJobs(): Job[] {
   return jobs.slice(-MAX_RECENT);
 }
 
-/** Songs that have a MuseScore master the pipeline can convert. */
-function convertible(slug: string) {
+type Plan =
+  | { kind: 'mscz'; tune: { slug: string; title: string }; masterSha: string }
+  | { kind: 'pdf'; tune: { slug: string; title: string }; parts: ReturnType<typeof selectPdfParts>; sourceHash: string };
+
+/**
+ * How a song can be built: from its MuseScore master, or — for a PDF-only song —
+ * a draft master read from its part PDFs by OMR. Null when neither is possible.
+ */
+function planFor(slug: string): Plan | null {
   const tune = getCatalog().tunes.find((t) => t.slug === slug);
-  const master = tune?.musescore?.find((m) => m.sha256);
-  return tune && master?.sha256 ? { tune, masterSha: master.sha256 } : null;
+  if (!tune) return null;
+  const master = tune.musescore?.find((m) => m.sha256);
+  if (master?.sha256) return { kind: 'mscz', tune, masterSha: master.sha256 };
+  const parts = selectPdfParts(tune);
+  if (!parts.length) return null;
+  const sourceHash = createHash('sha256').update(parts.map((p) => p.sha256).join(',')).digest('hex');
+  return { kind: 'pdf', tune, parts, sourceHash };
 }
 
 /**
  * Queue songs for a LilyPond build (skipping ones already queued or running).
- * Returns the slugs actually queued and those that have no MuseScore master.
+ * Returns the slugs actually queued and those with nothing to build from.
  */
 export function enqueue(slugs: string[], requestedBy: string | null): { queued: string[]; skipped: string[] } {
   const queued: string[] = [];
   const skipped: string[] = [];
   for (const slug of [...new Set(slugs)]) {
-    const c = convertible(slug);
+    const c = planFor(slug);
     if (!c) {
       skipped.push(slug);
       continue;
@@ -73,6 +89,7 @@ export function enqueue(slugs: string[], requestedBy: string | null): { queued: 
       lines: [],
       outputs: 0,
       passed: null,
+      kind: c.kind,
     });
     queued.push(slug);
   }
@@ -98,21 +115,27 @@ export function revert(slug: string): boolean {
 }
 
 async function runJob(job: Job) {
-  const c = convertible(job.slug);
-  if (!c) throw new Error('This song no longer has a MuseScore master.');
+  const plan = planFor(job.slug);
+  if (!plan) throw new Error('This song has nothing to build from (no MuseScore master or part PDFs).');
   const say = (msg: string) => {
     job.lines.push({ t: Date.now(), msg });
     if (job.lines.length > MAX_LINES) job.lines.splice(0, job.lines.length - MAX_LINES);
   };
+  const tune = plan.tune as { slug: string; title: string; displaySlug?: string; tempo?: { bpm?: number } };
+  const songSlug = tune.displaySlug || job.slug;
   const workDir = await mkdtemp(join(tmpdir(), 'mbbb-lilypond-'));
   try {
-    const { outputs, report } = await convertMscz({
-      input: casPath(c.masterSha),
-      songSlug: (c.tune as { displaySlug?: string }).displaySlug || job.slug,
-      title: c.tune.title,
-      workDir: join(workDir, 'build'),
-      log: say,
-    });
+    const { outputs, report } =
+      plan.kind === 'mscz'
+        ? await convertMscz({ input: casPath(plan.masterSha), songSlug, title: tune.title, workDir: join(workDir, 'build'), log: say })
+        : await buildFromPdfs({
+            parts: plan.parts.map((p) => ({ pdfPath: casPath(p.sha256), name: p.name, instrumentSlug: p.instrumentSlug, key: p.key })),
+            songSlug,
+            title: tune.title,
+            tempo: tune.tempo?.bpm ?? null,
+            workDir: join(workDir, 'build'),
+            log: say,
+          });
     say(`Storing ${outputs.length} files`);
     const stored: LilypondOutput[] = [];
     for (const o of outputs) {
@@ -120,17 +143,19 @@ async function runJob(job: Job) {
       stored.push({ sha256, size, name: o.name, kind: o.kind, ...(o.format ? { format: o.format } : {}), ...(o.part ? { part: o.part } : {}) });
     }
     recordBuild(job.slug, {
-      title: c.tune.title,
+      title: tune.title,
+      origin: plan.kind === 'mscz' ? 'mscz' : 'omr',
       builtAt: new Date().toISOString(),
       builtBy: job.requestedBy,
-      masterSha256: c.masterSha,
+      masterSha256: plan.kind === 'mscz' ? plan.masterSha : plan.sourceHash,
       outputs: stored,
       report,
     });
     job.outputs = stored.length;
     job.passed = report.passed;
     for (const w of report.warnings) say(`Warning: ${w}`);
-    say(report.passed ? 'Done — every pitched part matches the MuseScore master.' : 'Done — some parts differ from the MuseScore master; see the report.');
+    if (plan.kind === 'pdf') say('Done — draft master built from the part PDFs; see the report for what OMR fixed or missed.');
+    else say(report.passed ? 'Done — every pitched part matches the MuseScore master.' : 'Done — some parts differ from the MuseScore master; see the report.');
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
