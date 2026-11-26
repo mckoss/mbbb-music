@@ -47,6 +47,7 @@ export interface CatalogAsset {
   instrumentSlug?: string; // set on audio: the isolated-part instrument, if any
   generated?: boolean; // app-generated (MuseScore output) — masks manual copies
   museScore?: boolean; // set on audio: the app-generated full-band "MuseScore Audio" mix
+  lilypond?: boolean; // set on audio: that full-band mix was rendered by the LilyPond pipeline
   modifiedTime?: string | null; // Drive last-modified ISO time
   // Admin-corrected start pages inside a whole-band chart ({ slug: 1-based page }),
   // overriding the part labels read from the PDF itself.

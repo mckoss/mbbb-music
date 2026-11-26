@@ -246,7 +246,14 @@ or half that with the Batch API.
 3. **Private scores repository** (owner approval needed to create it and its
    bot credentials): layout above, templates, `fixups/`, CI that compiles every
    changed song and runs the MIDI check.
-4. **App integration:** pipeline steps (convert -> commit with trailers -> build
+4. **App integration:** *started 2026-11-26 (v1.67.0):* admins build any song
+   with a MuseScore master into LilyPond output from the Generated tab (full
+   score, Letter + Lyre parts, band MP3 via fluidsynth, per-part MIDI check);
+   output is app-owned (`data/lilypond/state.json`) and supersedes the
+   MuseScore-built set. Still to do: the private scores repo and commit lineage,
+   draft/publish, and OMR-built masters for PDF-only songs (several part PDFs
+   merged into one master score so they get multi-instrument audio).
+   Original plan: pipeline steps (convert -> commit with trailers -> build
    letter/lyre), lineage recorded by commit SHA, draft/publish, published
    generated parts mask the manual PDFs they replace (by lineage rather than by
    Drive source label), and an admin view of open score PRs with previews.

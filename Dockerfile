@@ -5,6 +5,8 @@
 #   - MuseScore Studio 4.7.7 (opens 4.6.x scores), run headless under Xvfb via
 #     the /usr/local/bin/mscore wrapper; MSCORE_BIN points the app at it
 #   - unzip, used when building score parts
+#   - fluidsynth + the FluidR3 General MIDI soundfont + lame, which render the
+#     LilyPond pipeline's MIDI to full-band MP3s (src/lilypond/pipeline.js)
 # Keep the cloud dev environment's setup script in step with this file.
 
 FROM node:24.22.3-bookworm-slim AS node
@@ -18,6 +20,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl unzip lilypond \
+      fluidsynth fluid-soundfont-gm lame \
       xvfb xauth fonts-dejavu-core \
       libegl1 libopengl0 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 \
       libasound2t64 libpulse0 libpipewire-0.3-0t64 libnss3 libjack-jackd2-0 \
@@ -31,9 +34,11 @@ RUN mkdir -p /opt/musescore && cd /opt/musescore \
  && chmod +x ms.AppImage && ./ms.AppImage --appimage-extract >/dev/null \
  && rm ms.AppImage
 COPY scripts/mscore-headless.sh /usr/local/bin/mscore
-ENV MSCORE_BIN=/usr/local/bin/mscore XDG_RUNTIME_DIR=/tmp/runtime-root
-# Fail the build if either tool cannot run.
-RUN lilypond --version | head -1 && mscore --version
+ENV MSCORE_BIN=/usr/local/bin/mscore XDG_RUNTIME_DIR=/tmp/runtime-root \
+    SOUNDFONT_PATH=/usr/share/sounds/sf2/FluidR3_GM.sf2
+# Fail the build if any pipeline tool cannot run.
+RUN lilypond --version | head -1 && mscore --version \
+ && fluidsynth --version | head -1 && lame --version | head -1 && test -s "$SOUNDFONT_PATH"
 
 FROM base AS build
 WORKDIR /app

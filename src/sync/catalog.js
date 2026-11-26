@@ -764,9 +764,12 @@ const MASKED_WHEN_GENERATED = ['parts', 'scores'];
  * @param {string[]} [sourceLabels]       Configured source labels in priority order.
  * @param {string[]} [looseSourceLabels]  Labels of sources NOT foldered by song.
  * @param {string[]} [generatedSourceLabels]  Labels of sources holding app-generated scores.
+ * @param {string[]} [supersedingSourceLabels]  Generated sources whose output, when a
+ *   song has any, replaces every OTHER generated source's scores, parts and band mix
+ *   for that song (the app's own LilyPond builds supersede MuseScore-built uploads).
  * @returns {{ tunes: Tune[], instruments: {slug:string,label:string}[], extras: CatalogAsset[], sources: string[], uniqueCount:number, liveCount:number }}
  */
-export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = [], generatedSourceLabels = []) {
+export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = [], generatedSourceLabels = [], supersedingSourceLabels = []) {
   // Fill newly recognized names in old manifests; an explicit human correction
   // (including clearing an instrument) always wins.
   manifest = { ...manifest, files: Object.fromEntries(Object.entries(manifest.files || {}).map(([id, e]) => {
@@ -777,7 +780,8 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   const pri = sourcePriority(sourceLabels, manifest);
   const { canonical, liveCount } = canonicalByContent(manifest, pri);
   const loose = new Set(looseSourceLabels || []);
-  const generated = new Set(generatedSourceLabels || []);
+  const superseding = new Set(supersedingSourceLabels || []);
+  const generated = new Set([...(generatedSourceLabels || []), ...superseding]);
   // Folders that hold parts for many different songs (a by-player/by-instrument
   // collection) — detected by content, not folder/file names. Their files are
   // grouped by the song each one's content belongs to, not by the folder.
@@ -884,7 +888,11 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
       const audio = { ...asset, instrumentSlug: e.instrumentSlug || undefined, _mtime: e.modifiedTime || '' };
       // Tag the app-generated full-band mix so it sorts first / auto-selects and
       // the UI can label it "MuseScore Audio" (additive — manual audio is kept).
-      if (isMuseScoreAudio(audio)) audio.museScore = true;
+      if (isMuseScoreAudio(audio)) {
+        audio.museScore = true;
+        // Rendered by the app's LilyPond pipeline rather than MuseScore.
+        if (superseding.has(e.sourceFolderLabel)) audio.lilypond = true;
+      }
       song.audio.push(audio);
     } else if (e.assetType === 'musescore') {
       song.musescore.push(asset);
@@ -979,6 +987,26 @@ export function buildCatalog(manifest, sourceLabels = [], looseSourceLabels = []
   // (same instrument). One the generated set lacks — e.g. an alto horn part
   // hand-transposed after the MuseScore build — stays playable; masking it would
   // leave that instrument with nothing to read.
+  // A superseding (LilyPond) build replaces every other generated output of the
+  // song — MuseScore-built parts, scores and band mix — before the manual-score
+  // masking below runs, so only one generated set is ever offered.
+  for (const song of bySong.values()) {
+    const fromSuperseding = (a) => superseding.has(a.source);
+    const all = [...song.parts, ...song.hiddenParts, ...song.scores, ...song.audio];
+    if (!all.some((a) => a.generated && fromSuperseding(a))) continue;
+    for (const bucket of ['parts', 'hiddenParts', 'scores', 'audio']) {
+      const kept = [];
+      for (const a of song[bucket]) {
+        if (a.generated && !fromSuperseding(a)) {
+          // eslint-disable-next-line no-unused-vars
+          const { _mtime, ...rest } = a;
+          song.masked.push({ ...rest, bucket });
+        } else kept.push(a);
+      }
+      song[bucket] = kept;
+    }
+  }
+
   for (const song of bySong.values()) {
     const hasGenerated = [...song.parts, ...song.hiddenParts].some((p) => p.generated) || song.scores.some((s) => s.generated);
     if (!hasGenerated) continue;

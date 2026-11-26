@@ -40,8 +40,11 @@ function candidates(env) {
 }
 
 /** Parse the major version from `mscore --version` output ("MuseScore4 4.7.2"). */
-function majorVersion(versionLine) {
-  const m = String(versionLine).match(/(\d+)\.\d+(?:\.\d+)?/);
+export function majorVersion(versionLine) {
+  // The AppImage launcher can print library paths (e.g. "libpipewire-0.3.so")
+  // before the version line, so prefer the number that follows "MuseScore".
+  const text = String(versionLine);
+  const m = text.match(/MuseScore\S*\s+(\d+)\.\d+/i) ?? text.match(/^\s*(\d+)\.\d+(?:\.\d+)?\s*$/m);
   return m ? Number(m[1]) : null;
 }
 
@@ -64,8 +67,9 @@ export async function resolveMscore(env = process.env) {
     } catch {
       continue; // not on PATH / not executable — try the next candidate
     }
-    version = version.trim();
     const major = majorVersion(version);
+    // Keep just the version line for display (drop launcher noise).
+    version = (String(version).match(/^.*MuseScore\S*\s+\d+\.\d+.*$/im)?.[0] ?? version).trim();
     if (major === 4) return { bin, version };
     if (major != null) sawWrongVersion = version; // found MuseScore, wrong major
   }

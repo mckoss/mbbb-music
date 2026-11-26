@@ -141,7 +141,7 @@
       out.push({ sha: u.sha256, label: `${u.originalName ? stripCopyOf(u.originalName) : 'Band chart'} (PDF)` })
     );
     if (tune.musescore[0]) out.push({ sha: tune.musescore[0].sha256, label: 'MuseScore' });
-    tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName, a.museScore)} (MP3)` }));
+    tune.audio.forEach((a) => out.push({ sha: a.sha256, label: `${audioLabel(a.originalName, a.museScore, a.lilypond)} (MP3)` }));
     tune.notes.forEach((n) =>
       out.push({ sha: n.sha256, label: `${n.originalName ? stripCopyOf(n.originalName) : 'Notes'} (PDF)` })
     );

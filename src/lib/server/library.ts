@@ -12,6 +12,8 @@ import { resolveTempo } from '../../sync/mscz.js';
 import { statusMap, statusMtimeMs } from './song-status.js';
 import { effectiveOverlay, revision as correctionsRevision } from './corrections.js';
 import { msczFacts } from './tempo.js';
+import { catalogEntries as lilypondEntries, stateMtimeMs as lilypondMtimeMs } from './lilypond-store.js';
+import { LILYPOND_SOURCE } from '../../lilypond/catalog-entries.js';
 import { DEFAULT_STATUS } from '$lib/song-status';
 
 export interface AssetMeta {
@@ -27,6 +29,7 @@ type ServerCatalog = ReturnType<typeof buildCatalog> & { sourceUrls: Record<stri
 interface Loaded {
   mtimeMs: number;
   statusMtimeMs: number;
+  lilypondMtimeMs: number;
   correctionsRev: string;
   catalog: ServerCatalog;
   assets: Map<string, AssetMeta>;
@@ -46,6 +49,7 @@ export interface Manifest {
 const EMPTY: Loaded = {
   mtimeMs: -1,
   statusMtimeMs: -1,
+  lilypondMtimeMs: -1,
   correctionsRev: '',
   catalog: { tunes: [], instruments: [], extras: [], sources: [], sourceUrls: {}, uniqueCount: 0, liveCount: 0 },
   assets: new Map(),
@@ -69,8 +73,15 @@ function load(): Loaded {
   // overlay, so a change to either must invalidate the cache even when the
   // manifest is untouched.
   const sMtime = statusMtimeMs();
+  const lMtime = lilypondMtimeMs();
   const cRev = correctionsRevision();
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.statusMtimeMs === sMtime && cached.correctionsRev === cRev) {
+  if (
+    cached &&
+    cached.mtimeMs === stat.mtimeMs &&
+    cached.statusMtimeMs === sMtime &&
+    cached.lilypondMtimeMs === lMtime &&
+    cached.correctionsRev === cRev
+  ) {
     return cached;
   }
 
@@ -82,9 +93,12 @@ function load(): Loaded {
   // Only FILE corrections touch the manifest (and thus grouping). SONG corrections
   // are presentation-only and applied to the tunes below, so the song's derived
   // slug stays its stable identity (gig setlists + status key on it).
-  const manifest = applyCorrections(rawManifest, overlay) as Manifest;
+  const corrected = applyCorrections(rawManifest, overlay) as Manifest;
+  // App-built LilyPond outputs join the library as their own generated source
+  // (data/lilypond/state.json); a Drive sync never rewrites them.
+  const manifest: Manifest = { ...corrected, files: { ...corrected.files, ...lilypondEntries() } };
   const sources = (cfg.sources || []) as { id?: string; label: string; foldered?: boolean; generated?: boolean }[];
-  const sourceLabels = sources.map((s) => s.label).filter(Boolean);
+  const sourceLabels = [...sources.map((s) => s.label).filter(Boolean), LILYPOND_SOURCE];
   // Sources explicitly marked `foldered: false` aren't organized into per-song
   // folders; their files are grouped by the song embedded in each filename.
   const looseLabels = sources.filter((s) => s.foldered === false).map((s) => s.label);
@@ -99,7 +113,8 @@ function load(): Loaded {
   }
   // Attach each song's admin-assigned status (default 'Unfiled') here at the
   // server boundary, so the pure sync catalog stays decoupled from the store.
-  const built = buildCatalog(manifest, sourceLabels, looseLabels, generatedLabels);
+  // LilyPond builds supersede every other generated output of the same song.
+  const built = buildCatalog(manifest, sourceLabels, looseLabels, generatedLabels, [LILYPOND_SOURCE]);
   const statuses = statusMap();
   // Each tune's `slug` is its stable identity (used by status + gig setlists and
   // never changed by a correction). A song correction overlays presentation only:
@@ -136,7 +151,7 @@ function load(): Loaded {
     }
   }
 
-  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, correctionsRev: cRev, catalog, assets, casDir, rawManifest, manifest };
+  cached = { mtimeMs: stat.mtimeMs, statusMtimeMs: sMtime, lilypondMtimeMs: lMtime, correctionsRev: cRev, catalog, assets, casDir, rawManifest, manifest };
   return cached;
 }
 
